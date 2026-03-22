@@ -14,7 +14,8 @@
   --green:#00C853;--blue:#0044d4;
   --white:#f5f6fa;--muted:#8890aa;
   --border:rgba(255,255,255,0.07);
-  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;--nav-h:68px
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+  --nav-h:68px;--max-w:1100px
 }
 html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--navy);color:var(--white);line-height:1.6;overflow-x:hidden}
@@ -22,6 +23,8 @@ a{text-decoration:none;color:inherit}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:var(--navy)}
 ::-webkit-scrollbar-thumb{background:var(--green);border-radius:2px}
+
+/* NAV */
 nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;justify-content:space-between;padding:0 6%;background:rgba(7,9,26,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
 .nav-logo{font-size:1.8rem;font-weight:600;letter-spacing:-0.5px;line-height:1}
 .nav-logo .evo{color:var(--green);font-weight:300}
@@ -36,6 +39,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:
 .nav-cta:hover{background:#00e060!important}
 .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer}
 .hamburger span{display:block;width:24px;height:2px;background:var(--white);border-radius:1px}
+
+/* HERO */
 #home{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:calc(var(--nav-h) + 4rem) 6% 6rem;position:relative;overflow:hidden}
 #home::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(0,200,83,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,83,0.04) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 80% 80% at 50% 40%,black 30%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 80% 80% at 50% 40%,black 30%,transparent 100%);pointer-events:none}
 #home::after{content:'';position:absolute;top:20%;left:50%;transform:translateX(-50%);width:600px;height:400px;background:radial-gradient(ellipse,rgba(0,50,180,0.14) 0%,transparent 70%);pointer-events:none}
@@ -52,34 +57,39 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:
 .btn-primary:hover{background:#00e060;transform:translateY(-2px);box-shadow:0 0 36px rgba(0,200,83,0.35)}
 .btn-secondary{background:transparent;color:var(--white);font-weight:500;font-size:0.95rem;padding:0.85rem 2rem;border-radius:8px;display:inline-block;border:1px solid rgba(255,255,255,0.15);transition:border-color 0.2s,transform 0.15s}
 .btn-secondary:hover{border-color:rgba(255,255,255,0.4);transform:translateY(-2px)}
+
+/* SHARED SECTION LAYOUT — every section uses this same structure */
 section{padding:6rem 6%}
-.section-label{font-size:0.72rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--green);margin-bottom:0.75rem;font-family:var(--mono)}
-.section-title{font-size:clamp(1.8rem,4vw,2.7rem);font-weight:600;letter-spacing:-0.8px;line-height:1.15;margin-bottom:0.75rem}
-.section-sub{font-size:1rem;color:var(--muted);max-width:520px;line-height:1.75}
-.divider{width:48px;height:3px;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:2px;margin:1.25rem 0 2rem}
+.inner{max-width:var(--max-w);margin:0 auto}
+.sec-header{margin-bottom:3.5rem}
+.section-label{font-size:0.72rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--green);margin-bottom:0.6rem;font-family:var(--mono)}
+.section-title{font-size:clamp(1.8rem,4vw,2.7rem);font-weight:600;letter-spacing:-0.8px;line-height:1.15;margin-bottom:0.6rem}
+.section-sub{font-size:0.97rem;color:var(--muted);max-width:560px;line-height:1.75}
+.divider{width:48px;height:3px;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:2px;margin:1.1rem 0 1.5rem}
+
+/* ABOUT */
 #about{background:var(--navy2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.about-wrap{display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:center;max-width:1100px;margin:0 auto}
-.about-stats{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.25rem}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:start;margin-top:0}
+.about-stats{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2rem}
 .stat-card{background:var(--navy3);border:1px solid var(--border);border-radius:12px;padding:1.25rem;transition:border-color 0.2s,transform 0.2s}
 .stat-card:hover{border-color:rgba(0,200,83,0.3);transform:translateY(-3px)}
 .stat-number{font-size:1.9rem;font-weight:700;color:var(--green);line-height:1;margin-bottom:0.3rem;font-family:var(--mono)}
 .stat-label{font-size:0.78rem;color:var(--muted)}
 .about-card{background:var(--navy3);border:1px solid var(--border);border-radius:16px;padding:2.25rem;position:relative;overflow:hidden}
 .about-card::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:radial-gradient(circle,rgba(0,200,83,0.07) 0%,transparent 70%);pointer-events:none}
-.value-item{display:flex;align-items:flex-start;gap:1rem;margin-bottom:1.5rem}
+.value-item{display:flex;align-items:flex-start;gap:1rem;margin-bottom:1.4rem}
 .value-item:last-of-type{margin-bottom:0}
 .value-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;margin-top:2px}
 .vi-green{background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.2)}
 .vi-blue{background:rgba(0,68,212,0.15);border:1px solid rgba(0,68,212,0.25)}
 .value-item h4{font-size:0.92rem;font-weight:600;color:var(--white);margin-bottom:0.2rem}
 .value-item p{font-size:0.84rem;color:var(--muted);line-height:1.6}
-.product-banner{margin-top:1.75rem;padding:0.9rem 1.1rem;background:rgba(0,50,180,0.12);border:1px solid rgba(0,68,212,0.3);border-radius:8px;display:flex;align-items:center;gap:0.75rem}
+.product-banner{margin-top:1.5rem;padding:0.85rem 1.1rem;background:rgba(0,50,180,0.12);border:1px solid rgba(0,68,212,0.3);border-radius:8px;display:flex;align-items:center;gap:0.75rem}
 .product-dot{width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;animation:pulse 2s infinite}
 .product-text{font-size:0.83rem;color:var(--muted)}
 .product-text strong{color:var(--white)}
-#services{padding:6rem 6%}
-.services-wrap{max-width:1100px;margin:0 auto}
-.services-intro{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3rem;flex-wrap:wrap;gap:1.5rem}
+
+/* SERVICES */
 .services-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem}
 .service-card{background:var(--navy2);border:1px solid var(--border);border-radius:14px;padding:1.75rem;transition:border-color 0.25s,transform 0.25s,box-shadow 0.25s}
 .service-card:hover{border-color:rgba(0,200,83,0.25);transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,0.3)}
@@ -90,23 +100,23 @@ section{padding:6rem 6%}
 .service-card h3{font-size:1rem;font-weight:600;margin-bottom:0.5rem}
 .service-card p{font-size:0.86rem;color:var(--muted);line-height:1.65}
 .service-tag{display:inline-block;margin-top:1.1rem;font-size:0.72rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--green);font-family:var(--mono)}
+
+/* HOW WE WORK */
 #how{background:var(--navy);border-top:1px solid var(--border)}
-.how-wrap{max-width:1000px;margin:0 auto}
-.how-header{text-align:center;margin-bottom:4rem}
-.how-header .divider{margin:1.25rem auto 0}
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;position:relative}
-.steps::before{content:'';position:absolute;top:28px;left:calc(16.66% + 16px);right:calc(16.66% + 16px);height:1px;background:linear-gradient(90deg,var(--green),var(--blue));opacity:0.3;z-index:0}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;position:relative;margin-top:1rem}
+.steps::before{content:'';position:absolute;top:27px;left:calc(16.66% + 20px);right:calc(16.66% + 20px);height:1px;background:linear-gradient(90deg,var(--green),var(--blue));opacity:0.3;z-index:0}
 .step{display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 2rem;position:relative;z-index:1}
-.step-num{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.95rem;font-weight:600;margin-bottom:1.5rem;flex-shrink:0;transition:transform 0.2s}
+.step-num{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.95rem;font-weight:600;margin-bottom:1.5rem;flex-shrink:0;transition:transform 0.2s}
 .step:hover .step-num{transform:scale(1.08)}
 .step:nth-child(1) .step-num{background:rgba(0,200,83,0.12);border:1.5px solid rgba(0,200,83,0.5);color:var(--green)}
 .step:nth-child(2) .step-num{background:rgba(0,68,212,0.12);border:1.5px solid rgba(0,68,212,0.5);color:#6ea6ff}
 .step:nth-child(3) .step-num{background:rgba(0,200,83,0.12);border:1.5px solid rgba(0,200,83,0.5);color:var(--green)}
 .step-icon{font-size:1.5rem;margin-bottom:0.85rem}
-.step h3{font-size:1.05rem;font-weight:600;margin-bottom:0.6rem;letter-spacing:-0.2px}
+.step h3{font-size:1.05rem;font-weight:600;margin-bottom:0.6rem}
 .step p{font-size:0.88rem;color:var(--muted);line-height:1.7}
-#contact{max-width:880px;margin:0 auto;padding:6rem 6%}
-.contact-grid{display:grid;grid-template-columns:1fr 1.8fr;gap:4rem;align-items:start;margin-top:2.5rem}
+
+/* CONTACT */
+.contact-grid{display:grid;grid-template-columns:1fr 1.8fr;gap:4rem;align-items:start;margin-top:2rem}
 .contact-item{display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:1.5rem}
 .contact-icon{width:36px;height:36px;background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0;margin-top:2px}
 .contact-item h3{font-size:0.92rem;font-weight:600;margin-bottom:0.25rem}
@@ -126,9 +136,11 @@ section{padding:6rem 6%}
 .form-msg{display:none;padding:0.8rem 1rem;border-radius:8px;font-size:0.86rem;font-weight:500;margin-top:0.25rem}
 .form-msg.success{background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3);color:var(--green)}
 .form-msg.error{background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.3);color:#ff6b6b}
+
+/* FOOTER */
 footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem 6%}
-.footer-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1.25rem;margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
-.footer-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.footer-top{max-width:var(--max-w);margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1.25rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem}
+.footer-bottom{max-width:var(--max-w);margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
 .footer-logo{font-size:1.35rem;font-weight:600;letter-spacing:-0.3px}
 .footer-logo .evo{color:var(--green);font-weight:300}
 .footer-logo .ai{color:var(--blue);font-weight:700}
@@ -140,17 +152,20 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 .footer-legal{display:flex;gap:1.5rem;list-style:none}
 .footer-legal a{font-size:0.78rem;color:var(--muted);transition:color 0.2s;text-decoration:underline;text-underline-offset:3px}
 .footer-legal a:hover{color:var(--white)}
+
+/* ANIMATIONS */
 @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .reveal{opacity:0;transform:translateY(28px);transition:opacity 0.6s ease,transform 0.6s ease}
 .reveal.visible{opacity:1;transform:translateY(0)}
-.d1{transition-delay:0.1s}.d2{transition-delay:0.2s}.d3{transition-delay:0.3s}.d4{transition-delay:0.4s}.d5{transition-delay:0.5s}
+.d1{transition-delay:0.1s}.d2{transition-delay:0.2s}.d3{transition-delay:0.3s}.d4{transition-delay:0.4s}
+
+/* RESPONSIVE */
 @media(max-width:900px){
-  .about-wrap{grid-template-columns:1fr;gap:2.5rem}
+  .about-grid{grid-template-columns:1fr;gap:2.5rem}
   .services-grid{grid-template-columns:1fr 1fr}
   .contact-grid{grid-template-columns:1fr;gap:2rem}
-  .services-intro{flex-direction:column;align-items:flex-start}
   .steps{grid-template-columns:1fr;gap:2.5rem}
   .steps::before{display:none}
   .step{flex-direction:row;text-align:left;gap:1.25rem;align-items:flex-start;padding:0}
@@ -164,13 +179,13 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
   .services-grid{grid-template-columns:1fr}
   .form-row{grid-template-columns:1fr}
   .about-stats{grid-template-columns:1fr 1fr}
-  footer{flex-direction:column;text-align:center}
   .footer-top,.footer-bottom{flex-direction:column;text-align:center}
   .footer-links,.footer-legal{justify-content:center;flex-wrap:wrap}
 }
 </style>
 </head>
 <body>
+
 <nav>
   <a href="#home" class="nav-logo"><span class="evo">evo</span><span class="ai">AI</span></a>
   <ul class="nav-links" id="navLinks">
@@ -183,6 +198,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
   <div class="hamburger" onclick="toggleNav()"><span></span><span></span><span></span></div>
 </nav>
 
+<!-- HOME -->
 <section id="home">
   <div class="hero-badge"><div class="badge-dot"></div>AI Consultancy &amp; Product Studio</div>
   <h1 class="hero-logo"><span class="evo">evo</span><span class="ai">AI</span></h1>
@@ -194,54 +210,58 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
   </div>
 </section>
 
+<!-- ABOUT -->
 <section id="about">
-  <div class="about-wrap">
-    <div>
+  <div class="inner">
+    <div class="sec-header">
       <div class="section-label reveal">// Who we are</div>
       <h2 class="section-title reveal d1">Built for the AI-first era</h2>
       <div class="divider reveal d2"></div>
       <p class="section-sub reveal d2">evoAI is an AI consultancy that partners with ambitious enterprises to integrate, scale, and future-proof their technology with the power of artificial intelligence.</p>
-      <p class="section-sub reveal d3" style="margin-top:1rem">We are a lean, focused team just getting started — with big ambitions and a genuine commitment to our clients' success.</p>
-      <div class="about-stats reveal d4">
-        <div class="stat-card"><div class="stat-number">AI</div><div class="stat-label">First approach to every project</div></div>
-        <div class="stat-card"><div class="stat-number">24h</div><div class="stat-label">Response guarantee</div></div>
-        <div class="stat-card"><div class="stat-number">100%</div><div class="stat-label">Client-focused delivery</div></div>
-        <div class="stat-card"><div class="stat-number">2025</div><div class="stat-label">New product launching</div></div>
-      </div>
     </div>
-    <div class="reveal d2">
-      <div class="about-card">
-        <div class="section-label" style="margin-bottom:1.25rem">Our approach</div>
-        <div class="value-item">
-          <div class="value-icon vi-green">&#127807;</div>
-          <div><h4>We're just getting started</h4><p>A lean, focused team with big ambitions — delivering AI solutions that genuinely make a difference for every client we work with.</p></div>
+    <div class="about-grid">
+      <div>
+        <p class="section-sub reveal" style="margin-bottom:2rem">We are a lean, focused team just getting started — with big ambitions and a genuine commitment to our clients' success.</p>
+        <div class="about-stats reveal d1">
+          <div class="stat-card"><div class="stat-number">AI</div><div class="stat-label">First approach to every project</div></div>
+          <div class="stat-card"><div class="stat-number">24h</div><div class="stat-label">Response guarantee</div></div>
+          <div class="stat-card"><div class="stat-number">100%</div><div class="stat-label">Client-focused delivery</div></div>
+          <div class="stat-card"><div class="stat-number">2025</div><div class="stat-label">New product launching</div></div>
         </div>
-        <div class="value-item">
-          <div class="value-icon vi-blue">&#129309;</div>
-          <div><h4>Partnership first</h4><p>We work closely alongside our clients — not as vendors, but as committed partners invested in your long-term success.</p></div>
-        </div>
-        <div class="value-item">
-          <div class="value-icon vi-green">&#128640;</div>
-          <div><h4>Something new is coming</h4><p>Alongside consultancy, we're building a new AI product designed to transform how teams operate. Stay tuned.</p></div>
-        </div>
-        <div class="product-banner">
-          <div class="product-dot"></div>
-          <p class="product-text">We are working on an <strong>AI based product</strong> — stay tuned to know more.</p>
+      </div>
+      <div class="reveal d2">
+        <div class="about-card">
+          <div class="section-label" style="margin-bottom:1.1rem">Our approach</div>
+          <div class="value-item">
+            <div class="value-icon vi-green">&#127807;</div>
+            <div><h4>We're just getting started</h4><p>A lean, focused team with big ambitions — delivering AI solutions that genuinely make a difference for every client we work with.</p></div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon vi-blue">&#129309;</div>
+            <div><h4>Partnership first</h4><p>We work closely alongside our clients — not as vendors, but as committed partners invested in your long-term success.</p></div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon vi-green">&#128640;</div>
+            <div><h4>Something new is coming</h4><p>Alongside consultancy, we're building a new AI product designed to transform how teams operate. Stay tuned.</p></div>
+          </div>
+          <div class="product-banner">
+            <div class="product-dot"></div>
+            <p class="product-text">We are working on an <strong>AI based product</strong> — stay tuned to know more.</p>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- SERVICES -->
 <section id="services">
-  <div class="services-wrap">
-    <div class="services-intro">
-      <div>
-        <div class="section-label reveal">// What we do</div>
-        <h2 class="section-title reveal d1">AI services that move fast</h2>
-        <div class="divider reveal d2"></div>
-      </div>
-      <p class="section-sub reveal d2" style="max-width:300px;font-size:0.9rem">From strategy to deployment — covering every layer of your AI journey.</p>
+  <div class="inner">
+    <div class="sec-header">
+      <div class="section-label reveal">// What we do</div>
+      <h2 class="section-title reveal d1">AI services that move fast</h2>
+      <div class="divider reveal d2"></div>
+      <p class="section-sub reveal d2">From strategy to deployment — covering every layer of your AI journey. Practical, focused, and built to deliver real results.</p>
     </div>
     <div class="services-grid">
       <div class="service-card reveal">
@@ -266,13 +286,14 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
   </div>
 </section>
 
+<!-- HOW WE WORK -->
 <section id="how">
-  <div class="how-wrap">
-    <div class="how-header">
+  <div class="inner">
+    <div class="sec-header">
       <div class="section-label reveal">// How we work</div>
       <h2 class="section-title reveal d1">Simple. Fast. Effective.</h2>
       <div class="divider reveal d2"></div>
-      <p class="section-sub reveal d2" style="margin:0 auto;text-align:center">We keep our process lean so you see results quickly — no endless discovery phases or bloated timelines.</p>
+      <p class="section-sub reveal d2">No endless discovery phases, no bloated timelines. Just clear steps from first conversation to live deployment.</p>
     </div>
     <div class="steps">
       <div class="step reveal">
@@ -280,7 +301,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         <div>
           <div class="step-icon">&#128172;</div>
           <h3>Discover &amp; Define</h3>
-          <p>We start with a focused conversation to understand your business, challenges, and goals. No lengthy forms — just an honest discussion about where AI can make the biggest impact.</p>
+          <p>We start with a focused conversation to understand your business, challenges, and goals. An honest discussion about where AI can make the biggest impact.</p>
         </div>
       </div>
       <div class="step reveal d2">
@@ -288,7 +309,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         <div>
           <div class="step-icon">&#9881;</div>
           <h3>Build &amp; Integrate</h3>
-          <p>We design and build a tailored AI solution that fits your existing stack. We move fast, iterate openly, and keep you involved at every step — no black boxes.</p>
+          <p>We design and build a tailored AI solution that fits your existing stack. Fast iterations, full transparency, and you stay involved at every step.</p>
         </div>
       </div>
       <div class="step reveal d4">
@@ -296,74 +317,81 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         <div>
           <div class="step-icon">&#128640;</div>
           <h3>Deploy &amp; Scale</h3>
-          <p>We launch, monitor, and refine. Once it's working, we help you scale it across your organisation — and stay on hand as your AI ambitions grow.</p>
+          <p>We launch, monitor, and refine. Once it's working we help you scale across your organisation — and stay on hand as your AI ambitions grow.</p>
         </div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- CONTACT -->
 <section id="contact">
-  <div class="section-label reveal">// Get in touch</div>
-  <h2 class="section-title reveal d1">Let's build something together</h2>
-  <div class="divider reveal d2"></div>
-  <div class="contact-grid">
-    <div>
-      <div class="contact-item reveal d1">
-        <div class="contact-icon">&#128231;</div>
-        <div><h3>Email us</h3><p>ai.implementer@gmail.com</p></div>
-      </div>
-      <div class="contact-item reveal d2">
-        <div class="contact-icon">&#128172;</div>
-        <div><h3>Start a conversation</h3><p>Tell us about your project and we'll get back to you.</p></div>
-      </div>
-      <div class="contact-item reveal d3">
-        <div class="contact-icon">&#127757;</div>
-        <div><h3>Global reach</h3><p>Working with clients across UK, EU, US &amp; APAC.</p></div>
-      </div>
+  <div class="inner">
+    <div class="sec-header">
+      <div class="section-label reveal">// Get in touch</div>
+      <h2 class="section-title reveal d1">Let's build something together</h2>
+      <div class="divider reveal d2"></div>
+      <p class="section-sub reveal d2">Ready to explore what AI can do for your business? Drop us a message and we'll get back to you within 24 hours.</p>
     </div>
-    <form class="contact-form reveal d2" id="contactForm" onsubmit="handleSubmit(event)">
-      <input type="hidden" name="access_key" value="325aee3e-7b46-428c-8ccf-1aa1ac05f2c6">
-      <div class="form-row">
-        <div class="form-group">
-          <label for="fname">First name</label>
-          <input type="text" id="fname" name="fname" placeholder="John" required>
+    <div class="contact-grid">
+      <div>
+        <div class="contact-item reveal d1">
+          <div class="contact-icon">&#128231;</div>
+          <div><h3>Email us</h3><p>support@evoai.com</p></div>
+        </div>
+        <div class="contact-item reveal d2">
+          <div class="contact-icon">&#128172;</div>
+          <div><h3>Start a conversation</h3><p>Tell us about your project and we'll get back to you.</p></div>
+        </div>
+        <div class="contact-item reveal d3">
+          <div class="contact-icon">&#127757;</div>
+          <div><h3>Global reach</h3><p>Working with clients across UK, EU, US &amp; APAC.</p></div>
+        </div>
+      </div>
+      <form class="contact-form reveal d2" id="contactForm" onsubmit="handleSubmit(event)">
+        <input type="hidden" name="access_key" value="325aee3e-7b46-428c-8ccf-1aa1ac05f2c6">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fname">First name</label>
+            <input type="text" id="fname" name="fname" placeholder="John" required>
+          </div>
+          <div class="form-group">
+            <label for="lname">Last name</label>
+            <input type="text" id="lname" name="lname" placeholder="Smith" required>
+          </div>
         </div>
         <div class="form-group">
-          <label for="lname">Last name</label>
-          <input type="text" id="lname" name="lname" placeholder="Smith" required>
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" placeholder="john@company.com" required>
         </div>
-      </div>
-      <div class="form-group">
-        <label for="email">Email address</label>
-        <input type="email" id="email" name="email" placeholder="john@company.com" required>
-      </div>
-      <div class="form-group">
-        <label for="company">Company</label>
-        <input type="text" id="company" name="company" placeholder="Your company name">
-      </div>
-      <div class="form-group">
-        <label for="service">Interested in</label>
-        <select id="service" name="service">
-          <option value="">Select a service...</option>
-          <option>AI Strategy &amp; Consulting</option>
-          <option>Intelligent Automation</option>
-          <option>Predictive Analytics</option>
-          <option>General Enquiry</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="message">Message</label>
-        <textarea id="message" name="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
-      </div>
-      <button type="submit" class="form-submit" id="submitBtn"><span>Send Message</span><span>&#8594;</span></button>
-      <p class="form-note">We reply at the earliest. No spam, ever.</p>
-      <div class="form-msg success" id="successMsg">&#10003; &nbsp;Message sent! We'll get back to you as soon as possible.</div>
-      <div class="form-msg error" id="errorMsg">Something went wrong. Please email ai.implementer@gmail.com directly.</div>
-    </form>
+        <div class="form-group">
+          <label for="company">Company</label>
+          <input type="text" id="company" name="company" placeholder="Your company name">
+        </div>
+        <div class="form-group">
+          <label for="service">Interested in</label>
+          <select id="service" name="service">
+            <option value="">Select a service...</option>
+            <option>AI Strategy &amp; Consulting</option>
+            <option>Intelligent Automation</option>
+            <option>Predictive Analytics</option>
+            <option>General Enquiry</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="message">Message</label>
+          <textarea id="message" name="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
+        </div>
+        <button type="submit" class="form-submit" id="submitBtn"><span>Send Message</span><span>&#8594;</span></button>
+        <p class="form-note">We reply at the earliest. No spam, ever.</p>
+        <div class="form-msg success" id="successMsg">&#10003; &nbsp;Message sent! We'll get back to you as soon as possible.</div>
+        <div class="form-msg error" id="errorMsg">Something went wrong. Please email support@evoai.com directly.</div>
+      </form>
+    </div>
   </div>
 </section>
 
+<!-- FOOTER -->
 <footer>
   <div class="footer-top">
     <div class="footer-logo"><span class="evo">evo</span><span class="ai">AI</span></div>
@@ -387,7 +415,9 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 
 <script>
 function toggleNav(){document.getElementById('navLinks').classList.toggle('open')}
-document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navLinks').classList.remove('open')})});
+document.querySelectorAll('.nav-links a').forEach(function(a){
+  a.addEventListener('click',function(){document.getElementById('navLinks').classList.remove('open')});
+});
 var secs=document.querySelectorAll('section[id]');
 var navAs=document.querySelectorAll('.nav-links a');
 window.addEventListener('scroll',function(){
@@ -396,7 +426,9 @@ window.addEventListener('scroll',function(){
   navAs.forEach(function(a){a.style.color=a.getAttribute('href')==='#'+cur?'var(--white)':''});
 });
 var obs=new IntersectionObserver(function(entries){
-  entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target)}});
+  entries.forEach(function(e){
+    if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target)}
+  });
 },{threshold:0.1});
 document.querySelectorAll('.reveal').forEach(function(el){obs.observe(el)});
 function handleSubmit(e){
