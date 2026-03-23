@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EvoAI — Domain Pricing Comparison</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0D080;
+    --gold-dim: #8A6E2F;
+    --ink: #0D0D0D;
+    --ink-soft: #1A1A1A;
+    --surface: #F7F4EF;
+    --white: #FFFFFF;
+    --border: #D4C9A8;
+    --border-strong: #B8A882;
+    --muted: #6B6458;
+    --tag-best-bg: #E8F5E0; --tag-best: #2E6B14;
+    --tag-good-bg: #E0EDF8; --tag-good: #1A4F82;
+    --tag-ok-bg: #FDF3DC; --tag-ok: #7A5200;
+    --tag-avoid-bg: #FDEAEA; --tag-avoid: #8B1A1A;
+    --tag-skip-bg: #ECECEC; --tag-skip: #444444;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--surface);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 48px 32px 80px;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .header-eyebrow {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin-bottom: 12px;
+  }
+  .header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 38px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 10px;
+  }
+  .header h1 span { color: var(--gold); }
+  .header-sub {
+    font-size: 15px;
+    color: var(--muted);
+    font-weight: 300;
+    letter-spacing: 0.01em;
+  }
+  .gold-rule {
+    width: 64px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 18px auto 0;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 36px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  /* ── Table wrapper ── */
+  .table-wrap {
+    background: var(--white);
+    border: 1.5px solid var(--border-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  /* ── Column widths ── */
+  col.c-domain  { width: 15%; }
+  col.c-host    { width: 8%; }
+  col.c-dur     { width: 8%; }
+  col.c-cpy     { width: 11%; }
+  col.c-total   { width: 11%; }
+  col.c-comment { width: 17%; }
+  col.c-rec     { width: 30%; }
+
+  /* ── Thead ── */
+  thead tr {
+    background: var(--ink-soft);
+  }
+  thead th {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold-light);
+    padding: 16px 16px;
+    text-align: left;
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+  thead th:last-child { border-right: none; }
+  thead th.right { text-align: right; }
+
+  /* ── Section rows ── */
+  .section-row td {
+    background: #F0EBE0;
+    padding: 10px 16px;
+    border-top: 1.5px solid var(--border-strong);
+    border-bottom: 1px solid var(--border);
+  }
+  .section-label {
+    font-family: 'Playfair Display', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .tld-badge {
+    display: inline-block;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .tld-premium { background: #F5E0C8; color: #7A3B0A; border: 1px solid #E0B88A; }
+  .tld-preferred { background: #D9F0C8; color: #2A5E10; border: 1px solid #9ECB74; }
+  .tld-budget { background: #DDD8F5; color: #3A2A88; border: 1px solid #A89EE0; }
+  .tld-standard { background: #E0ECF5; color: #1A4468; border: 1px solid #8ABADA; }
+
+  /* ── Data rows ── */
+  tbody tr:not(.section-row) {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:not(.section-row):hover {
+    background: #FDFAF4;
+  }
+  tbody tr:not(.section-row):last-child {
+    border-bottom: none;
+  }
+
+  td {
+    padding: 14px 16px;
+    font-size: 14.5px;
+    vertical-align: top;
+    border-right: 1px solid var(--border);
+  }
+  td:last-child { border-right: none; }
+
+  .td-domain {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  .td-host {
+    font-size: 12.5px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .td-dur {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .td-num {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  .td-num-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+    display: block;
+    margin-top: 1px;
+  }
+  .td-comment {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ── Recommendation cell ── */
+  .td-rec { vertical-align: top; }
+  .rec-tag {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 7px;
+  }
+  .tag-best   { background: var(--tag-best-bg);  color: var(--tag-best);  border: 1px solid #9ED07A; }
+  .tag-good   { background: var(--tag-good-bg);  color: var(--tag-good);  border: 1px solid #80B4E0; }
+  .tag-ok     { background: var(--tag-ok-bg);    color: var(--tag-ok);    border: 1px solid #E0B84A; }
+  .tag-avoid  { background: var(--tag-avoid-bg); color: var(--tag-avoid); border: 1px solid #D88080; }
+  .tag-skip   { background: var(--tag-skip-bg);  color: var(--tag-skip);  border: 1px solid #C0C0C0; }
+
+  .rec-text {
+    font-size: 13px;
+    color: #3A3530;
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+  .footer strong { color: var(--gold-dim); }
+
+  /* ── Summary cards ── */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+  .sum-card {
+    background: var(--white);
+    border: 1.5px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sum-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .sum-card.best::before  { background: linear-gradient(90deg, #5AB030, #A8D868); }
+  .sum-card.pair::before  { background: linear-gradient(90deg, #2F80C8, #7ABCEA); }
+  .sum-card.def::before   { background: linear-gradient(90deg, #8860D8, #B89AEC); }
+  .sum-card-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 7px;
+  }
+  .sum-card-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 5px;
+  }
+  .sum-card-desc {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .sum-price {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold-dim);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-eyebrow">Domain Strategy Review · GoDaddy Pricing</div>
+  <h1><span>EvoAI</span> Domain Comparison</h1>
+  <p class="header-sub">All prices in Indian Rupees (₹) · Prepared March 2026</p>
+  <div class="gold-rule"></div>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary">
+  <div class="sum-card best">
+    <div class="sum-card-label">★ Top Recommendation</div>
+    <div class="sum-card-title">evoaiglobal.com · 5 Years</div>
+    <div class="sum-price">₹6,397</div>
+    <div class="sum-card-desc">Best balance of cost, global trust, and security. Universal .com credibility at lowest annual rate.</div>
+  </div>
+  <div class="sum-card pair">
+    <div class="sum-card-label">Pair With</div>
+    <div class="sum-card-title">evoaiglobal.ai · 2 Years</div>
+    <div class="sum-price">₹19,624</div>
+    <div class="sum-card-desc">Strong AI identity signal for investors & tech audiences. Use as secondary domain or redirect.</div>
+  </div>
+  <div class="sum-card def">
+    <div class="sum-card-label">Defensive Registration</div>
+    <div class="sum-card-title">evoaiglobal.in · 3 Years</div>
+    <div class="sum-price">₹1,799</div>
+    <div class="sum-card-desc">Block brand squatters in India. Very affordable protection for the domestic market.</div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#5AB030"></div> Best Choice</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2F80C8"></div> Good Option</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#C8960A"></div> Situational</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#C83030"></div> Not Recommended</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#888888"></div> Skip</div>
+</div>
+
+<!-- Table -->
+<div class="table-wrap">
+<table>
+  <colgroup>
+    <col class="c-domain"><col class="c-host"><col class="c-dur">
+    <col class="c-cpy"><col class="c-total"><col class="c-comment"><col class="c-rec">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>Domain</th>
+      <th>Host</th>
+      <th>Duration</th>
+      <th class="right">Cost / Year</th>
+      <th class="right">Total Cost</th>
+      <th>Comment</th>
+      <th>Recommendation</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <!-- evoai.global -->
+    <tr class="section-row">
+      <td colspan="7">
+        <span class="section-label">evoai.global</span>
+        <span class="tld-badge tld-premium">Premium TLD</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoai.global</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">3 Years</td>
+      <td class="td-num">₹10,902<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹32,707</td>
+      <td class="td-comment">Shortest commitment, highest per-year rate</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">⚠ Not Recommended</span><div class="rec-text">Unique but obscure TLD. Low global trust and recognition. Very high cost for a domain most users won't associate with a legitimate business. Avoid unless brand strategy specifically targets a global/futuristic identity.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoai.global</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">5 Years</td>
+      <td class="td-num">₹12,148<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹60,743</td>
+      <td class="td-comment">Mid-term, slightly higher annual cost</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">⚠ Not Recommended</span><div class="rec-text">Cost doubles for 5 yrs with no additional brand benefit. Even if choosing .global, the 3-yr plan is better to test viability before committing ₹60K.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoai.global</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">10 Years</td>
+      <td class="td-num">₹13,083<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹1,30,832</td>
+      <td class="td-comment">Longest lock-in, very high total outlay</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">✕ Strongly Avoid</span><div class="rec-text">₹1.3 Lakh for an unproven TLD is a very poor investment. Business direction can shift significantly in 10 years. Never lock in this amount for a non-standard TLD.</div></td>
+    </tr>
+
+    <!-- evoaiglobal.com -->
+    <tr class="section-row">
+      <td colspan="7">
+        <span class="section-label">evoaiglobal.com</span>
+        <span class="tld-badge tld-preferred">★ Most Preferred</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.com</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">3 Years</td>
+      <td class="td-num">₹1,066<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹3,199</td>
+      <td class="td-comment">Best entry price; ideal short-term start</td>
+      <td class="td-rec"><span class="rec-tag tag-good">✓ Good Start</span><div class="rec-text">Low-risk entry point. Best if you want to validate the brand before a longer commitment. .com carries universal trust worldwide. Renew at year 3 if the brand gains traction.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.com</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">5 Years</td>
+      <td class="td-num">₹1,279<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹6,397</td>
+      <td class="td-comment">Good mid-term value, secure for 5 yrs</td>
+      <td class="td-rec"><span class="rec-tag tag-best">★ Best Choice</span><div class="rec-text">Ideal balance of cost, commitment, and security. Locks the domain for 5 years at a very low annual rate. Reduces renewal risk and administrative overhead. Highly recommended for a growing brand.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.com</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">10 Years</td>
+      <td class="td-num">₹1,440<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹14,392</td>
+      <td class="td-comment">Max lock-in; cheapest .com per year</td>
+      <td class="td-rec"><span class="rec-tag tag-good">✓ Consider If Confident</span><div class="rec-text">Best per-year rate for .com. Only choose this if you are confident in the long-term brand name. ₹14K over 10 years is still excellent value — nearly risk-free if the brand identity is settled.</div></td>
+    </tr>
+
+    <!-- evoaiglobal.in -->
+    <tr class="section-row">
+      <td colspan="7">
+        <span class="section-label">evoaiglobal.in</span>
+        <span class="tld-badge tld-budget">Budget Pick</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.in</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">3 Years</td>
+      <td class="td-num">₹600<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹1,799</td>
+      <td class="td-comment">Lowest cost; India-centric audience</td>
+      <td class="td-rec"><span class="rec-tag tag-ok">~ Situational</span><div class="rec-text">Ideal if the product targets exclusively Indian users. Very affordable. Register alongside .com as a defensive measure to prevent brand squatting in India. Good value at this price.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.in</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">5 Years</td>
+      <td class="td-num">₹720<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹3,597</td>
+      <td class="td-comment">Good for local market presence</td>
+      <td class="td-rec"><span class="rec-tag tag-ok">~ Situational</span><div class="rec-text">Reasonable if .in is your primary domain. If used as a redirect or backup to .com, 3 yrs is sufficient. 5 yrs makes sense only if India is the core market focus for the foreseeable future.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.in</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">10 Years</td>
+      <td class="td-num">₹810<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹8,092</td>
+      <td class="td-comment">Cheapest long-term option overall</td>
+      <td class="td-rec"><span class="rec-tag tag-skip">↓ Skip</span><div class="rec-text">10 years is too long for a ccTLD unless certain the brand will exclusively serve India. Business model or geography may pivot. Stick to 3–5 years maximum for country-code domains.</div></td>
+    </tr>
+
+    <!-- evoaiglobal.ai -->
+    <tr class="section-row">
+      <td colspan="7">
+        <span class="section-label">evoaiglobal.ai</span>
+        <span class="tld-badge tld-premium">Premium TLD</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.ai</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">2 Years</td>
+      <td class="td-num">₹9,812<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹19,624</td>
+      <td class="td-comment">Shortest plan; signals AI brand identity</td>
+      <td class="td-rec"><span class="rec-tag tag-good">✓ Worth Testing</span><div class="rec-text">.ai TLDs are gaining rapid recognition in the AI industry and signal credibility to tech-savvy audiences. 2-yr plan is a low-commitment way to hold it. Best used alongside .com, not as a replacement.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.ai</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">4 Years</td>
+      <td class="td-num">₹12,382<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹49,529</td>
+      <td class="td-comment">Mid-term; strong AI positioning</td>
+      <td class="td-rec"><span class="rec-tag tag-ok">~ Consider Carefully</span><div class="rec-text">Significant spend (~₹50K). Justified only if .ai is your primary domain and the product targets a global AI-native audience. Not advisable as a secondary/redirect domain at this price point.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.ai</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">6 Years</td>
+      <td class="td-num">₹13,238<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹79,434</td>
+      <td class="td-comment">High investment for premium .ai TLD</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">✕ Avoid</span><div class="rec-text">₹79K is a very high commitment for a TLD that, while trendy, may not sustain the same cachet in 6 years. .ai domain pricing is also volatile. Better to renew shorter terms and reassess periodically.</div></td>
+    </tr>
+
+    <!-- evoaiglobal.io -->
+    <tr class="section-row">
+      <td colspan="7">
+        <span class="section-label">evoaiglobal.io</span>
+        <span class="tld-badge tld-standard">Tech TLD</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.io</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">3 Years</td>
+      <td class="td-num">₹5,333<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹15,999</td>
+      <td class="td-comment">Popular with tech startups globally</td>
+      <td class="td-rec"><span class="rec-tag tag-ok">~ Situational</span><div class="rec-text">.io is popular with developer tools and SaaS startups. If targeting a developer/B2B tech audience, it adds credibility. However at 5× the cost of .com/year, hard to justify unless .com was unavailable.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.io</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">5 Years</td>
+      <td class="td-num">₹6,340<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹31,997</td>
+      <td class="td-comment">Good for tech-forward branding</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">⚠ Not Recommended</span><div class="rec-text">₹32K for .io over 5 years is hard to justify when .com (5 yr) costs only ₹6,397. The .io TLD also has uncertainty — it's a ccTLD for British Indian Ocean Territory with an unclear regulatory future.</div></td>
+    </tr>
+    <tr>
+      <td class="td-domain">evoaiglobal.io</td>
+      <td class="td-host">GoDaddy</td>
+      <td class="td-dur">10 Years</td>
+      <td class="td-num">₹7,200<span class="td-num-sub">per year</span></td>
+      <td class="td-num">₹71,992</td>
+      <td class="td-comment">Highest .io commitment cost</td>
+      <td class="td-rec"><span class="rec-tag tag-avoid">✕ Strongly Avoid</span><div class="rec-text">₹72K for a ccTLD with an uncertain future is a very poor investment. .io's long-term availability is not guaranteed given its British Indian Ocean Territory origin. Never commit 10 yrs on .io.</div></td>
+    </tr>
+
+  </tbody>
+</table>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  Prepared for internal review &nbsp;·&nbsp; <strong>EvoAI Global</strong> &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All prices sourced from GoDaddy &nbsp;·&nbsp; Subject to change
+</div>
+
+</body>
+</html>
