@@ -234,6 +234,15 @@ footer { background: var(--navy2); border-top: 1px solid var(--border); padding:
 .footer-legal { display: flex; gap: 1.5rem; list-style: none; }
 .footer-legal a { font-size: 0.78rem; color: var(--muted); transition: color 0.2s; text-decoration: underline; text-underline-offset: 3px; }
 .footer-legal a:hover { color: var(--white); }
+.footer-social{display:flex;gap:0.65rem;align-items:center}
+.social-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:default;transition:transform 0.2s,box-shadow 0.2s}
+.social-icon.si-linkedin{background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3)}
+.social-icon.si-facebook{background:rgba(0,68,212,0.15);border:1px solid rgba(0,68,212,0.35)}
+.social-icon.si-twitter{background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3)}
+.social-icon:hover{transform:translateY(-2px)}
+.social-icon.si-linkedin:hover{box-shadow:0 4px 16px rgba(0,200,83,0.3);border-color:rgba(0,200,83,0.6)}
+.social-icon.si-facebook:hover{box-shadow:0 4px 16px rgba(0,68,212,0.35);border-color:rgba(0,68,212,0.65)}
+.social-icon.si-twitter:hover{box-shadow:0 4px 16px rgba(0,200,83,0.3);border-color:rgba(0,200,83,0.6)}
 
 /* ANIMATIONS */
 @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
@@ -252,6 +261,7 @@ footer { background: var(--navy2); border-top: 1px solid var(--border); padding:
   .faq-cta { flex-direction: column; }
   .footer-top, .footer-bottom { flex-direction: column; text-align: center; }
   .footer-links, .footer-legal { justify-content: center; flex-wrap: wrap; }
+  .footer-social{justify-content:center}
 }
 </style>
 </head>
@@ -570,6 +580,25 @@ footer { background: var(--navy2); border-top: 1px solid var(--border); padding:
       <li><a href="index.html#contact">Contact</a></li>
     </ul>
     <p class="footer-tagline">Evolve. Automate. Accelerate.</p>
+    <div class="footer-social">
+      <div class="social-icon si-linkedin" title="LinkedIn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" fill="#00C853"/>
+          <rect x="2" y="9" width="4" height="12" fill="#00C853"/>
+          <circle cx="4" cy="4" r="2" fill="#00C853"/>
+        </svg>
+      </div>
+      <div class="social-icon si-facebook" title="Facebook">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" fill="#6ea6ff"/>
+        </svg>
+      </div>
+      <div class="social-icon si-twitter" title="X (Twitter)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.253 5.622 5.91-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="#00C853"/>
+        </svg>
+      </div>
+    </div>
   </div>
   <div class="footer-bottom">
     <p class="footer-copy">&copy; 2026 evoAI. All rights reserved.</p>
