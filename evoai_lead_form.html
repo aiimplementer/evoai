@@ -264,7 +264,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         </button>
         <p class="form-note">We reply at the earliest. No spam, ever.</p>
         <div class="form-msg success" id="successMsg">&#10003; &nbsp;Message sent! We'll get back to you as soon as possible.</div>
-        <div class="form-msg error" id="errorMsg">&#9888;&nbsp; Your lead could not be recorded. Please try again or email <a href="mailto:hello@evoaiglobal.com" style="color:#ff6b6b;text-decoration:underline;text-underline-offset:3px;">hello@evoaiglobal.com</a> directly.</div>
+        <div class="form-msg error" id="errorMsg">&#9888;&nbsp; Your lead could not be recorded. Please try again or email <a href="/cdn-cgi/l/email-protection#c8a0ada4a4a788adbea7a9a1afa4a7aaa9a4e6aba7a5" style="color:#ff6b6b;text-decoration:underline;text-underline-offset:3px;"><span class="__cf_email__" data-cfemail="563e333a3a3916332039373f313a3934373a7835393b">[email&#160;protected]</span></a> directly.</div>
       </form>
 
     </div>
@@ -309,7 +309,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 </footer>
 
 <!-- Webhook Submit -->
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
   const WEBHOOK_URL = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/91149a45-43e9-4841-8693-a7dafcf437f6";
 
   function clearValidation() {
@@ -354,28 +354,35 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
     btn.disabled  = true;
 
     try {
-      const res = await fetch(WEBHOOK_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name:      fname + (lname ? " " + lname : ""),
-          email,
-          company:   company || "N/A",
-          service:   service || "N/A",
-          message,
-          createdAt: new Date().toISOString()
-        })
-      });
+      let res;
+      try {
+        res = await fetch(WEBHOOK_URL, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name:      fname + (lname ? " " + lname : ""),
+            email,
+            company:   company || "N/A",
+            service:   service || "N/A",
+            message,
+            createdAt: new Date().toISOString()
+          })
+        });
+      } catch(networkErr) {
+        // Covers: no internet, CORS block, n8n not reachable, ngrok tunnel down
+        throw new Error("Network error — webhook unreachable: " + networkErr.message);
+      }
 
       if (res.ok) {
         document.getElementById("successMsg").style.display = "block";
         document.getElementById("leadForm").reset();
       } else {
-        throw new Error("HTTP " + res.status);
+        // Covers: 404 (workflow not activated), 500, etc.
+        throw new Error("Webhook returned HTTP " + res.status + " — check n8n workflow is activated");
       }
     } catch(err) {
       document.getElementById("errorMsg").style.display = "block";
-      console.error("Webhook error:", err);
+      console.error("Webhook error:", err.message);
     }
 
     btn.innerHTML = "<span>Send Message</span><span>&#8594;</span>";
@@ -402,8 +409,4 @@ document.addEventListener('DOMContentLoaded', function() {
   var navLinks  = document.getElementById('navLinks');
   function toggleNav(){ navLinks.classList.toggle('open'); }
   if(hamburger){
-    hamburger.addEventListener('click', toggleNav);
-    hamburger.addEventListener('touchend', function(e){ e.preventDefault(); toggleNav(); });
-  }
-  document.querySelectorAll('.nav-links a').forEach(function(a){
-    a.addEventListener('click', function(){ navLinks
+    hamburger.addEv
