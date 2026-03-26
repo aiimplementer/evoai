@@ -96,6 +96,9 @@ section{padding:5rem 6%}
 .form-msg{display:none;padding:0.8rem 1rem;border-radius:8px;font-size:0.86rem;font-weight:500;margin-top:0.25rem}
 .form-msg.success{background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3);color:var(--green)}
 .form-msg.error{background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.3);color:#ff6b6b}
+.form-group input.field-error,.form-group textarea.field-error{border-color:#ff6b6b;box-shadow:0 0 0 3px rgba(255,107,107,0.15)}
+.field-hint{font-size:0.72rem;color:#ff6b6b;margin-top:0.2rem;display:none}
+.field-hint.show{display:block}
 
 /* FOOTER */
 footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem 6%}
@@ -225,15 +228,17 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
           <div class="form-group">
             <label for="fname">First name</label>
             <input type="text" id="fname" name="fname" placeholder="John" required>
+            <span class="field-hint" id="hint-fname">Please enter your first name.</span>
           </div>
           <div class="form-group">
             <label for="lname">Last name</label>
-            <input type="text" id="lname" name="lname" placeholder="Smith" required>
+            <input type="text" id="lname" name="lname" placeholder="Smith">
           </div>
         </div>
         <div class="form-group">
           <label for="email">Email address</label>
           <input type="email" id="email" name="email" placeholder="john@company.com" required>
+          <span class="field-hint" id="hint-email">Please enter a valid email address.</span>
         </div>
         <div class="form-group">
           <label for="company">Company</label>
@@ -252,13 +257,14 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         <div class="form-group">
           <label for="message">Message</label>
           <textarea id="message" name="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
+          <span class="field-hint" id="hint-message">Please tell us a bit about your project.</span>
         </div>
         <button type="submit" class="form-submit" id="submitBtn">
           <span>Send Message</span><span>&#8594;</span>
         </button>
         <p class="form-note">We reply at the earliest. No spam, ever.</p>
         <div class="form-msg success" id="successMsg">&#10003; &nbsp;Message sent! We'll get back to you as soon as possible.</div>
-        <div class="form-msg error" id="errorMsg">Something went wrong. Please email <a href="/cdn-cgi/l/email-protection#78101d141417381d0e1719111f14171a1914561b1715" style="color:var(--green)"><span class="__cf_email__" data-cfemail="afc7cac3c3c0efcad9c0cec6c8c3c0cdcec381ccc0c2">[email&#160;protected]</span></a> directly.</div>
+        <div class="form-msg error" id="errorMsg">&#9888;&nbsp; Your lead could not be recorded. Please try again or email <a href="mailto:hello@evoaiglobal.com" style="color:#ff6b6b;text-decoration:underline;text-underline-offset:3px;">hello@evoaiglobal.com</a> directly.</div>
       </form>
 
     </div>
@@ -306,8 +312,26 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 <script>
   const WEBHOOK_URL = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/91149a45-43e9-4841-8693-a7dafcf437f6";
 
+  function clearValidation() {
+    document.querySelectorAll('.field-error').forEach(function(el){ el.classList.remove('field-error'); });
+    document.querySelectorAll('.field-hint').forEach(function(el){ el.classList.remove('show'); });
+  }
+
+  function markError(fieldId, hintId) {
+    var field = document.getElementById(fieldId);
+    var hint  = document.getElementById(hintId);
+    if (field) field.classList.add('field-error');
+    if (hint)  hint.classList.add('show');
+  }
+
+  function isValidEmail(val) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+  }
+
   document.getElementById("leadForm").addEventListener("submit", async function(e) {
     e.preventDefault();
+    clearValidation();
+
     const btn     = document.getElementById("submitBtn");
     const fname   = document.getElementById("fname").value.trim();
     const lname   = document.getElementById("lname").value.trim();
@@ -316,8 +340,16 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
     const service = document.getElementById("service").value;
     const message = document.getElementById("message").value.trim();
 
-    if (!fname || !email || !message) return;
+    // --- Field validation ---
+    let valid = true;
+    if (!fname)               { markError("fname",   "hint-fname");   valid = false; }
+    if (!email || !isValidEmail(email)) { markError("email", "hint-email"); valid = false; }
+    if (!message)             { markError("message", "hint-message"); valid = false; }
+    if (!valid) return;
 
+    // --- Submit ---
+    document.getElementById("successMsg").style.display = "none";
+    document.getElementById("errorMsg").style.display   = "none";
     btn.innerHTML = "<span>Sending...</span>";
     btn.disabled  = true;
 
@@ -326,7 +358,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:      fname + " " + lname,
+          name:      fname + (lname ? " " + lname : ""),
           email,
           company:   company || "N/A",
           service:   service || "N/A",
@@ -337,19 +369,27 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 
       if (res.ok) {
         document.getElementById("successMsg").style.display = "block";
-        document.getElementById("errorMsg").style.display   = "none";
         document.getElementById("leadForm").reset();
       } else {
-        throw new Error("Server responded with " + res.status);
+        throw new Error("HTTP " + res.status);
       }
     } catch(err) {
-      document.getElementById("errorMsg").style.display   = "block";
-      document.getElementById("successMsg").style.display = "none";
-      console.error(err);
+      document.getElementById("errorMsg").style.display = "block";
+      console.error("Webhook error:", err);
     }
 
     btn.innerHTML = "<span>Send Message</span><span>&#8594;</span>";
     btn.disabled  = false;
+  });
+
+  // Clear field error on input
+  ["fname","email","message"].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("input", function() {
+      el.classList.remove("field-error");
+      var hint = document.getElementById("hint-" + id);
+      if (hint) hint.classList.remove("show");
+    });
   });
 </script>
 
