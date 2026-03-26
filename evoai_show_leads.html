@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leads Viewer</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    background:#f5f7fa;
+    margin:40px;
+}
+
+button{
+    padding:12px 20px;
+    font-size:16px;
+    border:none;
+    background:#007bff;
+    color:white;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+button:hover{
+    background:#0056b3;
+}
+
+#status{
+    margin-top:20px;
+    font-size:16px;
+}
+
+#results{
+    margin-top:30px;
+}
+</style>
+
+</head>
+<body>
+
+<h2>Lead Dashboard</h2>
+
+<button onclick="showLeads()">Show Leads</button>
+
+<div id="status"></div>
+<div id="results"></div>
+
+<script>
+
+async function showLeads(){
+    alert("call 1");
+
+    const webhook = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/4d8c6835-b261-4256-8c57-8ad77bdec54a";
+	                
+
+    document.getElementById("status").innerHTML = "Loading leads...";
+    document.getElementById("results").innerHTML = "";
+
+    try{
+
+        const response = await fetch(webhook,{
+            method:"GET",
+			mode:"cors",
+            headers:{
+                "Accept":"text/html"
+            }
+        });
+		alert("call 2");
+
+        const html = await response.text();
+
+        document.getElementById("status").innerHTML = "";
+        document.getElementById("results").innerHTML = html;
+
+    }catch(err){
+alert("call 3" + err);
+        console.error(err);
+        document.getElementById("status").innerHTML = "Error loading leads.";
+
+    }
+
+}
+
+</script>
+
+</body>
+</html>
