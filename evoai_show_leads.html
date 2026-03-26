@@ -50,8 +50,6 @@ button:hover{
 <script>
 
 	async function showLeads(){
-		alert("call 1");
-
 		const webhook = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/4d8c6835-b261-4256-8c57-8ad77bdec54a";
 						
 
@@ -67,7 +65,7 @@ button:hover{
 					"Accept":"text/html"
 				}
 			});
-			alert("call 2");
+			
 
 			const html = await response.text();
 
@@ -75,7 +73,7 @@ button:hover{
 			document.getElementById("results").innerHTML = html;
 
 		}catch(err){
-	alert("call 3" + err);
+	
 			console.error(err);
 			document.getElementById("status").innerHTML = "Error loading leads.";
 
