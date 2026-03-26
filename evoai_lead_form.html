@@ -309,95 +309,123 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 </footer>
 
 <!-- Webhook Submit -->
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-  const WEBHOOK_URL = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/91149a45-43e9-4841-8693-a7dafcf437f6";
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var WEBHOOK_URL = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/91149a45-43e9-4841-8693-a7dafcf437f6";
+
+  var form       = document.getElementById("leadForm");
+  var btn        = document.getElementById("submitBtn");
+  var successMsg = document.getElementById("successMsg");
+  var errorMsg   = document.getElementById("errorMsg");
+
+  function showError() {
+    errorMsg.style.display   = "block";
+    successMsg.style.display = "none";
+  }
+
+  function showSuccess() {
+    successMsg.style.display = "block";
+    errorMsg.style.display   = "none";
+    form.reset();
+  }
+
+  function resetBtn() {
+    btn.innerHTML = "<span>Send Message</span><span>&#8594;</span>";
+    btn.disabled  = false;
+  }
 
   function clearValidation() {
-    document.querySelectorAll('.field-error').forEach(function(el){ el.classList.remove('field-error'); });
-    document.querySelectorAll('.field-hint').forEach(function(el){ el.classList.remove('show'); });
+    document.querySelectorAll(".field-error").forEach(function(el){ el.classList.remove("field-error"); });
+    document.querySelectorAll(".field-hint").forEach(function(el){ el.classList.remove("show"); });
   }
 
   function markError(fieldId, hintId) {
-    var field = document.getElementById(fieldId);
-    var hint  = document.getElementById(hintId);
-    if (field) field.classList.add('field-error');
-    if (hint)  hint.classList.add('show');
+    var f = document.getElementById(fieldId);
+    var h = document.getElementById(hintId);
+    if (f) f.classList.add("field-error");
+    if (h) h.classList.add("show");
   }
 
-  function isValidEmail(val) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+  function isValidEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   }
 
-  document.getElementById("leadForm").addEventListener("submit", async function(e) {
+  // Clear red state on input
+  ["fname","email","message"].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", function() {
+      el.classList.remove("field-error");
+      var h = document.getElementById("hint-" + id);
+      if (h) h.classList.remove("show");
+    });
+  });
+
+  form.addEventListener("submit", function(e) {
     e.preventDefault();
     clearValidation();
+    successMsg.style.display = "none";
+    errorMsg.style.display   = "none";
 
-    const btn     = document.getElementById("submitBtn");
-    const fname   = document.getElementById("fname").value.trim();
-    const lname   = document.getElementById("lname").value.trim();
-    const email   = document.getElementById("email").value.trim();
-    const company = document.getElementById("company").value.trim();
-    const service = document.getElementById("service").value;
-    const message = document.getElementById("message").value.trim();
+    var fname   = document.getElementById("fname").value.trim();
+    var lname   = document.getElementById("lname").value.trim();
+    var email   = document.getElementById("email").value.trim();
+    var company = document.getElementById("company").value.trim();
+    var service = document.getElementById("service").value;
+    var message = document.getElementById("message").value.trim();
 
-    // --- Field validation ---
-    let valid = true;
-    if (!fname)               { markError("fname",   "hint-fname");   valid = false; }
+    // Validate
+    var valid = true;
+    if (!fname)                      { markError("fname",   "hint-fname");   valid = false; }
     if (!email || !isValidEmail(email)) { markError("email", "hint-email"); valid = false; }
-    if (!message)             { markError("message", "hint-message"); valid = false; }
+    if (!message)                    { markError("message", "hint-message"); valid = false; }
     if (!valid) return;
 
-    // --- Submit ---
-    document.getElementById("successMsg").style.display = "none";
-    document.getElementById("errorMsg").style.display   = "none";
     btn.innerHTML = "<span>Sending...</span>";
     btn.disabled  = true;
 
-    try {
-      let res;
-      try {
-        res = await fetch(WEBHOOK_URL, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name:      fname + (lname ? " " + lname : ""),
-            email,
-            company:   company || "N/A",
-            service:   service || "N/A",
-            message,
-            createdAt: new Date().toISOString()
-          })
-        });
-      } catch(networkErr) {
-        // Covers: no internet, CORS block, n8n not reachable, ngrok tunnel down
-        throw new Error("Network error — webhook unreachable: " + networkErr.message);
-      }
+    // Use XMLHttpRequest — works reliably regardless of CORS pre-flight issues
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", WEBHOOK_URL, true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.timeout = 10000; // 10s timeout
 
-      if (res.ok) {
-        document.getElementById("successMsg").style.display = "block";
-        document.getElementById("leadForm").reset();
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        showSuccess();
       } else {
-        // Covers: 404 (workflow not activated), 500, etc.
-        throw new Error("Webhook returned HTTP " + res.status + " — check n8n workflow is activated");
+        // e.g. 404 = n8n workflow not activated
+        console.error("Webhook HTTP error:", xhr.status, xhr.statusText);
+        showError();
       }
-    } catch(err) {
-      document.getElementById("errorMsg").style.display = "block";
-      console.error("Webhook error:", err.message);
-    }
+      resetBtn();
+    };
 
-    btn.innerHTML = "<span>Send Message</span><span>&#8594;</span>";
-    btn.disabled  = false;
+    xhr.onerror = function() {
+      // Network failure, CORS block, tunnel down
+      console.error("Webhook network error — check n8n is active and ngrok tunnel is running");
+      showError();
+      resetBtn();
+    };
+
+    xhr.ontimeout = function() {
+      console.error("Webhook timed out after 10s");
+      showError();
+      resetBtn();
+    };
+
+    xhr.send(JSON.stringify({
+      name:      fname + (lname ? " " + lname : ""),
+      email:     email,
+      company:   company || "N/A",
+      service:   service || "N/A",
+      message:   message,
+      createdAt: new Date().toISOString()
+    }));
   });
 
-  // Clear field error on input
-  ["fname","email","message"].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener("input", function() {
-      el.classList.remove("field-error");
-      var hint = document.getElementById("hint-" + id);
-      if (hint) hint.classList.remove("show");
-    });
-  });
+});
 </script>
 
 <script>
