@@ -474,24 +474,23 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 		  </div>
 	  </div>
       <form class="contact-form reveal d2" id="contactForm" onsubmit="handleSubmit(event)">
-        <input type="hidden" name="access_key" value="325aee3e-7b46-428c-8ccf-1aa1ac05f2c6">
         <div class="form-row">
           <div class="form-group">
             <label for="fname">First name</label>
-            <input type="text" id="fname" name="fname" placeholder="John" required>
+            <input type="text" id="fname" placeholder="John" required>
           </div>
           <div class="form-group">
             <label for="lname">Last name</label>
-            <input type="text" id="lname" name="lname" placeholder="Smith" required>
+            <input type="text" id="lname"  placeholder="Smith" required>
           </div>
         </div>
         <div class="form-group">
           <label for="email">Email address</label>
-          <input type="email" id="email" name="email" placeholder="john@company.com" required>
+          <input type="email" id="email" placeholder="john@company.com" required>
         </div>
         <div class="form-group">
           <label for="company">Company</label>
-          <input type="text" id="company" name="company" placeholder="Your company name">
+          <input type="text" id="company" placeholder="Your company name">
         </div>
         <div class="form-group">
           <label for="service">Interested in</label>
@@ -505,7 +504,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
         </div>
         <div class="form-group">
           <label for="message">Message</label>
-          <textarea id="message" name="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
+          <textarea id="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
         </div>
         <button type="submit" class="form-submit" id="submitBtn"><span>Send Message</span><span>&#8594;</span></button>
         <p class="form-note">We reply at the earliest. No spam, ever.</p>
@@ -554,17 +553,24 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
 
 <script>
+var navLinks;
+function toggleNav(){
+  if(!navLinks) navLinks=document.getElementById('navLinks');
+  navLinks.classList.toggle('open');
+}
+
 document.addEventListener('DOMContentLoaded',function(){
 document.body.classList.add('js-ready');
 var hamburger=document.querySelector('.hamburger');
-var navLinks=document.getElementById('navLinks');
-function toggleNav(){navLinks.classList.toggle('open');}
+navLinks=document.getElementById('navLinks');
+
 if(hamburger){hamburger.addEventListener('click',toggleNav);hamburger.addEventListener('touchend',function(e){e.preventDefault();toggleNav();});}
 document.querySelectorAll('.nav-links a').forEach(function(a){
   a.addEventListener('click',function(){navLinks.classList.remove('open')});
 });
 var secs=document.querySelectorAll('section[id]');
 var navAs=document.querySelectorAll('.nav-links a');
+
 window.addEventListener('scroll',function(){
   var cur='';
   secs.forEach(function(s){if(window.scrollY>=s.offsetTop-120)cur=s.id});
@@ -581,14 +587,21 @@ var obs=new IntersectionObserver(function(entries){
     if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target)}
   });
 },{threshold:0.1});
+
+
 document.querySelectorAll('.reveal').forEach(function(el){obs.observe(el)});
+});
+</script>
+
+<script>
 function handleSubmit(e){
   e.preventDefault();
+  
   var btn=document.getElementById('submitBtn');
   btn.innerHTML='<span>Sending...</span>';
   btn.disabled=true;
   var data={
-    access_key:'325aee3e-7b46-428c-8ccf-1aa1ac05f2c6',
+    access_key:'60dccdba-8429-42dc-a452-0d2b872372b8',
     subject:'evoAI Enquiry - '+(document.getElementById('service').value||'General')+' - '+document.getElementById('fname').value+' '+document.getElementById('lname').value,
     from_name:'evoAI Website',
     name:document.getElementById('fname').value+' '+document.getElementById('lname').value,
@@ -621,3 +634,6 @@ function handleSubmit(e){
     btn.disabled=false;
   });
 }
+</script>
+</body>
+</html>
