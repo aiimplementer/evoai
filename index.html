@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>evoAI — Evolve. Automate. Accelerate. | AI Consulting & Automation</title>
+<title>evoAI — AI Consulting & Automation Studio</title>
 <meta property="og:site_name" content="evoAI">
 
-<meta name="description" content="evoAI is an AI consultancy and product studio helping ambitious enterprises integrate, scale, and future-proof their technology with artificial intelligence.">
+<meta name="description" content="evoAI is an AI consultancy helping enterprises integrate, automate, and scale with artificial intelligence. Strategy, automation & predictive analytics — globally.">
 <link rel="canonical" href="https://www.evoaiglobal.ai/">
 <link rel="icon" type="image/x-icon" href="images/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,6 +47,15 @@
  "description": "evoAI is an AI consulting and automation company helping enterprises implement artificial intelligence, intelligent automation, and predictive analytics.",
  "foundingDate": "2026",
  "areaServed": "Global",
+ "contactPoint": {
+   "@type": "ContactPoint",
+   "email": "info@evoaiglobal.ai",
+   "contactType": "customer support"
+ },
+ "address": {
+   "@type": "PostalAddress",
+   "addressCountry": "CA"
+ },
  "knowsAbout": [
    "Artificial Intelligence",
    "AI Consulting",
@@ -63,10 +72,15 @@
 
 <script type="application/ld+json">
 {
- "@context":"https://schema.org",
- "@type":"WebSite",
- "name":"evoAI",
- "url":"https://www.evoaiglobal.ai/"
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "evoAI",
+  "url": "https://www.evoaiglobal.ai/",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://www.evoaiglobal.ai/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
 }
 </script>
 
@@ -77,6 +91,10 @@
  "name":"evoAI",
  "url":"https://www.evoaiglobal.ai/",
  "areaServed":["UK","EU","US","APAC"],
+ "serviceArea":{
+  "@type":"GeoShape",
+  "name":"UK, EU, US, APAC"
+ },
  "serviceType":[
   "AI Consulting",
   "AI Automation",
@@ -282,7 +300,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
 <body>
 
 <nav>
-  <a href="#home" class="nav-logo"><img src="images/logo.png" alt="evoAI" style="height:38px;width:auto;"></a>
+  <a href="#home" class="nav-logo"><img src="images/logo.png" alt="evoAI" height="38" style="height:38px;width:auto;"></a>
   <ul class="nav-links" id="navLinks">
     <li><a href="#home">Home</a></li>
     <li><a href="#about">About</a></li>
@@ -603,12 +621,3 @@ function handleSubmit(e){
     btn.disabled=false;
   });
 }
-var secs=document.querySelectorAll('section[id]');
-var navAs=document.querySelectorAll('.nav-links a');
-window.addEventListener('scroll',function(){
-  var cur='';
-  secs.forEach(function(s){if(window.scrollY>=s.offsetTop-120)cur=s.id});
-  navAs.forEach(function(a){
-    var href=a.getAttribute('href');
-    if(href&&href.indexOf('#')===0){
-      a.style.color=href==='#'+cur?'
