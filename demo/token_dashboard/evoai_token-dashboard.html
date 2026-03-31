@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Activity Dashboard — evoAI</title>
+<link rel="icon" type="image/x-icon" href="images/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#07091a;--navy2:#0d1130;--navy3:#111940;
+  --green:#00C853;--blue:#0044d4;
+  --white:#f5f6fa;--muted:#8890aa;
+  --border:rgba(255,255,255,0.07);
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+  --nav-h:68px;--max-w:1100px
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--navy);color:var(--white);line-height:1.6;overflow-x:hidden;min-height:100vh}
+a{text-decoration:none;color:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--navy)}
+::-webkit-scrollbar-thumb{background:var(--green);border-radius:2px}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;justify-content:space-between;padding:0 6%;background:rgba(7,9,26,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-logo{font-size:1.8rem;font-weight:600;letter-spacing:-0.5px;line-height:1}
+.nav-logo .evo{color:var(--green);font-weight:300}
+.nav-logo .ai{color:var(--blue);font-weight:700}
+.nav-back{font-size:0.78rem;font-weight:500;color:var(--muted);letter-spacing:0.04em;text-transform:uppercase;transition:color 0.2s;display:flex;align-items:center;gap:0.4rem}
+.nav-back:hover{color:var(--white)}
+.nav-back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* PAGE WRAPPER */
+.page{padding:calc(var(--nav-h) + 4rem) 6% 5rem;max-width:var(--max-w);margin:0 auto;position:relative}
+
+/* GRID BG */
+.page::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,200,83,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,83,0.03) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 80% 80% at 50% 30%,black 20%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 80% 80% at 50% 30%,black 20%,transparent 100%);pointer-events:none;z-index:0}
+
+/* HEADER */
+.dash-header{margin-bottom:3rem;position:relative;z-index:1;animation:fadeUp 0.5s ease both}
+.section-label{font-size:0.72rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--green);margin-bottom:0.5rem;font-family:var(--mono)}
+.dash-title{font-size:clamp(2rem,5vw,3rem);font-weight:600;letter-spacing:-0.8px;line-height:1.15;margin-bottom:0.5rem}
+.dash-sub{font-size:0.95rem;color:var(--muted);max-width:480px;line-height:1.75}
+.divider{width:48px;height:3px;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:2px;margin:1rem 0 1.4rem}
+
+/* CONTROLS */
+.controls{display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;position:relative;z-index:1;animation:fadeUp 0.5s 0.1s ease both;flex-wrap:wrap}
+.btn-primary{background:var(--green);color:var(--navy);font-weight:600;font-size:0.9rem;padding:0.75rem 1.75rem;border-radius:8px;display:inline-flex;align-items:center;gap:0.5rem;border:none;cursor:pointer;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;box-shadow:0 0 24px rgba(0,200,83,0.18);font-family:var(--font)}
+.btn-primary:hover{background:#00e060;transform:translateY(-2px);box-shadow:0 0 36px rgba(0,200,83,0.32)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.status-badge{display:inline-flex;align-items:center;gap:0.45rem;font-size:0.78rem;font-family:var(--mono);color:var(--muted)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background 0.3s}
+.status-dot.loading{background:var(--green);animation:pulse 1.2s infinite}
+.status-dot.error{background:#ff4d6d}
+.status-dot.success{background:var(--green)}
+
+/* RESULTS AREA */
+.results-wrap{position:relative;z-index:1;animation:fadeUp 0.5s 0.15s ease both}
+.results-empty{background:var(--navy2);border:1px dashed var(--border);border-radius:16px;padding:4rem 2rem;text-align:center;color:var(--muted)}
+.results-empty svg{width:40px;height:40px;stroke:var(--border);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:1rem}
+.results-empty p{font-size:0.9rem}
+
+/* INJECTED HTML WRAPPER — styles for content coming from webhook */
+#results{
+  background:var(--navy2);
+  border:1px solid var(--border);
+  border-radius:16px;
+  overflow:hidden;
+}
+#results:empty{display:none}
+#results table{width:100%;border-collapse:collapse;font-size:0.875rem}
+#results thead{background:var(--navy3);border-bottom:1px solid var(--border)}
+#results thead th{padding:0.85rem 1.1rem;text-align:left;font-size:0.72rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+#results tbody tr{border-bottom:1px solid var(--border);transition:background 0.15s}
+#results tbody tr:last-child{border-bottom:none}
+#results tbody tr:hover{background:rgba(255,255,255,0.025)}
+#results tbody td{padding:0.85rem 1.1rem;color:var(--white);vertical-align:middle}
+#results a{color:var(--green);text-decoration:underline;text-underline-offset:2px}
+#results a:hover{color:#00e060}
+/* Status pill passthrough */
+#results .status,.status-pill{display:inline-block;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:600;font-family:var(--mono);letter-spacing:0.04em}
+
+/* LOADING SKELETON */
+.skeleton-table{background:var(--navy2);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.skeleton-row{display:flex;gap:1rem;padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);align-items:center}
+.skeleton-row:last-child{border-bottom:none}
+.skel{background:linear-gradient(90deg,var(--navy3) 25%,rgba(255,255,255,0.04) 50%,var(--navy3) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:4px;height:14px;flex-shrink:0}
+.skel-head{height:10px;opacity:0.6}
+.skel-w1{width:18%}.skel-w2{width:24%}.skel-w3{width:14%}.skel-w4{width:20%}.skel-w5{width:16%}
+
+/* ERROR CARD */
+.error-card{background:rgba(255,77,109,0.07);border:1px solid rgba(255,77,109,0.2);border-radius:16px;padding:2rem 2rem;display:flex;align-items:flex-start;gap:1rem}
+.error-card svg{width:22px;height:22px;stroke:#ff4d6d;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;margin-top:2px}
+.error-card h4{font-size:0.92rem;font-weight:600;color:#ff4d6d;margin-bottom:0.25rem}
+.error-card p{font-size:0.83rem;color:var(--muted);line-height:1.6}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:1.5rem 6%;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem}
+.footer-copy{font-size:0.78rem;color:var(--muted)}
+.footer-copy a{color:var(--green)}
+
+/* ANIMATIONS */
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo"><span class="evo">evo</span><span class="ai">AI</span></a>
+  <a href="index.html" class="nav-back">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    Back to Site
+  </a>
+</nav>
+
+<!-- MAIN -->
+<main class="page">
+
+  <!-- HEADER -->
+  <div class="dash-header">
+    <p class="section-label">Internal Tool</p>
+    <h1 class="dash-title">AI Activity Dashboard</h1>
+    <div class="divider"></div>
+    <p class="dash-sub">Fetch and review the latest AI Activity Dashboard from your automation pipeline.</p>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <button class="btn-primary" onclick="showLeads()">
+      <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+      Show AI Activity Log
+    </button>
+    <span class="status-badge">
+      <span class="status-dot" id="dot"></span>
+      <span id="status">Ready</span>
+    </span>
+  </div>
+
+  <!-- RESULTS / EMPTY STATE -->
+  <div class="results-wrap">
+    <div class="results-empty" id="emptyState">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+      <p>No AI Activity Log loaded yet. Click <strong>Show AI Activity Log</strong> to fetch from the pipeline.</p>
+    </div>
+    <div id="skeleton" style="display:none">
+      <div class="skeleton-table">
+        <div class="skeleton-row">
+          <div class="skel skel-head skel-w1"></div>
+          <div class="skel skel-head skel-w2"></div>
+          <div class="skel skel-head skel-w3"></div>
+          <div class="skel skel-head skel-w4"></div>
+          <div class="skel skel-head skel-w5"></div>
+        </div>
+        <div class="skeleton-row"><div class="skel skel-w1"></div><div class="skel skel-w2"></div><div class="skel skel-w3"></div><div class="skel skel-w4"></div><div class="skel skel-w5"></div></div>
+        <div class="skeleton-row"><div class="skel skel-w1"></div><div class="skel skel-w2"></div><div class="skel skel-w3"></div><div class="skel skel-w4"></div><div class="skel skel-w5"></div></div>
+        <div class="skeleton-row"><div class="skel skel-w1"></div><div class="skel skel-w2"></div><div class="skel skel-w3"></div><div class="skel skel-w4"></div><div class="skel skel-w5"></div></div>
+        <div class="skeleton-row"><div class="skel skel-w1"></div><div class="skel skel-w2"></div><div class="skel skel-w3"></div><div class="skel skel-w4"></div><div class="skel skel-w5"></div></div>
+      </div>
+    </div>
+    <div id="errorState" style="display:none">
+      <div class="error-card">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <h4>Unable to load Log</h4>
+          <p id="errorMsg">Could not connect to the webhook. Please check your connection and try again.</p>
+        </div>
+      </div>
+    </div>
+    <div id="results"></div>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <p class="footer-copy">&copy; 2026 evoAI. All rights reserved.</p>
+  <p class="footer-copy">Powered by <a href="index.html">evoAI</a></p>
+</footer>
+
+<script>
+const WEBHOOK = "https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/9cb19883-0209-4f4f-a227-bb0854b5d77d";
+
+function setStatus(msg, state) {
+  document.getElementById("status").textContent = msg;
+  const dot = document.getElementById("dot");
+  dot.className = "status-dot" + (state ? " " + state : "");
+}
+
+async function showLeads() {
+  // Reset
+  document.getElementById("emptyState").style.display = "none";
+  document.getElementById("errorState").style.display = "none";
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("skeleton").style.display = "block";
+  setStatus("Fetching Log…", "loading");
+
+  try {
+    const res = await fetch(WEBHOOK, {
+      cache: "no-store",
+      headers: { "ngrok-skip-browser-warning": "true" }
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status + " — " + res.statusText);
+    const html = await res.text();
+    document.getElementById("skeleton").style.display = "none";
+    document.getElementById("results").innerHTML = html;
+    const count = document.querySelectorAll("#results tbody tr").length;
+    setStatus(count ? count + " log" + (count !== 1 ? "s" : "") + " loaded" : "Loaded", "success");
+  } catch (err) {
+    console.error(err);
+    document.getElementById("skeleton").style.display = "none";
+    document.getElementById("errorMsg").textContent = err.message || "Could not connect to the webhook.";
+    document.getElementById("errorState").style.display = "block";
+    setStatus("Error loading Log", "error");
+  }
+}
+</script>
+</body>
+</html>
