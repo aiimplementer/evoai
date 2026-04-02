@@ -1054,44 +1054,91 @@ document.querySelectorAll('.reveal').forEach(function(el){obs.observe(el)});
 
 <script>
 function handleSubmit(e){
+
   e.preventDefault();
-  
-  var btn=document.getElementById('submitBtn');
-  btn.innerHTML='<span>Sending...</span>';
-  btn.disabled=true;
-  var data={
-    access_key:'60dccdba-8429-42dc-a452-0d2b872372b8',
-    subject:'evoAI Enquiry - '+(document.getElementById('service').value||'General')+' - '+document.getElementById('fname').value+' '+document.getElementById('lname').value,
-    from_name:'evoAI Website',
-    name:document.getElementById('fname').value+' '+document.getElementById('lname').value,
-    email:document.getElementById('email').value,
-    company:document.getElementById('company').value||'N/A',
-    service:document.getElementById('service').value||'N/A',
-    message:document.getElementById('message').value
+
+  var btn = document.getElementById('submitBtn');
+  btn.innerHTML = '<span>Sending...</span>';
+  btn.disabled = true;
+
+  var fname = document.getElementById('fname').value;
+  var lname = document.getElementById('lname').value;
+
+  var data = {
+    access_key: '60dccdba-8429-42dc-a452-0d2b872372b8',
+    subject: 'evoAI Enquiry - ' +
+             (document.getElementById('service').value || 'General') +
+             ' - ' + fname + ' ' + lname,
+
+    from_name: 'evoAI Website',
+    name: fname + ' ' + lname,
+    email: document.getElementById('email').value,
+    company: document.getElementById('company').value || 'N/A',
+    service: document.getElementById('service').value || 'N/A',
+    message: document.getElementById('message').value
   };
-  fetch('https://api.web3forms.com/submit',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Accept':'application/json'},
-    body:JSON.stringify(data)
+
+  fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(data)
   })
-  .then(function(res){return res.json()})
-  .then(function(json){
-    if(json.success){
-      document.getElementById('successMsg').style.display='block';
-      document.getElementById('errorMsg').style.display='none';
-      document.getElementById('contactForm').reset();
-    }else{
-      document.getElementById('errorMsg').style.display='block';
-      document.getElementById('successMsg').style.display='none';
-    }
-    btn.innerHTML='<span>Send Message</span><span>&#8594;</span>';
-    btn.disabled=false;
+  .then(res => res.json())
+  .then(result => {
+
+      if(result.success){
+
+          /* Send lead to Google Sheet */
+
+          fetch("https://script.google.com/macros/s/AKfycbwAQvJ3IZfukeMbswYU_jIF1EKWrn1iJOL4c4VptqaRXwwzIyJTryCo-0_Zhr_T5piG5Q/exec", {
+              method: "POST",
+			  mode: "no-cors",
+              headers: {
+                "Content-Type": "application/json",
+				'Accept': 'application/json'
+              },
+              body: JSON.stringify({
+                  name: data.name,
+                  email: data.email,
+                  service: data.service,
+                  message: data.message,
+                  status: "New",
+                  source: "Website",
+                  page: window.location.pathname,
+                  useragent: navigator.userAgent
+              })
+          }).catch(err => console.log("Sheet logging failed:", err));
+
+          document.getElementById('successMsg').style.display = 'block';
+          document.getElementById('errorMsg').style.display = 'none';
+          document.getElementById('contactForm').reset();
+
+      } else {
+
+          document.getElementById('successMsg').style.display = 'none';
+          document.getElementById('errorMsg').style.display = 'block';
+
+      }
+
+      btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
+      btn.disabled = false;
+
   })
-  .catch(function(){
-    document.getElementById('errorMsg').style.display='block';
-    btn.innerHTML='<span>Send Message</span><span>&#8594;</span>';
-    btn.disabled=false;
+  .catch(err => {
+
+      console.log("Form error:", err);
+
+      document.getElementById('successMsg').style.display = 'none';
+      document.getElementById('errorMsg').style.display = 'block';
+
+      btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
+      btn.disabled = false;
+
   });
+
 }
 </script>
 </body>
