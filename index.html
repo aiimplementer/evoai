@@ -1107,7 +1107,7 @@ function handleSubmit(e){
                   message: data.message,
                   status: "New",
                   source: "Website",
-                  page: window.location.pathname,
+                  page: window.location.href,
                   useragent: navigator.userAgent
               })
           }).catch(err => console.log("Sheet logging failed:", err));
