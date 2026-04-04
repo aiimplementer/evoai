@@ -39,37 +39,23 @@
       return;
     }
 	
-	try {
-		// ⏳ Add timeout safety (5 sec)
-		const isAuth = await Promise.race([
-		  isAuthorizedUser(),
-		  new Promise((_, reject) =>
-			setTimeout(() => reject(new Error("Auth timeout")), 5000)
-		  )
-		]);
+	isAuthorizedUser();
 
-		if (!isAuth) return;
+    document.getElementById('authShell').style.display = 'contents';
+    document.getElementById('authLoading').style.display = 'none';
 
-		// ✅ Show UI after validation
-		document.getElementById('authShell').style.display = 'contents';
-		document.getElementById('authLoading').style.display = 'none';
+    const name     = user.displayName || user.email.split('@')[0];
+    const email    = user.email;
+    const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
 
-		const name     = user.displayName || user.email.split('@')[0];
-		const email    = user.email;
-		const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+    document.getElementById('userInitials').textContent     = initials;
+    document.getElementById('userName').textContent         = name;
+    document.getElementById('userEmail').textContent        = email;
+    document.getElementById('sideUserInitials').textContent = initials;
+    document.getElementById('sideUserName').textContent     = name;
+    document.getElementById('sideUserEmail').textContent    = email;
 
-		document.getElementById('userInitials').textContent     = initials;
-		document.getElementById('userName').textContent         = name;
-		document.getElementById('userEmail').textContent        = email;
-		document.getElementById('sideUserInitials').textContent = initials;
-		document.getElementById('sideUserName').textContent     = name;
-		document.getElementById('sideUserEmail').textContent    = email;
-
-		window.loadLeads();
-  } catch (err) {
-    console.error(err);
-    redirectToLogin(); // or show error page
-  }
+    window.loadLeads();
   });
 
   window.doSignOut = async () => {
