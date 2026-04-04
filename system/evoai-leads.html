@@ -9,7 +9,14 @@
 <!-- ── FIREBASE AUTH GUARD ── -->
 <script type="module">
 /* ── SAME CONFIG AS LOGIN PAGE ── */
-  
+  const firebaseConfig = {
+  apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
+  authDomain: "evoai-authentication.firebaseapp.com",
+  projectId: "evoai-authentication",
+  storageBucket: "evoai-authentication.firebasestorage.app",
+  messagingSenderId: "77079760801",
+  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+};
   
   import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut }
