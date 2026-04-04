@@ -731,7 +731,7 @@ async function loadLeads() {
   if (!data) return;
   
   if (data.reason ==='Unauthorized' ) { 
-	toast('You are unauthorized to access Lead Manager', 'error'); 
+	alert('You are unauthorized to access Lead Manager'); 
 	window.location.replace("evoai-login.html");
 	return; 
   }
