@@ -8,78 +8,64 @@
 
 <!-- Firebase SDK -->
 <script type="module">
-  import { initializeApp }
-    from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+   import { initializeApp } 
+          from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 
-  import {
-    getAuth,
-    signInWithRedirect,
-    getRedirectResult,
-    signInWithEmailAndPassword,
-    sendPasswordResetEmail,
-    GoogleAuthProvider,
-    onAuthStateChanged,
-    setPersistence,
-    browserLocalPersistence
-  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+   import { 
+		  getAuth,
+		  signInWithPopup,
+		  GoogleAuthProvider,
+		  onAuthStateChanged,
+		  setPersistence,
+		  browserLocalPersistence
+		} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+
 
   /* ── PASTE YOUR FIREBASE CONFIG HERE ── */
   const firebaseConfig = {
-    apiKey:            "YOUR_API_KEY",
-    authDomain:        "YOUR_PROJECT.firebaseapp.com",
-    projectId:         "YOUR_PROJECT_ID",
-    storageBucket:     "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId:             "YOUR_APP_ID"
-  };
+  apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
+  authDomain: "evoai-authentication.firebaseapp.com",
+  projectId: "evoai-authentication",
+  storageBucket: "evoai-authentication.firebasestorage.app",
+  messagingSenderId: "77079760801",
+  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+};
+  
 
-  const app      = initializeApp(firebaseConfig);
-  const auth     = getAuth(app);
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  
+  await setPersistence(auth, browserLocalPersistence);
+  
   const provider = new GoogleAuthProvider();
 
-  await setPersistence(auth, browserLocalPersistence);
+  /* Redirect if already logged in */
+  onAuthStateChanged(auth, (user) => {
 
-  /* ── Handle redirect result on page load ── */
-  try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) {
+  if (user) {
+
+    console.log("Logged in:", user.email);
+
+    if (!window.location.pathname.includes("evoai-leads.html")) {
       window.location.href = "/system/evoai-leads.html";
     }
-  } catch (err) {
-    showError(friendlyError(err.code));
+
   }
 
-  /* ── Redirect if already logged in ── */
-  onAuthStateChanged(auth, (user) => {
-    if (user && !window.location.pathname.includes("evoai-leads.html")) {
-      window.location.href = "/system/evoai-leads.html";
-    }
-  });
+});
 
-  /* ── Google Sign In (redirect method — no popup blocking) ── */
-  window.googleLogin = async () => {
-    const btn = document.getElementById('googleBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner"></span> Redirecting…';
-    clearMessages();
-    try {
-      await signInWithRedirect(auth, provider);
-      // Page will navigate away — no code runs after this
-    } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0">
-          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-        </svg>
-        Sign in with Google`;
-      showError(friendlyError(err.code));
-    }
-  };
 
-  /* ── Email / Password Sign In ── */
+window.googleLogin = async () => {
+  try {
+    await signInWithPopup(auth, provider);
+    // ✅ Don't redirect here — let onAuthStateChanged handle it
+  } catch (err) {
+    console.error(err);
+    showError(err.message);
+  }
+};
+
+  /* ── SIGN IN ── */
   window.doSignIn = async () => {
     const email    = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -92,20 +78,20 @@
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged handles redirect
+      /* onAuthStateChanged will handle redirect */
     } catch (err) {
       setLoading(btn, false);
       showError(friendlyError(err.code));
     }
   };
 
-  /* ── Forgot Password ── */
+  /* ── FORGOT PASSWORD ── */
   window.doReset = async () => {
     const email = document.getElementById('email').value.trim();
     if (!email) { showError('Enter your email address first, then click Forgot Password.'); return; }
 
     const btn = document.getElementById('resetBtn');
-    btn.disabled    = true;
+    btn.disabled = true;
     btn.textContent = 'Sending…';
     clearMessages();
 
@@ -115,12 +101,12 @@
     } catch (err) {
       showError(friendlyError(err.code));
     } finally {
-      btn.disabled    = false;
+      btn.disabled = false;
       btn.textContent = 'Forgot password?';
     }
   };
 
-  /* ── Helpers ── */
+  /* ── HELPERS ── */
   function friendlyError(code) {
     const map = {
       'auth/invalid-credential':     'Invalid email or password.',
@@ -130,14 +116,15 @@
       'auth/user-disabled':          'This account has been disabled.',
       'auth/too-many-requests':      'Too many attempts. Please try again later.',
       'auth/network-request-failed': 'Network error. Check your connection.',
-      'auth/popup-blocked':          'Popup blocked. Please allow popups and try again.',
     };
     return map[code] || 'Something went wrong. Please try again.';
   }
 
   function setLoading(btn, on) {
-    btn.disabled  = on;
-    btn.innerHTML = on ? '<span class="btn-spinner"></span> Signing in…' : 'Sign In';
+    btn.disabled = on;
+    btn.innerHTML = on
+      ? '<span class="btn-spinner"></span> Signing in…'
+      : 'Sign In';
   }
 
   function clearMessages() {
@@ -147,16 +134,14 @@
 
   function showError(msg) {
     const el = document.getElementById('errorMsg');
-    el.querySelector('span').textContent = msg;
-    el.style.display = 'flex';
-    document.getElementById('successMsg').style.display = 'none';
+    el.textContent    = msg;
+    el.style.display  = 'flex';
   }
 
   function showSuccess(msg) {
     const el = document.getElementById('successMsg');
-    el.querySelector('span').textContent = msg;
-    el.style.display = 'flex';
-    document.getElementById('errorMsg').style.display = 'none';
+    el.textContent    = msg;
+    el.style.display  = 'flex';
   }
 </script>
 
@@ -169,6 +154,7 @@
     --accent:   #00e5a0;
     --accent2:  #00b8ff;
     --danger:   #ff4d6d;
+    --warn:     #ffb730;
     --text:     #e8f0fe;
     --muted:    #6b7fa3;
     --font:     'Sora', sans-serif;
@@ -190,6 +176,7 @@
     position: relative;
   }
 
+  /* ── Animated background grid ── */
   body::before {
     content: '';
     position: fixed; inset: 0; z-index: 0;
@@ -201,6 +188,7 @@
     pointer-events: none;
   }
 
+  /* ── Glow orbs ── */
   .orb {
     position: fixed; border-radius: 50%; filter: blur(90px);
     pointer-events: none; z-index: 0; animation: drift 12s ease-in-out infinite alternate;
@@ -221,6 +209,7 @@
     to   { transform: translate(30px, 20px) scale(1.06); }
   }
 
+  /* ── Card ── */
   .card {
     position: relative; z-index: 1;
     background: var(--surface);
@@ -233,9 +222,10 @@
   }
   @keyframes cardIn {
     from { opacity: 0; transform: translateY(28px) scale(.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
   }
 
+  /* ── Logo ── */
   .logo-wrap {
     display: flex; flex-direction: column; align-items: center;
     gap: 10px; margin-bottom: 32px;
@@ -248,6 +238,7 @@
     text-transform: uppercase;
   }
 
+  /* ── Heading ── */
   .card-title {
     font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em;
     text-align: center; margin-bottom: 4px;
@@ -257,37 +248,12 @@
     text-align: center; margin-bottom: 28px;
   }
 
-  .divider { height: 1px; background: var(--border); margin: 0 -40px 28px; }
-
-  /* ── Google Button ── */
-  .google-btn {
-    width: 100%; padding: 11px 16px;
-    background: #fff; color: #3c4043;
-    font-family: var(--font); font-size: .86rem; font-weight: 600;
-    border: 1px solid #dadce0; border-radius: 8px;
-    cursor: pointer; transition: all .18s;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    margin-bottom: 20px;
-  }
-  .google-btn:hover:not(:disabled) {
-    background: #f8f9fa;
-    box-shadow: 0 2px 12px rgba(0,0,0,.15);
-  }
-  .google-btn:disabled { opacity: .6; cursor: not-allowed; }
-
-  /* ── OR divider ── */
-  .or-row {
-    display: flex; align-items: center; gap: 12px;
-    margin-bottom: 20px;
-  }
-  .or-row::before, .or-row::after {
-    content: ''; flex: 1; height: 1px; background: var(--border);
-  }
-  .or-row span {
-    font-size: .7rem; color: var(--muted); white-space: nowrap;
-    font-family: var(--mono); letter-spacing: .06em;
+  /* ── Divider ── */
+  .divider {
+    height: 1px; background: var(--border); margin: 0 -40px 28px;
   }
 
+  /* ── Fields ── */
   .field { margin-bottom: 16px; }
   .field label {
     display: block; font-size: .7rem; font-weight: 600;
@@ -310,8 +276,10 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(0,229,160,.1);
   }
+  .input-wrap input:focus + svg { color: var(--accent); }
   .input-wrap input::placeholder { color: var(--muted); opacity: .6; }
 
+  /* eye toggle */
   .eye-btn {
     position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
     background: none; border: none; color: var(--muted); cursor: pointer;
@@ -319,16 +287,18 @@
   }
   .eye-btn:hover { color: var(--accent); }
 
+  /* ── Row below password ── */
   .pw-row {
-    display: flex; justify-content: flex-end;
-    margin-top: -8px; margin-bottom: 22px;
+    display: flex; justify-content: flex-end; margin-top: -8px; margin-bottom: 22px;
   }
   .forgot-link {
     font-size: .74rem; color: var(--muted); background: none; border: none;
-    cursor: pointer; font-family: var(--font); padding: 0; transition: color .15s;
+    cursor: pointer; font-family: var(--font); padding: 0;
+    transition: color .15s;
   }
   .forgot-link:hover { color: var(--accent); }
 
+  /* ── Sign in button ── */
   .sign-in-btn {
     width: 100%; padding: 12px;
     background: var(--accent); color: #080c10;
@@ -339,7 +309,6 @@
   }
   .sign-in-btn:hover:not(:disabled) { background: #00fdb4; box-shadow: 0 0 24px rgba(0,229,160,.3); }
   .sign-in-btn:disabled { opacity: .6; cursor: not-allowed; }
-
   .btn-spinner {
     display: inline-block; width: 14px; height: 14px;
     border: 2px solid rgba(8,12,16,.3); border-top-color: #080c10;
@@ -347,6 +316,7 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── Messages ── */
   .msg {
     display: none; align-items: flex-start; gap: 10px;
     padding: 11px 14px; border-radius: 8px;
@@ -356,6 +326,15 @@
   .msg-error   { background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.2); color: #ff8099; }
   .msg-success { background: rgba(0,229,160,.07);  border: 1px solid rgba(0,229,160,.2);  color: var(--accent); }
 
+  /* ── Footer ── */
+  .card-footer {
+    margin-top: 24px; text-align: center;
+    font-size: .7rem; color: var(--muted);
+  }
+  .card-footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
+  .card-footer a:hover { color: var(--accent); }
+
+  /* ── Enter key support label ── */
   .enter-hint {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     margin-top: 12px; font-size: .67rem; color: var(--muted); opacity: .7;
@@ -365,12 +344,6 @@
     background: var(--surface2); border: 1px solid var(--border);
     border-radius: 4px; padding: 1px 6px; font-size: .65rem;
   }
-
-  .card-footer {
-    margin-top: 24px; text-align: center; font-size: .7rem; color: var(--muted);
-  }
-  .card-footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
-  .card-footer a:hover { color: var(--accent); }
 
   @media (max-width: 480px) {
     .card { padding: 36px 24px 28px; margin: 16px; }
@@ -406,27 +379,12 @@
     <span></span>
   </div>
 
-  <!-- Google Sign In -->
-  <button class="google-btn" id="googleBtn" onclick="googleLogin()">
-    <svg width="18" height="18" viewBox="0 0 48 48">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
-    Sign in with Google
-  </button>
-
-  <!-- OR divider -->
-  <div class="or-row"><span>or sign in with email</span></div>
-
   <!-- Email -->
   <div class="field">
     <label>Email Address</label>
     <div class="input-wrap">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      <input type="email" id="email" placeholder="you@company.com" autocomplete="email"
-        onkeydown="if(event.key==='Enter')document.getElementById('password').focus()"/>
+      <input type="email" id="email" placeholder="you@company.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('password').focus()"/>
     </div>
   </div>
 
@@ -435,12 +393,9 @@
     <label>Password</label>
     <div class="input-wrap">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"
-        style="padding-right:42px;" onkeydown="if(event.key==='Enter')doSignIn()"/>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:42px;" onkeydown="if(event.key==='Enter')doSignIn()"/>
       <button class="eye-btn" id="eyeBtn" onclick="toggleEye()" type="button" title="Show / hide password">
-        <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-        </svg>
+        <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
     </div>
   </div>
@@ -450,8 +405,10 @@
     <button class="forgot-link" id="resetBtn" onclick="doReset()">Forgot password?</button>
   </div>
 
-  <!-- Email sign in button -->
-  <button class="sign-in-btn" id="signInBtn" onclick="doSignIn()">Sign In</button>
+  <!-- Sign in button -->
+  <button class="sign-in-btn" onclick="googleLogin()">
+  Sign in with Google
+  </button>
 
   <!-- Enter hint -->
   <div class="enter-hint">
@@ -470,6 +427,7 @@
 </div>
 
 <script>
+  /* Eye toggle */
   function toggleEye() {
     const pw   = document.getElementById('password');
     const icon = document.getElementById('eyeIcon');
@@ -480,6 +438,7 @@
       : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
   }
 
+  /* Message helpers — called by module via window.* */
   function showError(msg) {
     const el = document.getElementById('errorMsg');
     el.querySelector('span').textContent = msg;
