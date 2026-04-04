@@ -30,7 +30,7 @@
   // ── CHANGE 1: expose auth globally so apiCall() can reach getIdToken() ──
   window._firebaseAuth = auth;
 
-  onAuthStateChanged(auth, user => {
+  onAuthStateChanged(auth,  async (user) => {
     if (authChecked) return;
     authChecked = true;
 
