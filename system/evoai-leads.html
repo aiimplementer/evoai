@@ -735,7 +735,7 @@ async function loadLeads() {
   }
   
   // Check for unauthorized response
-  if (data.result === "Unauthorized") {
+  if (data.valid === "Unauthorized") {
       setTableLoading(false);  
   
       // Redirect to login with message
