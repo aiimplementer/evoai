@@ -39,6 +39,15 @@
       return;
     }
 
+    const data = await apiCall({ action: 'list' });
+    if (!data) return;
+	
+    if (data.reason ==='Unauthorized' ) { 
+		 alert('You are unauthorized to access Lead Manager'); 
+		 window.location.replace("evoai-login.html");
+		 return; 
+    }
+  
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
 
