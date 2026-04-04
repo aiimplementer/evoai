@@ -11,10 +11,8 @@
     from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
   import {
     getAuth,
-    signInWithRedirect,
-    getRedirectResult,
+    signInWithPopup,
     GoogleAuthProvider,
-    onAuthStateChanged,
     setPersistence,
     browserLocalPersistence
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
@@ -22,12 +20,12 @@
   /* ── PASTE YOUR FIREBASE CONFIG HERE ── */
   const firebaseConfig = {
      apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
-	  authDomain: "evoai-authentication.firebaseapp.com",
-	  projectId: "evoai-authentication",
-	  storageBucket: "evoai-authentication.firebasestorage.app",
-	  messagingSenderId: "77079760801",
-	  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
-  };
+  authDomain: "evoai-authentication.firebaseapp.com",
+  projectId: "evoai-authentication",
+  storageBucket: "evoai-authentication.firebasestorage.app",
+  messagingSenderId: "77079760801",
+  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+};
 
   const app      = initializeApp(firebaseConfig);
   const auth     = getAuth(app);
@@ -35,63 +33,43 @@
 
   await setPersistence(auth, browserLocalPersistence);
 
-  /* ── Handle redirect result on return from Google ── */
-  try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) {
-      window.location.href = "/system/evoai-leads.html";
-    }
-  } catch (err) {
-    if (err.code && err.code.startsWith('auth/')) {
-      showError(friendlyError(err.code));
-    }
-    console.error(err);
-  }
-
-  /* ── Already logged in ── */
-  onAuthStateChanged(auth, (user) => {
-    if (user && !window.location.pathname.includes("evoai-leads.html")) {
-      window.location.href = "/system/evoai-leads.html";
-    }
-  });
-
-  /* ── Google Sign In ── */
+  /* ── Google Sign In via Popup ── */
+  /* No onAuthStateChanged here — that was causing the redirect loop */
   window.googleLogin = async () => {
     const btn = document.getElementById('googleBtn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner"></span> Redirecting to Google…';
-    clearMessages();
+    btn.innerHTML = '<span class="btn-spinner"></span> Opening Google…';
+    clearError();
+
     try {
-      await signInWithRedirect(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      if (result?.user) {
+        window.location.href = "/system/evoai-leads.html";
+      }
     } catch (err) {
       btn.disabled = false;
-      btn.innerHTML = googleBtnHTML();
-      showError(friendlyError(err.code));
+      btn.innerHTML = googleBtnInner;
+      if (err.code !== 'auth/popup-closed-by-user' &&
+          err.code !== 'auth/cancelled-popup-request') {
+        showError(friendlyError(err.code));
+      }
+      console.error(err);
     }
   };
 
   function friendlyError(code) {
     const map = {
-      'auth/popup-blocked':          'Popup blocked. Please allow popups and try again.',
-      'auth/user-disabled':          'This account has been disabled.',
+      'auth/popup-blocked':          'Popup was blocked — please allow popups for this site and try again.',
+      'auth/user-disabled':          'This Google account has been disabled.',
       'auth/too-many-requests':      'Too many attempts. Please try again later.',
-      'auth/network-request-failed': 'Network error. Check your connection.',
-      'auth/unauthorized-domain':    'This domain is not authorised. Check Firebase settings.',
+      'auth/network-request-failed': 'Network error. Check your connection and try again.',
+      'auth/unauthorized-domain':    'This domain is not authorised in Firebase. Contact the admin.',
+      'auth/internal-error':         'An internal error occurred. Please try again.',
     };
     return map[code] || 'Something went wrong. Please try again.';
   }
 
-  function googleBtnHTML() {
-    return `<svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
-    Sign in with Google`;
-  }
-
-  function clearMessages() {
+  function clearError() {
     document.getElementById('errorMsg').style.display = 'none';
   }
 
@@ -100,9 +78,6 @@
     el.querySelector('span').textContent = msg;
     el.style.display = 'flex';
   }
-
-  /* expose for inline onclick */
-  window._googleBtnHTML = googleBtnHTML;
 </script>
 
 <style>
@@ -112,7 +87,6 @@
     --surface2:#141c2a;
     --border:  #1e2d42;
     --accent:  #00e5a0;
-    --accent2: #00b8ff;
     --danger:  #ff4d6d;
     --text:    #e8f0fe;
     --muted:   #6b7fa3;
@@ -123,22 +97,13 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
+    background: var(--bg); color: var(--text); font-family: var(--font);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; overflow: hidden; position: relative;
   }
 
-  /* Grid background */
   body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: 0;
+    content: ''; position: fixed; inset: 0; z-index: 0;
     background-image:
       linear-gradient(rgba(0,229,160,.04) 1px, transparent 1px),
       linear-gradient(90deg, rgba(0,229,160,.04) 1px, transparent 1px);
@@ -147,30 +112,23 @@
     pointer-events: none;
   }
 
-  /* Glow orbs */
   .orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; animation: drift 12s ease-in-out infinite alternate; }
   .orb-1 { width: 420px; height: 420px; background: radial-gradient(circle, rgba(0,229,160,.13), transparent 70%); top: -120px; left: -80px; }
   .orb-2 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(0,184,255,.10), transparent 70%); bottom: -100px; right: -80px; animation-delay: -6s; }
   @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.06); } }
 
-  /* Card */
   .card {
     position: relative; z-index: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 48px 40px 40px;
-    width: 100%; max-width: 400px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 48px 40px 40px; width: 100%; max-width: 400px;
     box-shadow: 0 32px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(0,229,160,.05);
-    animation: cardIn .4s cubic-bezier(.22,1,.36,1);
-    text-align: center;
+    animation: cardIn .4s cubic-bezier(.22,1,.36,1); text-align: center;
   }
   @keyframes cardIn {
     from { opacity: 0; transform: translateY(28px) scale(.98); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  /* Logo */
   .logo-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 32px; }
   .logo-wrap img { height: 40px; width: auto; }
   .logo-badge {
@@ -181,10 +139,8 @@
 
   .card-title { font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: 6px; }
   .card-sub   { font-size: .79rem; color: var(--muted); margin-bottom: 32px; line-height: 1.5; }
+  .divider    { height: 1px; background: var(--border); margin: 0 -40px 32px; }
 
-  .divider { height: 1px; background: var(--border); margin: 0 -40px 32px; }
-
-  /* Error message */
   .msg {
     display: none; align-items: flex-start; gap: 10px;
     padding: 11px 14px; border-radius: 8px;
@@ -193,21 +149,15 @@
   .msg svg { flex-shrink: 0; margin-top: 1px; }
   .msg-error { background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.2); color: #ff8099; }
 
-  /* Google button */
   .google-btn {
     width: 100%; padding: 13px 20px;
     background: #fff; color: #3c4043;
     font-family: var(--font); font-size: .88rem; font-weight: 600;
-    border: 1px solid #dadce0; border-radius: 8px;
-    cursor: pointer; transition: all .18s;
+    border: 1px solid #dadce0; border-radius: 8px; cursor: pointer; transition: all .18s;
     display: flex; align-items: center; justify-content: center; gap: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,.12);
   }
-  .google-btn:hover:not(:disabled) {
-    background: #f8f9fa;
-    box-shadow: 0 4px 16px rgba(0,0,0,.18);
-    transform: translateY(-1px);
-  }
+  .google-btn:hover:not(:disabled) { background: #f8f9fa; box-shadow: 0 4px 16px rgba(0,0,0,.18); transform: translateY(-1px); }
   .google-btn:active:not(:disabled) { transform: translateY(0); }
   .google-btn:disabled { opacity: .7; cursor: not-allowed; }
 
@@ -218,15 +168,11 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Secure note */
   .secure-note {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    margin-top: 18px; font-size: .68rem; color: var(--muted);
-    font-family: var(--mono); opacity: .7;
+    margin-top: 18px; font-size: .68rem; color: var(--muted); font-family: var(--mono); opacity: .7;
   }
-  .secure-note svg { flex-shrink: 0; }
 
-  /* Footer */
   .card-footer { margin-top: 28px; font-size: .7rem; color: var(--muted); }
   .card-footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
   .card-footer a:hover { color: var(--accent); }
@@ -254,13 +200,11 @@
 
   <div class="divider"></div>
 
-  <!-- Error message -->
   <div class="msg msg-error" id="errorMsg">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <span></span>
   </div>
 
-  <!-- Google Sign In Button -->
   <button class="google-btn" id="googleBtn" onclick="googleLogin()">
     <svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -271,13 +215,11 @@
     Sign in with Google
   </button>
 
-  <!-- Secure note -->
   <div class="secure-note">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     Secured by Google OAuth 2.0
   </div>
 
-  <!-- Footer -->
   <div class="card-footer">
     <a href="https://evoaiglobal.ai" target="_blank">evoaiglobal.ai</a>
     &nbsp;·&nbsp;
@@ -287,6 +229,11 @@
   </div>
 
 </div>
+
+<script>
+  /* Capture original button HTML for reset after errors */
+  const googleBtnInner = document.getElementById('googleBtn').innerHTML;
+</script>
 
 </body>
 </html>
