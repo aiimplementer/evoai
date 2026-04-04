@@ -39,7 +39,7 @@
       return;
     }
 	
-	isAuthorizedUser();
+	const isAuth = await isAuthorizedUser();
 
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
