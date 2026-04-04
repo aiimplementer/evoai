@@ -8,7 +8,6 @@
 
 <!-- ── FIREBASE AUTH GUARD ── -->
 <script type="module">
-  /* ── SAME CONFIG AS LOGIN PAGE ── */
   const firebaseConfig = {
   apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
   authDomain: "evoai-authentication.firebaseapp.com",
@@ -16,6 +15,7 @@
   storageBucket: "evoai-authentication.firebasestorage.app",
   messagingSenderId: "77079760801",
   appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+  
 };
 
   import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
@@ -27,7 +27,6 @@
 
   let authChecked = false;
 
-  // ── CHANGE 1: expose auth globally so apiCall() can reach getIdToken() ──
   window._firebaseAuth = auth;
 
   onAuthStateChanged(auth, user => {
@@ -373,17 +372,61 @@
   .spinner { width: 17px; height: 17px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── TOAST ── */
   #toast {
     position: fixed; bottom: 22px; right: 22px; z-index: 999;
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
     padding: 11px 17px; font-size: .81rem; display: flex; align-items: center; gap: 10px;
     box-shadow: 0 8px 32px rgba(0,0,0,.5);
     transform: translateY(80px); opacity: 0; transition: all .25s; pointer-events: none;
+    max-width: 360px;
   }
   #toast.show { transform: translateY(0); opacity: 1; }
   #toast.success .toast-dot { background: var(--accent); }
   #toast.error   .toast-dot { background: var(--danger); }
+  #toast.warn    .toast-dot { background: var(--warn); }
   .toast-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── UNAUTHORIZED OVERLAY ── */
+  #unauthOverlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 9998;
+    background: rgba(4,8,14,.92); backdrop-filter: blur(12px);
+    align-items: center; justify-content: center;
+  }
+  #unauthOverlay.open { display: flex; }
+  .unauth-card {
+    background: var(--surface); border: 1px solid rgba(255,77,109,.3);
+    border-radius: 16px; padding: 40px 44px; max-width: 420px; width: 90%;
+    text-align: center; box-shadow: 0 0 60px rgba(255,77,109,.12);
+    animation: slideUp .28s ease;
+  }
+  .unauth-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px; color: var(--danger);
+  }
+  .unauth-title {
+    font-size: 1.1rem; font-weight: 700; color: var(--text);
+    margin-bottom: 10px; letter-spacing: -.02em;
+  }
+  .unauth-msg {
+    font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 24px;
+  }
+  .unauth-progress {
+    height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 18px;
+  }
+  .unauth-progress-bar {
+    height: 100%; background: var(--danger); border-radius: 2px;
+    width: 100%; transform-origin: left;
+    animation: drainProgress 3s linear forwards;
+  }
+  @keyframes drainProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  .unauth-sub {
+    font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em;
+  }
+  .unauth-redirect-count { color: var(--danger); font-weight: 600; }
 
   /* ── RESPONSIVE ── */
   @media (max-width: 960px) {
@@ -404,6 +447,22 @@
   <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
   <div class="auth-spinner"></div>
   <p>Verifying session…</p>
+</div>
+
+<!-- UNAUTHORIZED OVERLAY -->
+<div id="unauthOverlay">
+  <div class="unauth-card">
+    <div class="unauth-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    </div>
+    <div class="unauth-title">Access Denied</div>
+    <div class="unauth-msg">Your account does not have permission to access Lead Manager. Please contact your administrator if you believe this is an error.</div>
+    <div class="unauth-progress"><div class="unauth-progress-bar"></div></div>
+    <div class="unauth-sub">Redirecting to login in <span class="unauth-redirect-count" id="unauthCountdown">3</span>s…</div>
+  </div>
 </div>
 
 <!-- MAIN APP -->
@@ -677,7 +736,7 @@ let currentPage   = 1;
 const PAGE_SIZE   = 15;
 
 /* ══════════════════════════════════════════════════════════════
-   CHANGE 2 — getAuthToken()
+   getAuthToken()
    Fetches a fresh Firebase ID token before every API call.
    forceRefresh=true ensures an expired token is renewed
    automatically (Firebase tokens last 1 hour).
@@ -700,26 +759,78 @@ async function getAuthToken() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   CHANGE 3 — apiCall()
-   Now fetches the ID token and adds it to every request body
-   as `idToken`. Your Apps Script can read it from the parsed
-   JSON and call verifyIdToken() if you wire up the Admin SDK,
-   or at minimum check that it is present and non-empty.
+   handleUnauthorized()
+   Centralised handler for any 401/403 / Unauthorized response.
+   Shows a branded overlay with a live countdown, then redirects.
+   No native alert() — fully in-UI, non-blocking.
+══════════════════════════════════════════════════════════════ */
+function handleUnauthorized() {
+  // Show the dedicated overlay
+  document.getElementById('unauthOverlay').classList.add('open');
+
+  // Live countdown
+  let secs = 3;
+  const countEl = document.getElementById('unauthCountdown');
+  const tick = setInterval(() => {
+    secs--;
+    if (countEl) countEl.textContent = secs;
+    if (secs <= 0) {
+      clearInterval(tick);
+      window.location.replace('evoai-login.html');
+    }
+  }, 1000);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   apiCall()
+   Attaches the Firebase ID token to every request.
+   Handles both HTTP-level (401/403) and app-level
+   (data.reason / data.error / data.status / data.code)
+   unauthorized signals in one place — callers never need
+   to check for auth errors themselves.
 ══════════════════════════════════════════════════════════════ */
 async function apiCall(body) {
   const idToken = await getAuthToken();
-  if (!idToken) return null;                   // user was redirected to login
+  if (!idToken) return null; // user already redirected to login
 
+  let res;
   try {
-    const res = await fetch(SCRIPT_URL, {
+    res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ ...body, idToken }) // ← token attached here
+      body: JSON.stringify({ ...body, idToken })
     });
-    return await res.json();
-  } catch(e) {
-    toast('Network error — check connection', 'error');
+  } catch (e) {
+    toast('Network error — check your connection', 'error');
     return null;
   }
+
+  // HTTP-level auth failures (Apps Script sometimes surfaces these)
+  if (res.status === 401 || res.status === 403) {
+    handleUnauthorized();
+    return null;
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    toast('Unexpected response from server', 'error');
+    return null;
+  }
+
+  // App-level auth failures — cover every shape the API might return
+  const isUnauth =
+    data?.reason === 'Unauthorized' ||
+    data?.error  === 'Unauthorized' ||
+    data?.status === 401            ||
+    data?.code   === 'UNAUTHORIZED';
+
+  if (isUnauth) {
+    handleUnauthorized();
+    return null;
+  }
+
+  return data;
 }
 
 /* ── LOAD ── */
@@ -727,17 +838,11 @@ async function loadLeads() {
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
   setTableLoading(false);
-  
+
+  // null means apiCall already handled the error (auth or network)
   if (!data) return;
-  
-  if (data.reason ==='Unauthorized' ) { 
-	alert('You are unauthorized to access Lead Manager'); 
-	window.location.replace("evoai-login.html");
-	return; 
-  }
   if (data.error) { toast(data.error, 'error'); return; }
-   
-  
+
   allLeads = Array.isArray(data) ? data : [];
   updateCounts();
   applyFilters();
