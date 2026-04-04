@@ -727,8 +727,14 @@ async function loadLeads() {
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
   setTableLoading(false);
+  
   if (!data) return;
-  if (data.error) { toast('122333'+data.error, 'error'); return; }
+  if (data.error) { 
+    setTableLoading(false);
+	toast('Load: '+data.error, 'error'); return; 
+  }
+  
+  
   allLeads = Array.isArray(data) ? data : [];
   updateCounts();
   applyFilters();
