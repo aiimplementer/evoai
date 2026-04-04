@@ -40,6 +40,7 @@
     }
 	
 	const isAuth = await isAuthorizedUser();
+	if (!isAuth) return;
 
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
