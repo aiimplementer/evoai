@@ -1005,27 +1005,42 @@ function editLead(leadId) {
 async function submitForm() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  
   if (!name)  { toast('Name is required', 'error'); return; }
   if (!email) { toast('Email is required', 'error'); return; }
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    toast('Enter a valid email address', 'error');
+    return;
+  }  
+  
+  if (phone && !/^[0-9+\-\s]{7,15}$/.test(phone)) {
+    toast('Enter a valid phone number', 'error');
+    return;
+  }
+
   const btn = document.getElementById('formSubmitBtn');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
   const payload = {
     action:   editingLeadId ? 'update' : 'add',
     name, email,
-    phone:    document.getElementById('f-phone').value,
-    linkedin: document.getElementById('f-linkedin').value,
-    company:  document.getElementById('f-company').value,
-    jobtitle: document.getElementById('f-jobtitle').value,
-    industry: document.getElementById('f-industry').value,
-    service:  document.getElementById('f-service').value,
-    status:   document.getElementById('f-status').value,
-    source:   document.getElementById('f-source').value,
+    phone:    document.getElementById('f-phone').value.trim(),
+    linkedin: document.getElementById('f-linkedin').value.trim(),
+    company:  document.getElementById('f-company').value.trim(),
+    jobtitle: document.getElementById('f-jobtitle').value.trim(),
+    industry: document.getElementById('f-industry').value.trim(),
+    service:  document.getElementById('f-service').value.trim(),
+    status:   document.getElementById('f-status').value.trim(),
+    source:   document.getElementById('f-source').value.trim(),
     page:     document.getElementById('f-page').value,
-    message:  document.getElementById('f-message').value,
-    comments: document.getElementById('f-comments').value,
+    message:  document.getElementById('f-message').value.trim(),
+    comments: document.getElementById('f-comments').value.trim(),
     useragent: navigator.userAgent
   };
+  
   if (editingLeadId) payload.leadId = editingLeadId;
   const data = await apiCall(payload);
   btn.disabled = false;
