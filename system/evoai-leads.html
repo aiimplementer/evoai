@@ -39,7 +39,7 @@
       return;
     }
 
-    const data = await apiCall({ action: 'list' });
+    const data = apiCall({ action: 'list' });
     if (!data) return;
 	
     if (data.reason ==='Unauthorized' ) { 
