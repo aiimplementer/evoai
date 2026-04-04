@@ -727,8 +727,17 @@ async function loadLeads() {
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
   
+  // Safety check
+  if (!data) {
+    setTableLoading(false);
+    toast('Unable to load leads.', 'error');
+    return;
+  }
+  
   // Check for unauthorized response
   if (data.result === "Unauthorized") {
+      setTableLoading(false);  
+  
       // Redirect to login with message
 	  toast('Email Account is not registered for Lead Management Access.', 'error');
 	  
