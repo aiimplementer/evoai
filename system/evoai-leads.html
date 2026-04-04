@@ -39,25 +39,37 @@
       return;
     }
 	
-	// 🔐 WAIT for authorization check
-	const isAuth = await isAuthorizedUser();
-	if (!isAuth) return;
+	try {
+		// ⏳ Add timeout safety (5 sec)
+		const isAuth = await Promise.race([
+		  isAuthorizedUser(),
+		  new Promise((_, reject) =>
+			setTimeout(() => reject(new Error("Auth timeout")), 5000)
+		  )
+		]);
 
-    document.getElementById('authShell').style.display = 'contents';
-    document.getElementById('authLoading').style.display = 'none';
+		if (!isAuth) return;
 
-    const name     = user.displayName || user.email.split('@')[0];
-    const email    = user.email;
-    const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+		// ✅ Show UI after validation
+		document.getElementById('authShell').style.display = 'contents';
+		document.getElementById('authLoading').style.display = 'none';
 
-    document.getElementById('userInitials').textContent     = initials;
-    document.getElementById('userName').textContent         = name;
-    document.getElementById('userEmail').textContent        = email;
-    document.getElementById('sideUserInitials').textContent = initials;
-    document.getElementById('sideUserName').textContent     = name;
-    document.getElementById('sideUserEmail').textContent    = email;
+		const name     = user.displayName || user.email.split('@')[0];
+		const email    = user.email;
+		const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
 
-    window.loadLeads();
+		document.getElementById('userInitials').textContent     = initials;
+		document.getElementById('userName').textContent         = name;
+		document.getElementById('userEmail').textContent        = email;
+		document.getElementById('sideUserInitials').textContent = initials;
+		document.getElementById('sideUserName').textContent     = name;
+		document.getElementById('sideUserEmail').textContent    = email;
+
+		window.loadLeads();
+  } catch (err) {
+    console.error(err);
+    redirectToLogin(); // or show error page
+  }
   });
 
   window.doSignOut = async () => {
