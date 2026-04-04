@@ -32,11 +32,13 @@
 
   /* ── Only redirect if ALREADY signed in — don't hide the page ── */
   onAuthStateChanged(auth, user => {
-    if (user) {
-      /* Already authenticated — go straight to dashboard */
-      window.location.replace("evoai-leads.html");
-    }
-    /* Not signed in → do nothing, leave page visible */
+	  if (user) {
+		console.log("User already logged in:", user.email);
+		window.location.href = "evoai-leads.html";
+	  } else {
+		console.log("No active session");
+	  }
+
   });
 
   /* ── EMAIL / PASSWORD SIGN IN ── */
