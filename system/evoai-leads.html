@@ -8,29 +8,28 @@
 
 <!-- ── FIREBASE AUTH GUARD ── -->
 <script type="module">
-  /* ── SAME CONFIG AS LOGIN PAGE ── */
   const firebaseConfig = {
-  apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
-  authDomain: "evoai-authentication.firebaseapp.com",
-  projectId: "evoai-authentication",
-  storageBucket: "evoai-authentication.firebasestorage.app",
-  messagingSenderId: "77079760801",
-  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
-};
+    /* ── YOUR CONFIG HERE ── */
+	  apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
+	  authDomain: "evoai-authentication.firebaseapp.com",
+	  projectId: "evoai-authentication",
+	  storageBucket: "evoai-authentication.firebasestorage.app",
+	  messagingSenderId: "77079760801",
+	  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+  };
 
-  import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { initializeApp }     from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut }
-                                  from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+                               from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
 
   let authChecked = false;
 
-  // ── CHANGE 1: expose auth globally so apiCall() can reach getIdToken() ──
   window._firebaseAuth = auth;
 
-  onAuthStateChanged(auth,  async (user) => {
+  onAuthStateChanged(auth, async (user) => {
     if (authChecked) return;
     authChecked = true;
 
@@ -38,13 +37,8 @@
       window.location.replace("evoai-login.html");
       return;
     }
-	
-	const isAuth = await isAuthorizedUser();
-	if (!isAuth) return;
 
-    document.getElementById('authShell').style.display = 'contents';
-    document.getElementById('authLoading').style.display = 'none';
-
+    /* ── Populate user info while data loads (screen still hidden) ── */
     const name     = user.displayName || user.email.split('@')[0];
     const email    = user.email;
     const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
@@ -56,7 +50,16 @@
     document.getElementById('sideUserName').textContent     = name;
     document.getElementById('sideUserEmail').textContent    = email;
 
-    window.loadLeads();
+    /* ── loadLeads() now handles unauthorized — keep screen hidden until done ── */
+    setAuthStatus('Loading data…');
+    const ok = await window.loadLeads();
+
+    if (ok) {
+      /* Only reveal the app once data is confirmed authorized + loaded */
+      document.getElementById('authShell').style.display  = 'contents';
+      document.getElementById('authLoading').style.display = 'none';
+    }
+    /* If not ok, loadLeads() already redirected — nothing else to do */
   });
 
   window.doSignOut = async () => {
@@ -402,14 +405,14 @@
 </head>
 <body>
 
-<!-- AUTH LOADING -->
+<!-- AUTH LOADING — stays visible until loadLeads() confirms authorized -->
 <div id="authLoading">
   <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
   <div class="auth-spinner"></div>
-  <p>Verifying session…</p>
+  <p id="authStatusMsg">Verifying session…</p>
 </div>
 
-<!-- MAIN APP -->
+<!-- MAIN APP — hidden until auth + data check passes -->
 <div id="authShell" style="display:none">
 
 <!-- NAV -->
@@ -593,7 +596,7 @@
     </div>
   </main>
 
-</div>
+</div><!-- end .shell -->
 
 <!-- CREATE / EDIT MODAL -->
 <div class="overlay" id="formOverlay">
@@ -679,44 +682,44 @@ let searchTimer   = null;
 let currentPage   = 1;
 const PAGE_SIZE   = 15;
 
-/* ══════════════════════════════════════════════════════════════
-   CHANGE 2 — getAuthToken()
-   Fetches a fresh Firebase ID token before every API call.
-   forceRefresh=true ensures an expired token is renewed
-   automatically (Firebase tokens last 1 hour).
-══════════════════════════════════════════════════════════════ */
+/* ── Update the loading screen status text ── */
+function setAuthStatus(msg) {
+  const el = document.getElementById('authStatusMsg');
+  if (el) el.textContent = msg;
+}
+
+/* ── Redirect to login with a message passed via URL param ── */
+function redirectToLogin(reason) {
+  const url = reason
+    ? 'evoai-login.html?msg=' + encodeURIComponent(reason)
+    : 'evoai-login.html';
+  window.location.replace(url);
+}
+
+/* ── Get a fresh Firebase ID token ── */
 async function getAuthToken() {
   const auth = window._firebaseAuth;
   if (!auth || !auth.currentUser) {
-    toast('Session expired — please sign in again', 'error');
-    setTimeout(() => window.location.replace('evoai-login.html'), 1800);
+    redirectToLogin('Your session has expired. Please sign in again.');
     return null;
   }
   try {
-    return await auth.currentUser.getIdToken(/* forceRefresh= */ true);
+    return await auth.currentUser.getIdToken(true);
   } catch (e) {
     console.error('Token error', e);
-    toast('Could not refresh session — signing out', 'error');
-    setTimeout(() => window.location.replace('evoai-login.html'), 1800);
+    redirectToLogin('Could not refresh your session. Please sign in again.');
     return null;
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   CHANGE 3 — apiCall()
-   Now fetches the ID token and adds it to every request body
-   as `idToken`. Your Apps Script can read it from the parsed
-   JSON and call verifyIdToken() if you wire up the Admin SDK,
-   or at minimum check that it is present and non-empty.
-══════════════════════════════════════════════════════════════ */
+/* ── Attach ID token to every API request ── */
 async function apiCall(body) {
   const idToken = await getAuthToken();
-  if (!idToken) return null;                   // user was redirected to login
-
+  if (!idToken) return null;
   try {
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ ...body, idToken }) // ← token attached here
+      body: JSON.stringify({ ...body, idToken })
     });
     return await res.json();
   } catch(e) {
@@ -725,50 +728,48 @@ async function apiCall(body) {
   }
 }
 
-/* -- CHECK USER AUTHORIZATION -- */
-async function isAuthorizedUser() {
-  try {
-    const data = await apiCall({ action: 'list' });
+/* ══════════════════════════════════════════════════════════════
+   loadLeads()
+   — Returns true  → authorized, data loaded, app can show
+   — Returns false → unauthorized or error, already redirected
 
-    // Handle empty or invalid response
-    if (!data || typeof data !== "object") {
-      console.error("Invalid response");
-      redirectToLogin();
-      return false;
-    }
+   On the INITIAL load (called from onAuthStateChanged) the app
+   shell stays hidden until this resolves.
+   On subsequent Refresh clicks the shell is already visible so
+   we just update the table in place.
+══════════════════════════════════════════════════════════════ */
+window.loadLeads = async function(isRefresh = false) {
+  setTableLoading(true);
+  if (!isRefresh) setAuthStatus('Loading data…');
 
-    // Explicit unauthorized check
-    if (data.result === "Unauthorized") {
-      redirectToLogin();
-      return false;
-    }
+  const data = await apiCall({ action: 'list' });
 
-    return true; // Authorized
+  setTableLoading(false);
 
-  } catch (error) {
-    console.error("Auth check failed:", error);
-    redirectToLogin();
+  /* ── null means getAuthToken() already redirected ── */
+  if (data === null) return false;
+
+  /* ── Unauthorized returned by Apps Script ── */
+  if (data.result === 'Unauthorized' || data.error === 'Unauthorized') {
+    redirectToLogin('You are not authorised to access this page. Please contact your administrator.');
     return false;
   }
-}
 
-/* -- REDIRECT HELPER -- */
-function redirectToLogin() {
-  window.location.replace("evoai-login.html");
-}
+  /* ── Any other error ── */
+  if (data.error) {
+    toast(data.error, 'error');
+    /* Still return true so the shell shows — it's a data error, not an auth error */
+    return true;
+  }
 
-/* ── LOAD ── */
-async function loadLeads() {
-  setTableLoading(true);
-  const data = await apiCall({ action: 'list' });
-  setTableLoading(false);
-  if (!data) return;
-  if (data.error) { toast(data.error, 'error'); return; }
   allLeads = Array.isArray(data) ? data : [];
   updateCounts();
   applyFilters();
-  toast('Leads loaded (' + allLeads.length + ')', 'success');
-}
+
+  if (isRefresh) toast('Leads refreshed (' + allLeads.length + ')', 'success');
+
+  return true;
+};
 
 /* ── SEARCH ── */
 function onSearchInput(q) {
@@ -955,7 +956,7 @@ async function submitForm() {
   if (data.error) { toast(data.error, 'error'); return; }
   toast(editingLeadId ? 'Lead updated!' : 'Lead created — ' + data.leadId, 'success');
   closeModal('formOverlay');
-  await loadLeads();
+  await window.loadLeads(true);
 }
 
 /* ── VIEW ── */
