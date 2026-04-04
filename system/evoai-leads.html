@@ -38,6 +38,10 @@
       window.location.replace("evoai-login.html");
       return;
     }
+	
+	// 🔐 WAIT for authorization check
+	const isAuth = await isAuthorizedUser();
+	if (!isAuth) return;
 
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
@@ -722,29 +726,42 @@ async function apiCall(body) {
   }
 }
 
+/* -- CHECK USER AUTHORIZATION -- */
+async function isAuthorizedUser() {
+  try {
+    const data = await apiCall({ action: 'list' });
+
+    // Handle empty or invalid response
+    if (!data || typeof data !== "object") {
+      console.error("Invalid response");
+      redirectToLogin();
+      return false;
+    }
+
+    // Explicit unauthorized check
+    if (data.result === "Unauthorized") {
+      redirectToLogin();
+      return false;
+    }
+
+    return true; // Authorized
+
+  } catch (error) {
+    console.error("Auth check failed:", error);
+    redirectToLogin();
+    return false;
+  }
+}
+
+/* -- REDIRECT HELPER -- */
+function redirectToLogin() {
+  window.location.replace("evoai-login.html");
+}
+
 /* ── LOAD ── */
 async function loadLeads() {
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
-  
-  // Safety check
-  if (!data) {
-    setTableLoading(false);
-    toast('Unable to load leads.', 'error');
-    return;
-  }
-  
-  // Check for unauthorized response
-  if (data.reason === "Unauthorized") {
-      setTableLoading(false);  
-  
-      // Redirect to login with message
-	  toast('Email Account is not registered for Lead Management Access.', 'error');
-	  
-	  window.location.replace("evoai-login.html");
-      return;
-  }
-  
   setTableLoading(false);
   if (!data) return;
   if (data.error) { toast(data.error, 'error'); return; }
