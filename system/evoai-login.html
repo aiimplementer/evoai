@@ -31,14 +31,18 @@
   const gProvider = new GoogleAuthProvider();
 
   /* ── Only redirect if ALREADY signed in — don't hide the page ── */
+  let authChecked = false;
   onAuthStateChanged(auth, user => {
+      if (!authChecked) {
+        authChecked = true;
+	
 	  if (user) {
 		console.log("User already logged in:", user.email);
 		window.location.href = "evoai-leads.html";
 	  } else {
 		console.log("No active session");
 	  }
-
+    }
   });
 
   /* ── EMAIL / PASSWORD SIGN IN ── */
