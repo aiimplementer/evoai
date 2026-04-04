@@ -26,7 +26,11 @@
   const auth = getAuth(app);
 
   /* Block page until auth is confirmed */
+  let authChecked = false;
   onAuthStateChanged(auth, user => {
+    if (authChecked) return;
+		authChecked = true;
+  
     if (!user) {
       /* Not logged in → redirect immediately */
       window.location.replace("evoai-login.html");
