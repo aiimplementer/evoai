@@ -10,12 +10,12 @@
 <script type="module">
   /* ── SAME CONFIG AS LOGIN PAGE ── */
   const firebaseConfig = {
-    apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
-	authDomain: "evoai-authentication.firebaseapp.com",
-	projectId: "evoai-authentication",
-	storageBucket: "evoai-authentication.firebasestorage.app",
-	messagingSenderId: "77079760801",
-	appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
+  apiKey: "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
+  authDomain: "evoai-authentication.firebaseapp.com",
+  projectId: "evoai-authentication",
+  storageBucket: "evoai-authentication.firebasestorage.app",
+  messagingSenderId: "77079760801",
+  appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
 };
 
   import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
@@ -26,6 +26,10 @@
   const auth = getAuth(app);
 
   let authChecked = false;
+
+  // ── CHANGE 1: expose auth globally so apiCall() can reach getIdToken() ──
+  window._firebaseAuth = auth;
+
   onAuthStateChanged(auth, user => {
     if (authChecked) return;
     authChecked = true;
@@ -153,22 +157,20 @@
   .shell {
     display: grid;
     grid-template-columns: 230px 1fr;
-    height: calc(100vh - var(--nav-h)); /* ← exact remaining viewport */
-    overflow: hidden; /* ← prevent shell itself from scrolling */
+    height: calc(100vh - var(--nav-h));
+    overflow: hidden;
   }
 
   /* ── SIDEBAR ── */
   aside {
     border-right: 1px solid var(--border);
     background: var(--surface);
-    /* ── KEY FIX: flexbox column so user bar sticks to bottom ── */
     display: flex;
     flex-direction: column;
-    height: 100%; /* fills the shell row */
-    overflow: hidden; /* clip overflow at aside boundary */
+    height: 100%;
+    overflow: hidden;
   }
 
-  /* Scrollable section — grows to fill, scrolls if needed */
   .aside-scroll {
     flex: 1;
     overflow-y: auto;
@@ -198,9 +200,8 @@
     color: var(--muted); padding: 1px 7px; border-radius: 20px;
   }
 
-  /* ── SIDEBAR USER FOOTER ── fixed at bottom, never overlaps ── */
   .aside-user-footer {
-    flex-shrink: 0; /* never shrinks */
+    flex-shrink: 0;
     padding: 14px 16px;
     border-top: 1px solid var(--border);
     background: var(--surface);
@@ -224,7 +225,7 @@
   /* ── MAIN ── */
   main {
     padding: 30px 34px;
-    overflow-y: auto; /* main scrolls independently */
+    overflow-y: auto;
     height: 100%;
   }
 
@@ -439,8 +440,6 @@
 
   <!-- SIDEBAR -->
   <aside>
-
-    <!-- Scrollable nav area -->
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Pipeline</div>
@@ -493,9 +492,8 @@
           Search
         </div>
       </div>
-    </div><!-- end .aside-scroll -->
+    </div>
 
-    <!-- User footer — naturally pinned to bottom via flex -->
     <div class="aside-user-footer">
       <div class="user-avatar" id="sideUserInitials">—</div>
       <div class="aside-user-text">
@@ -503,8 +501,7 @@
         <div class="aside-user-email" id="sideUserEmail">—</div>
       </div>
     </div>
-
-  </aside><!-- end aside -->
+  </aside>
 
   <!-- MAIN -->
   <main>
@@ -515,7 +512,6 @@
       </div>
     </div>
 
-    <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-label">Total Leads</div>
@@ -539,7 +535,6 @@
       </div>
     </div>
 
-    <!-- Toolbar -->
     <div class="toolbar">
       <div class="search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -565,7 +560,6 @@
       </select>
     </div>
 
-    <!-- Table -->
     <div class="table-wrap">
       <table>
         <thead>
@@ -596,7 +590,7 @@
     </div>
   </main>
 
-</div><!-- end .shell -->
+</div>
 
 <!-- CREATE / EDIT MODAL -->
 <div class="overlay" id="formOverlay">
@@ -682,10 +676,45 @@ let searchTimer   = null;
 let currentPage   = 1;
 const PAGE_SIZE   = 15;
 
-/* ── API ── */
-async function apiCall(body) {
+/* ══════════════════════════════════════════════════════════════
+   CHANGE 2 — getAuthToken()
+   Fetches a fresh Firebase ID token before every API call.
+   forceRefresh=true ensures an expired token is renewed
+   automatically (Firebase tokens last 1 hour).
+══════════════════════════════════════════════════════════════ */
+async function getAuthToken() {
+  const auth = window._firebaseAuth;
+  if (!auth || !auth.currentUser) {
+    toast('Session expired — please sign in again', 'error');
+    setTimeout(() => window.location.replace('evoai-login.html'), 1800);
+    return null;
+  }
   try {
-    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+    return await auth.currentUser.getIdToken(/* forceRefresh= */ true);
+  } catch (e) {
+    console.error('Token error', e);
+    toast('Could not refresh session — signing out', 'error');
+    setTimeout(() => window.location.replace('evoai-login.html'), 1800);
+    return null;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHANGE 3 — apiCall()
+   Now fetches the ID token and adds it to every request body
+   as `idToken`. Your Apps Script can read it from the parsed
+   JSON and call verifyIdToken() if you wire up the Admin SDK,
+   or at minimum check that it is present and non-empty.
+══════════════════════════════════════════════════════════════ */
+async function apiCall(body) {
+  const idToken = await getAuthToken();
+  if (!idToken) return null;                   // user was redirected to login
+
+  try {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, idToken }) // ← token attached here
+    });
     return await res.json();
   } catch(e) {
     toast('Network error — check connection', 'error');
