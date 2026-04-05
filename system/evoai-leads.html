@@ -690,7 +690,7 @@
         <!-- ── INDUSTRY SELECT ── -->
         <div class="field full">
           <label>Industry</label>
-          <select id="f-industry">
+          <select id="f-industry" onchange="document.getElementById('f-industry-val').value = this.value">
             <option value="">Select industry…</option>
             <option>Information Technology (IT &amp; Software)</option>
             <option>SaaS / Cloud</option>
