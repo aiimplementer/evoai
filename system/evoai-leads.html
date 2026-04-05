@@ -1064,8 +1064,7 @@ async function submitForm() {
 
   // Read industry from hidden input (extension-proof) with select as fallback
   
-  const industrySelect = document.getElementById('f-industry').value;
-  
+   
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
     name, email,
@@ -1073,7 +1072,7 @@ async function submitForm() {
     linkedin:  document.getElementById('f-linkedin').value.trim(),
     company:   document.getElementById('f-company').value.trim(),
     jobtitle:  document.getElementById('f-jobtitle').value.trim(),
-    industry:  industrySelect,
+    industry:  document.getElementById('f-industry').value,
     service:   document.getElementById('f-service').value,
     status:    document.getElementById('f-status').value,
     source:    document.getElementById('f-source').value.trim(),
