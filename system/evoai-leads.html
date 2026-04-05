@@ -15,7 +15,6 @@
   storageBucket: "evoai-authentication.firebasestorage.app",
   messagingSenderId: "77079760801",
   appId: "1:77079760801:web:2bbfeffffc38a6265c45e0"
-  
 };
 
   import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
@@ -407,25 +406,16 @@
     display: flex; align-items: center; justify-content: center;
     margin: 0 auto 20px; color: var(--danger);
   }
-  .unauth-title {
-    font-size: 1.1rem; font-weight: 700; color: var(--text);
-    margin-bottom: 10px; letter-spacing: -.02em;
-  }
-  .unauth-msg {
-    font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 24px;
-  }
-  .unauth-progress {
-    height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 18px;
-  }
+  .unauth-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -.02em; }
+  .unauth-msg   { font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 24px; }
+  .unauth-progress { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 18px; }
   .unauth-progress-bar {
     height: 100%; background: var(--danger); border-radius: 2px;
     width: 100%; transform-origin: left;
     animation: drainProgress 3s linear forwards;
   }
   @keyframes drainProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-  .unauth-sub {
-    font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em;
-  }
+  .unauth-sub { font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em; }
   .unauth-redirect-count { color: var(--danger); font-weight: 600; }
 
   /* ── RESPONSIVE ── */
@@ -594,6 +584,7 @@
       </div>
     </div>
 
+    <!-- ── TOOLBAR ── -->
     <div class="toolbar">
       <div class="search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -617,6 +608,32 @@
         <option>Predictive Analytics</option>
         <option>General Enquiry</option>
       </select>
+      <!-- ── INDUSTRY FILTER ── -->
+      <select id="industryFilter" onchange="applyFilters()">
+        <option value="">All industries</option>
+        <option>Information Technology (IT &amp; Software)</option>
+        <option>SaaS / Cloud</option>
+        <option>Banking &amp; Financial Services (BFSI)</option>
+        <option>Insurance</option>
+        <option>Healthcare &amp; Life Sciences</option>
+        <option>Pharmaceuticals &amp; Biotechnology</option>
+        <option>Manufacturing</option>
+        <option>Logistics &amp; Supply Chain</option>
+        <option>Retail &amp; E-commerce</option>
+        <option>FMCG / Consumer Goods</option>
+        <option>Real Estate &amp; Construction</option>
+        <option>Energy &amp; Utilities</option>
+        <option>Telecommunications</option>
+        <option>Education &amp; EdTech</option>
+        <option>Media &amp; Entertainment</option>
+        <option>Travel &amp; Hospitality</option>
+        <option>Automotive</option>
+        <option>Agriculture &amp; AgriTech</option>
+        <option>Consulting &amp; Professional Services</option>
+        <option>Government / Public Sector</option>
+        <option>Non-Profit / NGO</option>
+        <option>Other</option>
+      </select>
     </div>
 
     <div class="table-wrap">
@@ -626,6 +643,7 @@
             <th>Lead ID</th>
             <th>Contact</th>
             <th>Company</th>
+            <th>Industry</th>
             <th>Service</th>
             <th>Status</th>
             <th>Source</th>
@@ -634,7 +652,7 @@
           </tr>
         </thead>
         <tbody id="leadsBody">
-          <tr><td colspan="8">
+          <tr><td colspan="9">
             <div class="empty-state">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <p>Loading leads…</p>
@@ -665,10 +683,40 @@
         <div class="field"><label>Email *</label>    <input type="email" id="f-email"    placeholder="jane@company.com"/></div>
         <div class="field"><label>Phone</label>      <input type="tel"   id="f-phone"    placeholder="+1 234 567 8900"/></div>
         <div class="field"><label>LinkedIn</label>   <input type="url"   id="f-linkedin" placeholder="https://linkedin.com/in/…"/></div>
+
         <div class="form-section-title">Company Details</div>
         <div class="field"><label>Company</label>   <input type="text" id="f-company"  placeholder="Acme Corp"/></div>
         <div class="field"><label>Job Title</label> <input type="text" id="f-jobtitle" placeholder="Head of Operations"/></div>
-        <div class="field full"><label>Industry</label><input type="text" id="f-industry" placeholder="Logistics / Finance / SaaS…"/></div>
+        <!-- ── INDUSTRY SELECT ── -->
+        <div class="field full">
+          <label>Industry</label>
+          <select id="f-industry">
+            <option value="">Select industry…</option>
+            <option>Information Technology (IT &amp; Software)</option>
+            <option>SaaS / Cloud</option>
+            <option>Banking &amp; Financial Services (BFSI)</option>
+            <option>Insurance</option>
+            <option>Healthcare &amp; Life Sciences</option>
+            <option>Pharmaceuticals &amp; Biotechnology</option>
+            <option>Manufacturing</option>
+            <option>Logistics &amp; Supply Chain</option>
+            <option>Retail &amp; E-commerce</option>
+            <option>FMCG / Consumer Goods</option>
+            <option>Real Estate &amp; Construction</option>
+            <option>Energy &amp; Utilities</option>
+            <option>Telecommunications</option>
+            <option>Education &amp; EdTech</option>
+            <option>Media &amp; Entertainment</option>
+            <option>Travel &amp; Hospitality</option>
+            <option>Automotive</option>
+            <option>Agriculture &amp; AgriTech</option>
+            <option>Consulting &amp; Professional Services</option>
+            <option>Government / Public Sector</option>
+            <option>Non-Profit / NGO</option>
+            <option>Other</option>
+          </select>
+        </div>
+
         <div class="form-section-title">Lead Details</div>
         <div class="field">
           <label>Service</label>
@@ -688,10 +736,10 @@
             <option>Negotiation</option><option>Won</option><option>Lost</option>
           </select>
         </div>
-        <div class="field"><label>Source</label>   <input type="text" id="f-source" placeholder="Website / LinkedIn / Referral…"/></div>
+        <div class="field"><label>Source</label>    <input type="text" id="f-source" placeholder="Website / LinkedIn / Referral…"/></div>
         <div class="field"><label>Page / URL</label><input type="text" id="f-page"   placeholder="/services"/></div>
-        <div class="field full"><label>Message / Enquiry</label>  <textarea id="f-message"  placeholder="Describe the enquiry…"></textarea></div>
-        <div class="field full"><label>Internal Comments</label>  <textarea id="f-comments" placeholder="Internal notes for the team…"></textarea></div>
+        <div class="field full"><label>Message / Enquiry</label> <textarea id="f-message"  placeholder="Describe the enquiry…"></textarea></div>
+        <div class="field full"><label>Internal Comments</label> <textarea id="f-comments" placeholder="Internal notes for the team…"></textarea></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -735,12 +783,7 @@ let searchTimer   = null;
 let currentPage   = 1;
 const PAGE_SIZE   = 15;
 
-/* ══════════════════════════════════════════════════════════════
-   getAuthToken()
-   Fetches a fresh Firebase ID token before every API call.
-   forceRefresh=true ensures an expired token is renewed
-   automatically (Firebase tokens last 1 hour).
-══════════════════════════════════════════════════════════════ */
+/* ── getAuthToken ── */
 async function getAuthToken() {
   const auth = window._firebaseAuth;
   if (!auth || !auth.currentUser) {
@@ -749,7 +792,7 @@ async function getAuthToken() {
     return null;
   }
   try {
-    return await auth.currentUser.getIdToken(/* forceRefresh= */ true);
+    return await auth.currentUser.getIdToken(true);
   } catch (e) {
     console.error('Token error', e);
     toast('Could not refresh session — signing out', 'error');
@@ -758,40 +801,22 @@ async function getAuthToken() {
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   handleUnauthorized()
-   Centralised handler for any 401/403 / Unauthorized response.
-   Shows a branded overlay with a live countdown, then redirects.
-   No native alert() — fully in-UI, non-blocking.
-══════════════════════════════════════════════════════════════ */
+/* ── handleUnauthorized ── */
 function handleUnauthorized() {
-  // Show the dedicated overlay
   document.getElementById('unauthOverlay').classList.add('open');
-
-  // Live countdown
   let secs = 3;
   const countEl = document.getElementById('unauthCountdown');
   const tick = setInterval(() => {
     secs--;
     if (countEl) countEl.textContent = secs;
-    if (secs <= 0) {
-      clearInterval(tick);
-      window.location.replace('evoai-login.html');
-    }
+    if (secs <= 0) { clearInterval(tick); window.location.replace('evoai-login.html'); }
   }, 1000);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   apiCall()
-   Attaches the Firebase ID token to every request.
-   Handles both HTTP-level (401/403) and app-level
-   (data.reason / data.error / data.status / data.code)
-   unauthorized signals in one place — callers never need
-   to check for auth errors themselves.
-══════════════════════════════════════════════════════════════ */
+/* ── apiCall ── */
 async function apiCall(body) {
   const idToken = await getAuthToken();
-  if (!idToken) return null; // user already redirected to login
+  if (!idToken) return null;
 
   let res;
   try {
@@ -804,31 +829,19 @@ async function apiCall(body) {
     return null;
   }
 
-  // HTTP-level auth failures (Apps Script sometimes surfaces these)
-  if (res.status === 401 || res.status === 403) {
-    handleUnauthorized();
-    return null;
-  }
+  if (res.status === 401 || res.status === 403) { handleUnauthorized(); return null; }
 
   let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    toast('Unexpected response from server', 'error');
-    return null;
-  }
+  try { data = await res.json(); }
+  catch (e) { toast('Unexpected response from server', 'error'); return null; }
 
-  // App-level auth failures — cover every shape the API might return
   const isUnauth =
     data?.reason === 'Unauthorized' ||
     data?.error  === 'Unauthorized' ||
     data?.status === 401            ||
     data?.code   === 'UNAUTHORIZED';
 
-  if (isUnauth) {
-    handleUnauthorized();
-    return null;
-  }
+  if (isUnauth) { handleUnauthorized(); return null; }
 
   return data;
 }
@@ -838,11 +851,8 @@ async function loadLeads() {
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
   setTableLoading(false);
-
-  // null means apiCall already handled the error (auth or network)
   if (!data) return;
   if (data.error) { toast(data.error, 'error'); return; }
-
   allLeads = Array.isArray(data) ? data : [];
   updateCounts();
   applyFilters();
@@ -873,22 +883,28 @@ function filterStatus(status, el) {
   document.getElementById('statusFilter').value = '';
   applyFilters();
 }
+
 function applyFilters() {
-  const statusDrop  = document.getElementById('statusFilter').value;
-  const serviceDrop = document.getElementById('serviceFilter').value;
-  const q           = document.getElementById('searchInput').value.trim().toLowerCase();
+  const statusDrop   = document.getElementById('statusFilter').value;
+  const serviceDrop  = document.getElementById('serviceFilter').value;
+  const industryDrop = document.getElementById('industryFilter').value;
+  const q            = document.getElementById('searchInput').value.trim().toLowerCase();
+
   if (statusDrop) {
     currentFilter = 'ALL';
     document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
     const allItem = document.querySelector('.aside-item[onclick*="ALL"]');
     if (allItem) allItem.classList.add('active');
   }
+
   const effectiveStatus = statusDrop || (currentFilter !== 'ALL' ? currentFilter : '');
+
   filteredLeads = allLeads.filter(l => {
-    const matchStatus  = !effectiveStatus || l.status === effectiveStatus;
-    const matchService = !serviceDrop     || l.service === serviceDrop;
-    const matchQ       = !q              || JSON.stringify(l).toLowerCase().includes(q);
-    return matchStatus && matchService && matchQ;
+    const matchStatus   = !effectiveStatus  || l.status   === effectiveStatus;
+    const matchService  = !serviceDrop      || l.service  === serviceDrop;
+    const matchIndustry = !industryDrop     || l.industry === industryDrop;
+    const matchQ        = !q               || JSON.stringify(l).toLowerCase().includes(q);
+    return matchStatus && matchService && matchIndustry && matchQ;
   });
   currentPage = 1;
   renderTable();
@@ -898,18 +914,21 @@ function applyFilters() {
 function renderTable() {
   const tbody      = document.getElementById('leadsBody');
   const pagination = document.getElementById('pagination');
+
   if (!filteredLeads.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div></td></tr>`;
     pagination.style.display = 'none';
     return;
   }
+
   const total = filteredLeads.length;
   const pages = Math.ceil(total / PAGE_SIZE);
   if (currentPage > pages) currentPage = pages;
   const start = (currentPage - 1) * PAGE_SIZE;
   const slice = filteredLeads.slice(start, start + PAGE_SIZE);
+
   tbody.innerHTML = slice.map(l => `
     <tr>
       <td><span class="lead-id">${esc(l.leadId||'—')}</span></td>
@@ -922,6 +941,7 @@ function renderTable() {
         <div style="font-weight:600;font-size:.81rem">${esc(l.company||'—')}</div>
         ${l.jobtitle ? `<div class="lead-sub">${esc(l.jobtitle)}</div>` : ''}
       </td>
+      <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry||'—')}</td>
       <td style="font-size:.78rem">${esc(l.service||'—')}</td>
       <td>${statusBadge(l.status)}</td>
       <td style="font-size:.74rem;color:var(--muted)">${esc(l.source||'—')}</td>
@@ -937,6 +957,7 @@ function renderTable() {
         </div>
       </td>
     </tr>`).join('');
+
   if (total > PAGE_SIZE) {
     pagination.style.display = 'flex';
     document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
@@ -1006,43 +1027,41 @@ async function submitForm() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
   const phone = document.getElementById('f-phone').value.trim();
-  
+
   if (!name)  { toast('Name is required', 'error'); return; }
   if (!email) { toast('Email is required', 'error'); return; }
-  
+
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    toast('Enter a valid email address', 'error');
-    return;
-  }  
-  
+  if (!emailRegex.test(email)) { toast('Enter a valid email address', 'error'); return; }
+
   const cleanPhone = phone.replace(/\D/g, '');
   if (phone && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-    toast('Enter a valid phone number', 'error');
-    return;
+    toast('Enter a valid phone number', 'error'); return;
   }
 
   const btn = document.getElementById('formSubmitBtn');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
+
   const payload = {
-    action:   editingLeadId ? 'update' : 'add',
+    action:    editingLeadId ? 'update' : 'add',
     name, email,
-    phone:    document.getElementById('f-phone').value.trim(),
-    linkedin: document.getElementById('f-linkedin').value.trim(),
-    company:  document.getElementById('f-company').value.trim(),
-    jobtitle: document.getElementById('f-jobtitle').value.trim(),
-    industry: document.getElementById('f-industry').value.trim(),
-    service:  document.getElementById('f-service').value.trim(),
-    status:   document.getElementById('f-status').value.trim(),
-    source:   document.getElementById('f-source').value.trim(),
-    page:     document.getElementById('f-page').value,
-    message:  document.getElementById('f-message').value.trim(),
-    comments: document.getElementById('f-comments').value.trim(),
+    phone:     document.getElementById('f-phone').value.trim(),
+    linkedin:  document.getElementById('f-linkedin').value.trim(),
+    company:   document.getElementById('f-company').value.trim(),
+    jobtitle:  document.getElementById('f-jobtitle').value.trim(),
+    industry:  document.getElementById('f-industry').value,
+    service:   document.getElementById('f-service').value,
+    status:    document.getElementById('f-status').value,
+    source:    document.getElementById('f-source').value.trim(),
+    page:      document.getElementById('f-page').value,
+    message:   document.getElementById('f-message').value.trim(),
+    comments:  document.getElementById('f-comments').value.trim(),
     useragent: navigator.userAgent
   };
-  
+
   if (editingLeadId) payload.leadId = editingLeadId;
+
   const data = await apiCall(payload);
   btn.disabled = false;
   btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
@@ -1059,6 +1078,7 @@ function viewLead(leadId) {
   if (!lead) { toast('Lead not found', 'error'); return; }
   document.getElementById('viewLeadId').textContent = lead.leadId;
   document.getElementById('viewEditBtn').onclick = () => editLead(leadId);
+
   const section = (title, rows) => {
     const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
     if (!filled.length) return '';
@@ -1075,11 +1095,13 @@ function viewLead(leadId) {
         </div>`).join('')}
     </div>`;
   };
+
   document.getElementById('viewBody').innerHTML =
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
     section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
     section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
+
   document.getElementById('viewOverlay').classList.add('open');
 }
 
@@ -1103,7 +1125,7 @@ function esc(s) {
 }
 function setTableLoading(on) {
   if (on) document.getElementById('leadsBody').innerHTML = `
-    <tr><td colspan="8"><div class="empty-state">
+    <tr><td colspan="9"><div class="empty-state">
       <div class="spinner" style="margin:0 auto 12px"></div>
       <p>Loading leads…</p>
     </div></td></tr>`;
