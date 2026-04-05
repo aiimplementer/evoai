@@ -773,7 +773,7 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw4MqeuQFWMesN0jPltzD7LEoujpP93bgOwxSkhYetPH6jcclCxlKGZ9vXvrMDfcffnsQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw2VCdhcA2j4zTQjMLWOXGNCoA74H0n2KP8Vpy5J8y0AKu11SSWFRorYYfhqnDKHwNYmQ/exec';
 
 let allLeads      = [];
 let filteredLeads = [];
@@ -1010,14 +1010,29 @@ function openCreate() {
 function editLead(leadId) {
   const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
+
   editingLeadId = leadId;
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
+
   ['name','email','phone','linkedin','company','jobtitle',
-   'industry','service','status','source','page','message','comments'].forEach(f => {
+   'service','status','source','page','message','comments'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if (el) el.value = lead[f] || '';
   });
+
+  // Industry handled separately
+  const industryEl  = document.getElementById('f-industry');
+  const industryVal = (lead.industry || '').trim();
+  industryEl.value  = '';
+
+  const matched = Array.from(industryEl.options).find(opt =>
+    opt.value.trim() === industryVal || opt.text.trim() === industryVal
+  );
+  if (matched) industryEl.value = matched.value;
+
+  console.log('Industry set to:', industryEl.value, '| wanted:', industryVal);
+
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
