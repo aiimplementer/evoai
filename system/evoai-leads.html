@@ -62,8 +62,6 @@
       console.error("Sign out error", e);
     }
   };
-  
-  let editingIndustry = '';
 </script>
 
 <style>
@@ -692,7 +690,7 @@
         <!-- ── INDUSTRY SELECT ── -->
         <div class="field full">
           <label>Industry</label>
-          <select id="f-industry" onchange="document.getElementById('f-industry-val').value = this.value">
+          <select id="f-industry">
             <option value="">Select industry…</option>
             <option>Information Technology (IT &amp; Software)</option>
             <option>SaaS / Cloud</option>
@@ -887,10 +885,6 @@ function filterStatus(status, el) {
   applyFilters();
 }
 
-document.getElementById('f-industry').addEventListener('change', function() {
-  editingIndustry = this.value;
-});
-
 function applyFilters() {
   const statusDrop   = document.getElementById('statusFilter').value;
   const serviceDrop  = document.getElementById('serviceFilter').value;
@@ -1003,8 +997,6 @@ function updateCounts() {
 /* ── CREATE ── */
 function openCreate() {
   editingLeadId = null;
-  editingIndustry = '';
-  
   document.getElementById('formModalTitle').textContent = 'New Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
   ['name','email','phone','linkedin','company','jobtitle','industry',
@@ -1042,7 +1034,6 @@ function editLead(leadId) {
   if (matched) industryEl.value = matched.value;
   
   document.getElementById('f-industry-val').value = lead.industry || '';
-  editingIndustry = lead.industry || '';
   
 
   console.log('Industry set to:', industryEl.value, '| wanted:', industryVal);
@@ -1076,7 +1067,6 @@ async function submitForm() {
   const industryHidden = document.getElementById('f-industry-val').value;
   const industrySelect = document.getElementById('f-industry').value;
   const industryFinal  = industrySelect || editingIndustry;
-  const industryFinal = editingIndustry || document.getElementById('f-industry').value;
 
   console.log('SUBMIT industry — hidden:', JSON.stringify(industryHidden), '| select:', JSON.stringify(industrySelect), '| final:', JSON.stringify(industryFinal));
 
@@ -1177,8 +1167,6 @@ function toast(msg, type='success') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
-
-
 </script>
 </body>
 </html>
