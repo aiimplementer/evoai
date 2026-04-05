@@ -1010,24 +1010,28 @@ function openCreate() {
 function editLead(leadId) {
   const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
+
   editingLeadId = leadId;
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
+
+  // Set all plain input fields
   ['name','email','phone','linkedin','company','jobtitle',
-	 'industry','service','status','source','page','message','comments'].forEach(f => {
-	  const el = document.getElementById('f-'+f);
-	  if (!el) return;
-	  el.value = lead[f] || '';
-	  // Force-match select options by comparing trimmed text
-	  if (el.tagName === 'SELECT' && el.value !== (lead[f] || '')) {
-		Array.from(el.options).forEach(opt => {
-		  if (opt.text.trim() === (lead[f] || '').trim()) {
-			el.value = opt.value;
-		  }
-		});
-	  }
+   'service','status','source','page','message','comments'].forEach(f => {
+    const el = document.getElementById('f-'+f);
+    if (el) el.value = lead[f] || '';
   });
-	
+
+  // Handle industry separately — match by value or text to handle any encoding
+  const industryEl  = document.getElementById('f-industry');
+  const industryVal = (lead.industry || '').trim();
+  industryEl.value  = '';
+  Array.from(industryEl.options).forEach(opt => {
+    if (opt.value.trim() === industryVal || opt.text.trim() === industryVal) {
+      industryEl.value = opt.value;
+    }
+  });
+
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
