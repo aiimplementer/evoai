@@ -1014,10 +1014,20 @@ function editLead(leadId) {
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
   ['name','email','phone','linkedin','company','jobtitle',
-   'industry','service','status','source','page','message','comments'].forEach(f => {
-    const el = document.getElementById('f-'+f);
-    if (el) el.value = lead[f] || '';
+	 'industry','service','status','source','page','message','comments'].forEach(f => {
+	  const el = document.getElementById('f-'+f);
+	  if (!el) return;
+	  el.value = lead[f] || '';
+	  // Force-match select options by comparing trimmed text
+	  if (el.tagName === 'SELECT' && el.value !== (lead[f] || '')) {
+		Array.from(el.options).forEach(opt => {
+		  if (opt.text.trim() === (lead[f] || '').trim()) {
+			el.value = opt.value;
+		  }
+		});
+	  }
   });
+	
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
