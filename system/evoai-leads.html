@@ -1025,7 +1025,12 @@ function editLead(leadId) {
 
   // Industry handled separately
   const industryEl  = document.getElementById('f-industry');
-  const industryVal = (lead.industry || '').trim();
+  const normalize = s => (s || '')
+  .replace(/&amp;/g, '&')
+  .trim();
+
+	const industryVal = normalize(lead.industry);
+
   industryEl.value  = '';
 
   const matched = Array.from(industryEl.options).find(opt =>
@@ -1066,7 +1071,9 @@ async function submitForm() {
   // Read industry from hidden input (extension-proof) with select as fallback
   const industryHidden = document.getElementById('f-industry-val').value;
   const industrySelect = document.getElementById('f-industry').value;
-  const industryFinal  = industrySelect || editingIndustry;
+  const industryFinal = (industrySelect || industryHidden)
+  .replace(/&amp;/g, '&')
+  .trim();
 
   console.log('SUBMIT industry — hidden:', JSON.stringify(industryHidden), '| select:', JSON.stringify(industrySelect), '| final:', JSON.stringify(industryFinal));
 
