@@ -913,6 +913,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:2.5rem
           <label for="message">Message</label>
           <textarea id="message" rows="4" placeholder="Tell us about your project, timeline, and goals..." required></textarea>
         </div>
+		<input type="text" name="website" id="website" autocomplete="off" style="display:none;">
         <button type="submit" class="form-submit" id="submitBtn"><span>Send Message</span><span>&#8594;</span></button>
         <p class="form-note">We reply at the earliest. No spam, ever.</p>
         <div class="form-msg success" id="successMsg">&#10003; &nbsp;Message sent! We'll get back to you as soon as possible.</div>
@@ -1057,6 +1058,14 @@ document.querySelectorAll('.reveal').forEach(function(el){obs.observe(el)});
 function handleSubmit(e){
 
   e.preventDefault();
+  
+  // Honeypot check
+  var honeypot = document.getElementById("website").value;
+
+  if (honeypot !== "") {
+    console.log("Spam blocked");
+    return;
+  }
 
   var btn = document.getElementById('submitBtn');
   btn.innerHTML = '<span>Sending...</span>';
@@ -1094,7 +1103,7 @@ function handleSubmit(e){
 
           /* Send lead to Google Sheet */
 
-          fetch("https://script.google.com/macros/s/AKfycbz8vdch2yiwnDF8btdt3IAy9u2Mp-UuH7B46D5gDNjsY2tWq94G6wbhAkxvN5E2iBUeqA/exec", {
+          fetch("https://script.google.com/macros/s/AKfycbwrFN6w9hG3vn9e9IOvL7kwoza9BYrZz_8Y6dzGUguOVHi7sF3E5uKmxHcapYqXKP4x8w/exec", {
               method: "POST",
 			  mode: "no-cors",
               headers: {
@@ -1112,7 +1121,8 @@ function handleSubmit(e){
                   page: window.location.href,
                   useragent: navigator.userAgent,
 				  action: "add",
-				  secret: "websiteform"
+				  secret: "websiteform",
+				  website: data.website
               })
           }).catch(err => console.log("Sheet logging failed:", err));
 
