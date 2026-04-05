@@ -533,6 +533,46 @@
     opacity: .5;
   }
 
+  /* ── DRAG AND DROP ── */
+  .board-card[draggable="true"] { cursor: grab; }
+  .board-card[draggable="true"]:active { cursor: grabbing; }
+  .board-card.dragging {
+    opacity: .35;
+    transform: scale(.97);
+    border-color: var(--accent) !important;
+  }
+  .board-card.drag-ghost {
+    opacity: .55;
+    border: 1px dashed var(--accent);
+    background: rgba(0,229,160,.06);
+  }
+  .board-col-body.drag-over {
+    background: rgba(0,229,160,.04);
+    outline: 2px dashed rgba(0,229,160,.3);
+    outline-offset: -4px;
+    border-radius: 6px;
+  }
+  .board-col-body.drag-over .board-empty {
+    color: var(--accent);
+    opacity: .7;
+  }
+  .drop-indicator {
+    height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    margin: 2px 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .1s;
+  }
+  .drop-indicator.visible { opacity: 1; }
+  .board-saving {
+    position: absolute; top: 6px; right: 8px;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .6s linear infinite;
+  }
+
   /* ── LIST VIEW ── */
   #listView {
     display: none;
@@ -1259,6 +1299,12 @@ function renderTable() {
   }
 }
 
+/* ── DRAG AND DROP STATE ── */
+let dragLeadId   = null;
+let dragFromStage = null;
+let dragOverBody  = null;
+let dragIndicator = null;
+
 /* ── RENDER BOARD ── */
 function renderBoard() {
   const container = document.getElementById('boardScroll');
@@ -1274,42 +1320,182 @@ function renderBoard() {
     head.className = 'board-col-head';
     head.innerHTML = `
       <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
-      <span class="board-col-count">${stageLeads.length}</span>`;
+      <span class="board-col-count" id="bcnt-${stage.key.replace(/ /g,'-')}">${stageLeads.length}</span>`;
     col.appendChild(head);
 
     const body = document.createElement('div');
     body.className = 'board-col-body';
+    body.dataset.stage = stage.key;
+
+    /* ── drop zone events ── */
+    body.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragOverBody && dragOverBody !== body) dragOverBody.classList.remove('drag-over');
+      dragOverBody = body;
+      body.classList.add('drag-over');
+
+      // Move drop indicator
+      const afterEl = getDragAfterElement(body, e.clientY);
+      if (dragIndicator) {
+        dragIndicator.classList.add('visible');
+        if (afterEl) body.insertBefore(dragIndicator, afterEl);
+        else body.appendChild(dragIndicator);
+      }
+    });
+
+    body.addEventListener('dragleave', e => {
+      if (!body.contains(e.relatedTarget)) {
+        body.classList.remove('drag-over');
+        if (dragIndicator) dragIndicator.classList.remove('visible');
+      }
+    });
+
+    body.addEventListener('drop', async e => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+      if (dragIndicator) { dragIndicator.classList.remove('visible'); }
+
+      const newStage = body.dataset.stage;
+      if (!dragLeadId || newStage === dragFromStage) return;
+
+      await moveLead(dragLeadId, newStage);
+    });
 
     if (!stageLeads.length) {
-      body.innerHTML = `<div class="board-empty">No leads</div>`;
+      body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
     } else {
       stageLeads.forEach(l => {
-        const card = document.createElement('div');
-        card.className = 'board-card';
-        card.onclick = () => viewLead(l.leadId);
-
-        // Initials avatar
-        const initials = (l.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
-
-        card.innerHTML = `
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-            <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
-            <div style="min-width:0;">
-              <div class="board-card-name">${esc(l.name||'—')}</div>
-            </div>
-          </div>
-          <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle ? ' · ' + esc(l.jobtitle) : ''}</div>
-          <div class="board-card-footer">
-            <span class="board-card-service">${esc(l.service||'—')}</span>
-            <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
-          </div>`;
-        body.appendChild(card);
+        body.appendChild(createBoardCard(l));
       });
     }
 
     col.appendChild(body);
     container.appendChild(col);
   });
+}
+
+function createBoardCard(l) {
+  const card = document.createElement('div');
+  card.className = 'board-card';
+  card.draggable = true;
+  card.dataset.leadId = l.leadId;
+  card.style.position = 'relative';
+
+  const initials = (l.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
+      <div style="min-width:0;flex:1;">
+        <div class="board-card-name">${esc(l.name||'—')}</div>
+      </div>
+      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;cursor:grab;" title="Drag to move">
+        <svg viewBox="0 0 14 14" fill="currentColor" width="14" height="14"><circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg>
+      </div>
+    </div>
+    <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle ? ' · ' + esc(l.jobtitle) : ''}</div>
+    <div class="board-card-footer">
+      <span class="board-card-service">${esc(l.service||'—')}</span>
+      <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
+    </div>`;
+
+  /* click = view (only if not dragging) */
+  let didDrag = false;
+  card.addEventListener('dragstart', e => {
+    didDrag = true;
+    dragLeadId    = l.leadId;
+    dragFromStage = l.status;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', l.leadId);
+
+    // create indicator element once
+    dragIndicator = document.createElement('div');
+    dragIndicator.className = 'drop-indicator';
+
+    // ghost card for drag image
+    setTimeout(() => card.classList.add('drag-ghost'), 0);
+  });
+
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging', 'drag-ghost');
+    document.querySelectorAll('.board-col-body').forEach(b => b.classList.remove('drag-over'));
+    if (dragIndicator && dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
+    dragIndicator  = null;
+    dragOverBody   = null;
+    setTimeout(() => { didDrag = false; }, 0);
+  });
+
+  card.addEventListener('click', () => {
+    if (!didDrag) viewLead(l.leadId);
+  });
+
+  return card;
+}
+
+/* helper: find element to insert before based on mouse Y */
+function getDragAfterElement(container, y) {
+  const draggables = [...container.querySelectorAll('.board-card:not(.dragging)')];
+  return draggables.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+/* ── MOVE LEAD (API save) ── */
+async function moveLead(leadId, newStatus) {
+  // Optimistic update in memory
+  const lead = allLeads.find(l => l.leadId === leadId);
+  if (!lead) return;
+  const oldStatus = lead.status;
+  lead.status = newStatus;
+
+  // Also update filteredLeads
+  const fLead = filteredLeads.find(l => l.leadId === leadId);
+  if (fLead) fLead.status = newStatus;
+
+  // Re-render board immediately (optimistic)
+  renderBoard();
+  updateCounts();
+
+  toast(`Moving ${lead.name} → ${newStatus}…`, 'success');
+
+  // Build minimal update payload (all required fields from lead)
+  const payload = {
+    action:   'update',
+    leadId,
+    name:     lead.name     || '',
+    email:    lead.email    || '',
+    phone:    lead.phone    || '',
+    linkedin: lead.linkedin || '',
+    company:  lead.company  || '',
+    jobtitle: lead.jobtitle || '',
+    industry: lead.industry || '',
+    service:  lead.service  || '',
+    status:   newStatus,
+    source:   lead.source   || '',
+    page:     lead.page     || '',
+    message:  lead.message  || '',
+    comments: lead.comments || '',
+    useragent: navigator.userAgent
+  };
+
+  const data = await apiCall(payload);
+
+  if (!data || data.error) {
+    // Rollback on failure
+    lead.status = oldStatus;
+    if (fLead) fLead.status = oldStatus;
+    renderBoard();
+    updateCounts();
+    toast('Failed to save — change rolled back', 'error');
+    return;
+  }
+
+  toast(`${lead.name} moved to ${newStatus}`, 'success');
 }
 
 /* ── RENDER LIST ── */
