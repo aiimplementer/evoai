@@ -419,6 +419,209 @@
   .unauth-sub { font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em; }
   .unauth-redirect-count { color: var(--danger); font-weight: 600; }
 
+  /* ── BOARD VIEW ── */
+  #boardView {
+    display: none;
+    overflow-x: auto;
+    padding-bottom: 16px;
+  }
+  .board-scroll {
+    display: flex;
+    gap: 12px;
+    min-width: max-content;
+  }
+  .board-col {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 320px);
+  }
+  .board-col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .board-col-label {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .board-col-count {
+    font-family: var(--mono);
+    font-size: .65rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 1px 7px;
+    border-radius: 20px;
+  }
+  .board-col-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .board-col-body::-webkit-scrollbar { width: 3px; }
+  .board-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .board-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 12px;
+    cursor: pointer;
+    transition: border-color .15s, transform .12s;
+  }
+  .board-card:hover {
+    border-color: rgba(0,229,160,.35);
+    transform: translateY(-1px);
+  }
+  .board-card-name {
+    font-size: .81rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .board-card-company {
+    font-size: .72rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 8px;
+  }
+  .board-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+  .board-card-service {
+    font-size: .64rem;
+    color: var(--muted);
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    max-width: 130px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .board-card-date {
+    font-family: var(--mono);
+    font-size: .62rem;
+    color: var(--muted);
+  }
+  .board-empty {
+    text-align: center;
+    padding: 24px 12px;
+    color: var(--muted);
+    font-size: .76rem;
+    opacity: .5;
+  }
+
+  /* ── LIST VIEW ── */
+  #listView {
+    display: none;
+  }
+  .list-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .list-item {
+    display: grid;
+    grid-template-columns: 180px 1fr auto auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(30,45,66,.6);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item:hover { background: rgba(255,255,255,.025); }
+  .list-item-contact { min-width: 0; }
+  .list-item-name {
+    font-size: .84rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-item-email {
+    font-size: .71rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .list-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .list-item-company {
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-item-service {
+    font-size: .72rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-item-date {
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .list-item-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .list-header {
+    display: grid;
+    grid-template-columns: 180px 1fr auto auto auto;
+    gap: 16px;
+    padding: 9px 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .list-header span {
+    font-size: .64rem;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 960px) {
     .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
@@ -428,6 +631,9 @@
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .full, .form-section-title { grid-column: 1; }
     .user-info { display: none; }
+    .list-item { grid-template-columns: 1fr auto; }
+    .list-item-meta, .list-item-date { display: none; }
+    .list-header { display: none; }
   }
 </style>
 </head>
@@ -555,29 +761,30 @@
 
   <!-- MAIN -->
   <main>
+    <!-- PAGE HEADER -->
     <div class="page-header">
-	  <div>
-		<div class="page-title">Lead Management</div>
-		<div class="page-sub">Track, manage and convert your pipeline leads.</div>
-	  </div>
-	  <div style="display:flex;align-items:center;gap:8px;">
-		<div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;gap:2px;" id="viewToggle">
-		  <button onclick="setView('table',this)" style="background:var(--surface);border:none;border-radius:5px;padding:6px 12px;color:var(--accent);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>Table
-		  </button>
-		  <button onclick="setView('board',this)" style="background:transparent;border:none;border-radius:5px;padding:6px 12px;color:var(--muted);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="18" rx="1"/><rect x="17" y="3" width="5" height="18" rx="1"/></svg>Board
-		  </button>
-		  <button onclick="setView('list',this)" style="background:transparent;border:none;border-radius:5px;padding:6px 12px;color:var(--muted);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>List
-		  </button>
-		</div>
-		<button onclick="exportCSV()" class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
-		  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-		  Export
-		</button>
-	  </div>
-	</div>
+      <div>
+        <div class="page-title">Lead Management</div>
+        <div class="page-sub">Track, manage and convert your pipeline leads.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;gap:2px;" id="viewToggle">
+          <button onclick="setView('table',this)" id="btn-view-table" style="background:var(--surface);border:none;border-radius:5px;padding:6px 12px;color:var(--accent);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>Table
+          </button>
+          <button onclick="setView('board',this)" id="btn-view-board" style="background:transparent;border:none;border-radius:5px;padding:6px 12px;color:var(--muted);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="18" rx="1"/><rect x="17" y="3" width="5" height="18" rx="1"/></svg>Board
+          </button>
+          <button onclick="setView('list',this)" id="btn-view-list" style="background:transparent;border:none;border-radius:5px;padding:6px 12px;color:var(--muted);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>List
+          </button>
+        </div>
+        <button onclick="exportCSV()" class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
 
     <div class="stats-row">
       <div class="stat-card">
@@ -626,7 +833,6 @@
         <option>Predictive Analytics</option>
         <option>General Enquiry</option>
       </select>
-      <!-- ── INDUSTRY FILTER ── -->
       <select id="industryFilter" onchange="applyFilters()">
         <option value="">All industries</option>
         <option>Information Technology (IT &amp; Software)</option>
@@ -654,35 +860,62 @@
       </select>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Lead ID</th>
-            <th>Contact</th>
-            <th>Company</th>
-            <th>Industry</th>
-            <th>Service</th>
-            <th>Status</th>
-            <th>Source</th>
-            <th>Date</th>
-            <th style="width:80px;">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="leadsBody">
-          <tr><td colspan="9">
-            <div class="empty-state">
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <p>Loading leads…</p>
-            </div>
-          </td></tr>
-        </tbody>
-      </table>
-      <div class="pagination" id="pagination" style="display:none">
-        <span id="pageInfo"></span>
-        <div class="page-btns" id="pageBtns"></div>
+    <!-- TABLE VIEW -->
+    <div id="tableView">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Lead ID</th>
+              <th>Contact</th>
+              <th>Company</th>
+              <th>Industry</th>
+              <th>Service</th>
+              <th>Status</th>
+              <th>Source</th>
+              <th>Date</th>
+              <th style="width:80px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="leadsBody">
+            <tr><td colspan="9">
+              <div class="empty-state">
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <p>Loading leads…</p>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+        <div class="pagination" id="pagination" style="display:none">
+          <span id="pageInfo"></span>
+          <div class="page-btns" id="pageBtns"></div>
+        </div>
       </div>
     </div>
+
+    <!-- BOARD VIEW -->
+    <div id="boardView">
+      <div class="board-scroll" id="boardScroll"></div>
+    </div>
+
+    <!-- LIST VIEW -->
+    <div id="listView">
+      <div class="list-wrap">
+        <div class="list-header">
+          <span>Contact</span>
+          <span>Company / Service</span>
+          <span>Status</span>
+          <span>Date</span>
+          <span>Actions</span>
+        </div>
+        <div id="listBody"></div>
+      </div>
+      <div class="pagination" id="listPagination" style="display:none">
+        <span id="listPageInfo"></span>
+        <div class="page-btns" id="listPageBtns"></div>
+      </div>
+    </div>
+
   </main>
 
 </div>
@@ -705,7 +938,6 @@
         <div class="form-section-title">Company Details</div>
         <div class="field"><label>Company</label>   <input type="text" id="f-company"  placeholder="Acme Corp"/></div>
         <div class="field"><label>Job Title</label> <input type="text" id="f-jobtitle" placeholder="Head of Operations"/></div>
-        <!-- ── INDUSTRY SELECT ── -->
         <div class="field full">
           <label>Industry</label>
           <select id="f-industry">
@@ -796,10 +1028,24 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwrFN6w9hG3vn9e9IOvL
 let allLeads      = [];
 let filteredLeads = [];
 let currentFilter = 'ALL';
+let currentView   = 'table';
 let editingLeadId = null;
 let searchTimer   = null;
 let currentPage   = 1;
+let listPage      = 1;
 const PAGE_SIZE   = 15;
+
+/* ── BOARD CONFIG ── */
+const BOARD_STAGES = [
+  { key: 'New',          label: 'New',           color: '#e8f0fe' },
+  { key: 'Contacted',    label: 'Contacted',      color: '#ffb730' },
+  { key: 'Discovery Call', label: 'Discovery',    color: '#b0bec5' },
+  { key: 'Qualified',    label: 'Qualified',      color: '#64b4ff' },
+  { key: 'Proposal Sent', label: 'Proposal Sent', color: '#c084fc' },
+  { key: 'Negotiation',  label: 'Negotiation',    color: '#a0aec0' },
+  { key: 'Won',          label: 'Won',            color: '#00c864' },
+  { key: 'Lost',         label: 'Lost',           color: '#ff4d4d' },
+];
 
 /* ── getAuthToken ── */
 async function getAuthToken() {
@@ -831,41 +1077,32 @@ function handleUnauthorized() {
   }, 1000);
 }
 
-function safe(v) {
-  return encodeURIComponent(v || '');
-}
+function safe(v) { return encodeURIComponent(v || ''); }
 
 /* ── apiCall ── */
 async function apiCall(body) {
   const idToken = await getAuthToken();
   if (!idToken) return null;
-
   let res;
   try {
     res = await fetch(SCRIPT_URL, {
       method: 'POST',
-	  
       body: JSON.stringify({ ...body, idToken })
     });
   } catch (e) {
     toast('Network error — check your connection', 'error');
     return null;
   }
-
   if (res.status === 401 || res.status === 403) { handleUnauthorized(); return null; }
-
   let data;
   try { data = await res.json(); }
   catch (e) { toast('Unexpected response from server', 'error'); return null; }
-
   const isUnauth =
     data?.reason === 'Unauthorized' ||
     data?.error  === 'Unauthorized' ||
     data?.status === 401            ||
     data?.code   === 'UNAUTHORIZED';
-
   if (isUnauth) { handleUnauthorized(); return null; }
-
   return data;
 }
 
@@ -895,7 +1132,8 @@ async function doSearch(q) {
   if (!data || data.error) { applyFilters(); return; }
   filteredLeads = Array.isArray(data) ? data : [];
   currentPage = 1;
-  renderTable();
+  listPage = 1;
+  renderCurrentView();
 }
 
 /* ── FILTERS ── */
@@ -930,7 +1168,30 @@ function applyFilters() {
     return matchStatus && matchService && matchIndustry && matchQ;
   });
   currentPage = 1;
-  renderTable();
+  listPage = 1;
+  renderCurrentView();
+}
+
+/* ── VIEW SWITCHING ── */
+function setView(view, btn) {
+  currentView = view;
+  document.querySelectorAll('#viewToggle button').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--muted)';
+  });
+  btn.style.background = 'var(--surface)';
+  btn.style.color = 'var(--accent)';
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  document.getElementById('tableView').style.display = currentView === 'table' ? 'block' : 'none';
+  document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
+  document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
+
+  if (currentView === 'table') renderTable();
+  else if (currentView === 'board') renderBoard();
+  else if (currentView === 'list') renderList();
 }
 
 /* ── RENDER TABLE ── */
@@ -998,6 +1259,117 @@ function renderTable() {
   }
 }
 
+/* ── RENDER BOARD ── */
+function renderBoard() {
+  const container = document.getElementById('boardScroll');
+  container.innerHTML = '';
+
+  BOARD_STAGES.forEach(stage => {
+    const stageLeads = filteredLeads.filter(l => l.status === stage.key);
+
+    const col = document.createElement('div');
+    col.className = 'board-col';
+
+    const head = document.createElement('div');
+    head.className = 'board-col-head';
+    head.innerHTML = `
+      <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
+      <span class="board-col-count">${stageLeads.length}</span>`;
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'board-col-body';
+
+    if (!stageLeads.length) {
+      body.innerHTML = `<div class="board-empty">No leads</div>`;
+    } else {
+      stageLeads.forEach(l => {
+        const card = document.createElement('div');
+        card.className = 'board-card';
+        card.onclick = () => viewLead(l.leadId);
+
+        // Initials avatar
+        const initials = (l.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+        card.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
+            <div style="min-width:0;">
+              <div class="board-card-name">${esc(l.name||'—')}</div>
+            </div>
+          </div>
+          <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle ? ' · ' + esc(l.jobtitle) : ''}</div>
+          <div class="board-card-footer">
+            <span class="board-card-service">${esc(l.service||'—')}</span>
+            <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
+          </div>`;
+        body.appendChild(card);
+      });
+    }
+
+    col.appendChild(body);
+    container.appendChild(col);
+  });
+}
+
+/* ── RENDER LIST ── */
+function renderList() {
+  const listBody = document.getElementById('listBody');
+  const listPag  = document.getElementById('listPagination');
+
+  if (!filteredLeads.length) {
+    listBody.innerHTML = `<div class="empty-state">
+      <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <p>No leads found.</p></div>`;
+    listPag.style.display = 'none';
+    return;
+  }
+
+  const total = filteredLeads.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  if (listPage > pages) listPage = pages;
+  const start = (listPage - 1) * PAGE_SIZE;
+  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
+
+  listBody.innerHTML = slice.map(l => `
+    <div class="list-item" onclick="viewLead('${esc(l.leadId)}')">
+      <div class="list-item-contact">
+        <div class="list-item-name">${esc(l.name||'—')}</div>
+        <div class="list-item-email">${esc(l.email||'')}</div>
+      </div>
+      <div class="list-item-meta">
+        <span class="list-item-company">${esc(l.company||'—')}</span>
+        ${l.service ? `<span style="color:var(--border);font-size:.7rem;">·</span><span class="list-item-service">${esc(l.service)}</span>` : ''}
+      </div>
+      <div>${statusBadge(l.status)}</div>
+      <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
+      <div class="list-item-actions" onclick="event.stopPropagation()">
+        <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="icon-btn" title="Edit" onclick="editLead('${esc(l.leadId)}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
+    </div>`).join('');
+
+  if (total > PAGE_SIZE) {
+    listPag.style.display = 'flex';
+    document.getElementById('listPageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
+    const btns = document.getElementById('listPageBtns');
+    btns.innerHTML = '';
+    for (let p = 1; p <= pages; p++) {
+      const b = document.createElement('button');
+      b.className = 'page-btn' + (p === listPage ? ' active' : '');
+      b.textContent = p;
+      b.onclick = () => { listPage = p; renderList(); };
+      btns.appendChild(b);
+    }
+  } else {
+    listPag.style.display = 'none';
+  }
+}
+
 /* ── COUNTS ── */
 function updateCounts() {
   const count = s => allLeads.filter(l => s === 'ALL' || l.status === s).length;
@@ -1044,17 +1416,14 @@ function editLead(leadId) {
     if (el) el.value = lead[f] || '';
   });
 
-  // Industry handled separately
   const industryEl  = document.getElementById('f-industry');
   const industryVal = (lead.industry || '').trim();
   industryEl.value  = '';
-
   const matched = Array.from(industryEl.options).find(opt =>
     opt.value.trim() === industryVal || opt.text.trim() === industryVal
   );
   if (matched) industryEl.value = matched.value;
-  
-  
+
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
@@ -1079,7 +1448,7 @@ async function submitForm() {
   const btn = document.getElementById('formSubmitBtn');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
-   
+
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
     name, email,
@@ -1103,8 +1472,6 @@ async function submitForm() {
   btn.disabled = false;
   btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
   if (!data) return;
-  
-  
   if (data.error) { toast(data.error, 'error'); return; }
   toast(editingLeadId ? 'Lead updated!' : 'Lead created — ' + data.leadId, 'success');
   closeModal('formOverlay');
@@ -1144,6 +1511,22 @@ function viewLead(leadId) {
   document.getElementById('viewOverlay').classList.add('open');
 }
 
+/* ── EXPORT CSV ── */
+function exportCSV() {
+  const leads = filteredLeads.length ? filteredLeads : allLeads;
+  if (!leads.length) { toast('No leads to export', 'warn'); return; }
+  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','message','comments'];
+  const header = cols.join(',');
+  const rows = leads.map(l => cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(','));
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'leads-export.csv'; a.click();
+  URL.revokeObjectURL(url);
+  toast('Exported ' + leads.length + ' leads as CSV', 'success');
+}
+
 /* ── HELPERS ── */
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -1163,11 +1546,18 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function setTableLoading(on) {
-  if (on) document.getElementById('leadsBody').innerHTML = `
-    <tr><td colspan="9"><div class="empty-state">
-      <div class="spinner" style="margin:0 auto 12px"></div>
-      <p>Loading leads…</p>
-    </div></td></tr>`;
+  if (!on) return;
+  if (currentView === 'table') {
+    document.getElementById('leadsBody').innerHTML = `
+      <tr><td colspan="9"><div class="empty-state">
+        <div class="spinner" style="margin:0 auto 12px"></div>
+        <p>Loading leads…</p>
+      </div></td></tr>`;
+  } else if (currentView === 'board') {
+    document.getElementById('boardScroll').innerHTML = `<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading…</div>`;
+  } else if (currentView === 'list') {
+    document.getElementById('listBody').innerHTML = `<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div>`;
+  }
 }
 let toastTimer;
 function toast(msg, type='success') {
@@ -1177,36 +1567,6 @@ function toast(msg, type='success') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
-
-function setView(view, btn) {
-  document.querySelectorAll('#viewToggle button').forEach(b => {
-    b.style.background = 'transparent';
-    b.style.color = 'var(--muted)';
-  });
-  btn.style.background = 'var(--surface)';
-  btn.style.color = 'var(--accent)';
-  // Board & List views can be wired up later — for now just show a toast
-  if (view !== 'table') {
-    toast(view.charAt(0).toUpperCase() + view.slice(1) + ' view coming soon', 'warn');
-    setTimeout(() => setView('table', document.querySelector('#viewToggle button')), 1200);
-  }
-}
-
-function exportCSV() {
-  const leads = filteredLeads.length ? filteredLeads : allLeads;
-  if (!leads.length) { toast('No leads to export', 'warn'); return; }
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','message','comments'];
-  const header = cols.join(',');
-  const rows = leads.map(l => cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(','));
-  const csv = [header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'leads-export.csv'; a.click();
-  URL.revokeObjectURL(url);
-  toast('Exported ' + leads.length + ' leads as CSV', 'success');
-}
-
 </script>
 </body>
 </html>
