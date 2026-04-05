@@ -485,6 +485,8 @@
   </div>
 </nav>
 
+<button onclick="debugIndustry()" style="position:fixed;bottom:10px;left:10px;z-index:9999;background:red;color:white;padding:8px;">DEBUG</button>
+
 <div class="shell">
 
   <!-- SIDEBAR -->
@@ -782,6 +784,24 @@ let editingLeadId = null;
 let searchTimer   = null;
 let currentPage   = 1;
 const PAGE_SIZE   = 15;
+
+
+function debugIndustry() {
+  const lead = allLeads[0]; // first lead
+  const industryEl = document.getElementById('f-industry');
+  
+  console.log('=== INDUSTRY DEBUG ===');
+  console.log('lead.industry raw:', JSON.stringify(lead.industry));
+  console.log('lead.industry length:', lead.industry ? lead.industry.length : 'null');
+  
+  Array.from(industryEl.options).forEach((opt, i) => {
+    console.log(`option[${i}] value: ${JSON.stringify(opt.value)} | text: ${JSON.stringify(opt.text)}`);
+  });
+  
+  console.log('Direct set attempt:');
+  industryEl.value = lead.industry;
+  console.log('After direct set, el.value:', JSON.stringify(industryEl.value));
+}
 
 /* ── getAuthToken ── */
 async function getAuthToken() {
