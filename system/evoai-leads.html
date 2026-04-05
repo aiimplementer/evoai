@@ -715,7 +715,6 @@
             <option>Non-Profit / NGO</option>
             <option>Other</option>
           </select>
-		  <input type="hidden" id="f-industry-val" value=""/>
         </div>
 
         <div class="form-section-title">Lead Details</div>
@@ -812,10 +811,6 @@ function handleUnauthorized() {
     if (countEl) countEl.textContent = secs;
     if (secs <= 0) { clearInterval(tick); window.location.replace('evoai-login.html'); }
   }, 1000);
-}
-
-function safe(v) {
-  return encodeURIComponent(v || '');
 }
 
 /* ── apiCall ── */
@@ -1009,7 +1004,6 @@ function openCreate() {
     const el = document.getElementById('f-'+f);
     if (el) el.value = f === 'status' ? 'New' : '';
   });
-  document.getElementById('f-industry-val').value = '';
   document.getElementById('formOverlay').classList.add('open');
 }
 
@@ -1038,11 +1032,7 @@ function editLead(leadId) {
   );
   if (matched) industryEl.value = matched.value;
   
-  document.getElementById('f-industry-val').value = lead.industry || '';
   
-
-  console.log('Industry set to:', industryEl.value, '| wanted:', industryVal);
-
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
@@ -1068,13 +1058,7 @@ async function submitForm() {
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
 
-  // Read industry from hidden input (extension-proof) with select as fallback
-  const industryHidden = document.getElementById('f-industry-val').value;
-  const industrySelect = document.getElementById('f-industry').value;
-  const industryFinal  = industrySelect || editingIndustry;
-
-  console.log('SUBMIT industry — hidden:', JSON.stringify(industryHidden), '| select:', JSON.stringify(industrySelect), '| final:', JSON.stringify(industryFinal));
-
+  
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
     name, email,
@@ -1082,7 +1066,7 @@ async function submitForm() {
     linkedin:  document.getElementById('f-linkedin').value.trim(),
     company:   document.getElementById('f-company').value.trim(),
     jobtitle:  document.getElementById('f-jobtitle').value.trim(),
-    industry:  safe(industryFinal),
+    industry:  document.getElementById('f-industry').value.trim(),,
     service:   document.getElementById('f-service').value,
     status:    document.getElementById('f-status').value,
     source:    document.getElementById('f-source').value.trim(),
