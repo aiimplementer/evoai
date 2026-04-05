@@ -1088,13 +1088,12 @@ async function submitForm() {
   };
 
   if (editingLeadId) payload.leadId = editingLeadId;
+  toast('Sending leadId: ' + (editingLeadId || 'NONE'), 'warn');
 
   const data = await apiCall(payload);
-btn.disabled = false;
-btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
-if (!data) { toast('No response from server', 'error'); return; }
-toast('Response: ' + JSON.stringify(data), data.error ? 'error' : 'success');
-if (data.error) return;
+  btn.disabled = false;
+  btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
+  if (!data) return;
   
   
   if (data.error) { toast(data.error, 'error'); return; }
