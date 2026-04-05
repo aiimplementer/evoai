@@ -1073,6 +1073,7 @@ async function submitForm() {
       }
     }
   }
+  console.log('SUBMIT industry value:', JSON.stringify(industryEl.value));
 
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
