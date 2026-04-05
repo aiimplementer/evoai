@@ -485,8 +485,6 @@
   </div>
 </nav>
 
-
-
 <div class="shell">
 
   <!-- SIDEBAR -->
@@ -692,31 +690,31 @@
         <!-- ── INDUSTRY SELECT ── -->
         <div class="field full">
           <label>Industry</label>
-			<select id="f-industry">
-			  <option value="">Select industry…</option>
-			  <option value="Information Technology (IT & Software)">Information Technology (IT &amp; Software)</option>
-			  <option value="SaaS / Cloud">SaaS / Cloud</option>
-			  <option value="Banking & Financial Services (BFSI)">Banking &amp; Financial Services (BFSI)</option>
-			  <option value="Insurance">Insurance</option>
-			  <option value="Healthcare & Life Sciences">Healthcare &amp; Life Sciences</option>
-			  <option value="Pharmaceuticals & Biotechnology">Pharmaceuticals &amp; Biotechnology</option>
-			  <option value="Manufacturing">Manufacturing</option>
-			  <option value="Logistics & Supply Chain">Logistics &amp; Supply Chain</option>
-			  <option value="Retail & E-commerce">Retail &amp; E-commerce</option>
-			  <option value="FMCG / Consumer Goods">FMCG / Consumer Goods</option>
-			  <option value="Real Estate & Construction">Real Estate &amp; Construction</option>
-			  <option value="Energy & Utilities">Energy &amp; Utilities</option>
-			  <option value="Telecommunications">Telecommunications</option>
-			  <option value="Education & EdTech">Education &amp; EdTech</option>
-			  <option value="Media & Entertainment">Media &amp; Entertainment</option>
-			  <option value="Travel & Hospitality">Travel &amp; Hospitality</option>
-			  <option value="Automotive">Automotive</option>
-			  <option value="Agriculture & AgriTech">Agriculture &amp; AgriTech</option>
-			  <option value="Consulting & Professional Services">Consulting &amp; Professional Services</option>
-			  <option value="Government / Public Sector">Government / Public Sector</option>
-			  <option value="Non-Profit / NGO">Non-Profit / NGO</option>
-			  <option value="Other">Other</option>
-			</select>
+          <select id="f-industry">
+            <option value="">Select industry…</option>
+            <option>Information Technology (IT &amp; Software)</option>
+            <option>SaaS / Cloud</option>
+            <option>Banking &amp; Financial Services (BFSI)</option>
+            <option>Insurance</option>
+            <option>Healthcare &amp; Life Sciences</option>
+            <option>Pharmaceuticals &amp; Biotechnology</option>
+            <option>Manufacturing</option>
+            <option>Logistics &amp; Supply Chain</option>
+            <option>Retail &amp; E-commerce</option>
+            <option>FMCG / Consumer Goods</option>
+            <option>Real Estate &amp; Construction</option>
+            <option>Energy &amp; Utilities</option>
+            <option>Telecommunications</option>
+            <option>Education &amp; EdTech</option>
+            <option>Media &amp; Entertainment</option>
+            <option>Travel &amp; Hospitality</option>
+            <option>Automotive</option>
+            <option>Agriculture &amp; AgriTech</option>
+            <option>Consulting &amp; Professional Services</option>
+            <option>Government / Public Sector</option>
+            <option>Non-Profit / NGO</option>
+            <option>Other</option>
+          </select>
         </div>
 
         <div class="form-section-title">Lead Details</div>
@@ -770,12 +768,12 @@
 </div>
 
 </div><!-- end #authShell -->
-<button onclick="debugIndustry()" style="position:fixed;bottom:10px;left:10px;z-index:9999;background:red;color:white;padding:8px;">DEBUG</button>
+
 <!-- TOAST -->
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwYY-oCxvp2UJ8aQ7l8ufLMBk_x4I_7KFUpfxwW_13vSMyhbk3wRTeU25noPVA-VkiLTg/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw4MqeuQFWMesN0jPltzD7LEoujpP93bgOwxSkhYetPH6jcclCxlKGZ9vXvrMDfcffnsQ/exec';
 
 let allLeads      = [];
 let filteredLeads = [];
@@ -784,24 +782,6 @@ let editingLeadId = null;
 let searchTimer   = null;
 let currentPage   = 1;
 const PAGE_SIZE   = 15;
-
-
-function debugIndustry() {
-  const lead = allLeads[0]; // first lead
-  const industryEl = document.getElementById('f-industry');
-  
-  console.log('=== INDUSTRY DEBUG ===');
-  console.log('lead.industry raw:', JSON.stringify(lead.industry));
-  console.log('lead.industry length:', lead.industry ? lead.industry.length : 'null');
-  
-  Array.from(industryEl.options).forEach((opt, i) => {
-    console.log(`option[${i}] value: ${JSON.stringify(opt.value)} | text: ${JSON.stringify(opt.text)}`);
-  });
-  
-  console.log('Direct set attempt:');
-  industryEl.value = lead.industry;
-  console.log('After direct set, el.value:', JSON.stringify(industryEl.value));
-}
 
 /* ── getAuthToken ── */
 async function getAuthToken() {
@@ -1030,28 +1010,14 @@ function openCreate() {
 function editLead(leadId) {
   const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
-
   editingLeadId = leadId;
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
-
-  // Set all plain input fields
   ['name','email','phone','linkedin','company','jobtitle',
-   'service','status','source','page','message','comments'].forEach(f => {
+   'industry','service','status','source','page','message','comments'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if (el) el.value = lead[f] || '';
   });
-
-  // Handle industry separately — match by value or text to handle any encoding
-  const industryEl  = document.getElementById('f-industry');
-  const industryVal = (lead.industry || '').trim();
-  industryEl.value  = '';
-  Array.from(industryEl.options).forEach(opt => {
-    if (opt.value.trim() === industryVal || opt.text.trim() === industryVal) {
-      industryEl.value = opt.value;
-    }
-  });
-
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
