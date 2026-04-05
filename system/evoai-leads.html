@@ -887,6 +887,10 @@ function filterStatus(status, el) {
   applyFilters();
 }
 
+document.getElementById('f-industry').addEventListener('change', function() {
+  editingIndustry = this.value;
+});
+
 function applyFilters() {
   const statusDrop   = document.getElementById('statusFilter').value;
   const serviceDrop  = document.getElementById('serviceFilter').value;
@@ -1174,9 +1178,7 @@ function toast(msg, type='success') {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
-document.getElementById('f-industry').addEventListener('change', function() {
-  editingIndustry = this.value;
-});
+
 </script>
 </body>
 </html>
