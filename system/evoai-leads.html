@@ -774,7 +774,7 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxvOo7CxSc-IvbmCnovVQwIvw_Jn91wtgrPC_rEPYUjiShKLr1cUo3yYWVL1xL_Gt0PPg/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGW_4ZMyZoTq62aR7fjWtOhdhy9P5TAQXCcpwkpJ0-9kSo2T2vVOk3nCQY3_zN1XX_ew/exec';
 
 let allLeads      = [];
 let filteredLeads = [];
@@ -823,6 +823,9 @@ async function apiCall(body) {
   try {
     res = await fetch(SCRIPT_URL, {
       method: 'POST',
+	  headers: {
+		'Content-Type': 'application/json'
+	  },
       body: JSON.stringify({ ...body, idToken })
     });
   } catch (e) {
@@ -1025,12 +1028,7 @@ function editLead(leadId) {
 
   // Industry handled separately
   const industryEl  = document.getElementById('f-industry');
-  const normalize = s => (s || '')
-  .replace(/&amp;/g, '&')
-  .trim();
-
-	const industryVal = normalize(lead.industry);
-
+  const industryVal = (lead.industry || '').trim();
   industryEl.value  = '';
 
   const matched = Array.from(industryEl.options).find(opt =>
@@ -1071,9 +1069,7 @@ async function submitForm() {
   // Read industry from hidden input (extension-proof) with select as fallback
   const industryHidden = document.getElementById('f-industry-val').value;
   const industrySelect = document.getElementById('f-industry').value;
-  const industryFinal = (industrySelect || industryHidden)
-  .replace(/&amp;/g, '&')
-  .trim();
+  const industryFinal  = industrySelect || editingIndustry;
 
   console.log('SUBMIT industry — hidden:', JSON.stringify(industryHidden), '| select:', JSON.stringify(industrySelect), '| final:', JSON.stringify(industryFinal));
 
