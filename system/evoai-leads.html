@@ -715,6 +715,7 @@
             <option>Non-Profit / NGO</option>
             <option>Other</option>
           </select>
+		  <input type="hidden" id="f-industry-val" value=""/>
         </div>
 
         <div class="form-section-title">Lead Details</div>
@@ -1003,6 +1004,7 @@ function openCreate() {
     const el = document.getElementById('f-'+f);
     if (el) el.value = f === 'status' ? 'New' : '';
   });
+  document.getElementById('f-industry-val').value = '';
   document.getElementById('formOverlay').classList.add('open');
 }
 
@@ -1030,6 +1032,9 @@ function editLead(leadId) {
     opt.value.trim() === industryVal || opt.text.trim() === industryVal
   );
   if (matched) industryEl.value = matched.value;
+  
+  document.getElementById('f-industry-val').value = lead.industry || '';
+  
 
   console.log('Industry set to:', industryEl.value, '| wanted:', industryVal);
 
@@ -1058,22 +1063,12 @@ async function submitForm() {
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
 
-  // If editing and industry select is empty, restore from original lead data
-  const industryEl = document.getElementById('f-industry');
-  if (editingLeadId && !industryEl.value) {
-    const originalLead = allLeads.find(l => l.leadId === editingLeadId) || filteredLeads.find(l => l.leadId === editingLeadId);
-    if (originalLead && originalLead.industry) {
-      industryEl.value = originalLead.industry;
-      // if direct set failed, match by text
-      if (!industryEl.value) {
-        const matched = Array.from(industryEl.options).find(opt =>
-          opt.text.trim() === originalLead.industry.trim()
-        );
-        if (matched) industryEl.value = matched.value;
-      }
-    }
-  }
-  console.log('SUBMIT industry value:', JSON.stringify(industryEl.value));
+  // Read industry from hidden input (extension-proof) with select as fallback
+  const industryHidden = document.getElementById('f-industry-val').value;
+  const industrySelect = document.getElementById('f-industry').value;
+  const industryFinal  = industryHidden || industrySelect;
+
+  console.log('SUBMIT industry — hidden:', JSON.stringify(industryHidden), '| select:', JSON.stringify(industrySelect), '| final:', JSON.stringify(industryFinal));
 
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
@@ -1082,7 +1077,7 @@ async function submitForm() {
     linkedin:  document.getElementById('f-linkedin').value.trim(),
     company:   document.getElementById('f-company').value.trim(),
     jobtitle:  document.getElementById('f-jobtitle').value.trim(),
-    industry:  industryEl.value,
+    industry:  industryFinal,
     service:   document.getElementById('f-service').value,
     status:    document.getElementById('f-status').value,
     source:    document.getElementById('f-source').value.trim(),
