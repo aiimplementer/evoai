@@ -291,7 +291,7 @@
   /* ── ACTION BUTTONS ── */
   .row-actions { display: flex; gap: 5px; }
   .icon-btn {
-    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
     display: flex; align-items: center; justify-content: center; transition: all .14s;
   }
@@ -308,14 +308,14 @@
     padding: 13px 14px; border-top: 1px solid var(--border);
     font-size: .76rem; color: var(--muted);
   }
-  .page-btns { display: flex; gap: 5px; }
+  .page-btns { display: flex; gap: 4px; flex-wrap: nowrap; }
   .page-btn {
-    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; font-size: .79rem; transition: all .14s;
+    display: flex; align-items: center; justify-content: center; font-size: .78rem; font-family: var(--mono); transition: all .14s;
   }
   .page-btn:hover, .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
-  .page-btn.ellipsis { border-color: transparent; cursor: default; color: var(--muted); opacity: .5; }
+  .page-btn.ellipsis { border-color: transparent; cursor: default; color: var(--muted); opacity: .4; min-width: 20px; }
 
   /* ── MODAL ── */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
@@ -330,7 +330,7 @@
   .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
   .modal-title { font-size: .98rem; font-weight: 700; }
   .modal-close {
-    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
     display: flex; align-items: center; justify-content: center; transition: all .14s;
   }
@@ -1558,34 +1558,29 @@ function buildPagination(container, current, total, onPage) {
     return b;
   };
 
-  // Prev arrow
   container.appendChild(btn('‹', current - 1, current === 1, false, false));
 
-  const WING = 2; // pages on each side of current
+  const SHOW_ALL_THRESHOLD = 15;
+  const WING = 4;
   const pages = [];
 
-  // Always show first page
-  pages.push(1);
-
-  const rangeStart = Math.max(2, current - WING);
-  const rangeEnd   = Math.min(total - 1, current + WING);
-
-  if (rangeStart > 2) pages.push('…');
-  for (let p = rangeStart; p <= rangeEnd; p++) pages.push(p);
-  if (rangeEnd < total - 1) pages.push('…');
-
-  // Always show last page
-  if (total > 1) pages.push(total);
+  if (total <= SHOW_ALL_THRESHOLD) {
+    for (let p = 1; p <= total; p++) pages.push(p);
+  } else {
+    pages.push(1);
+    const rangeStart = Math.max(2, current - WING);
+    const rangeEnd   = Math.min(total - 1, current + WING);
+    if (rangeStart > 2) pages.push('…');
+    for (let p = rangeStart; p <= rangeEnd; p++) pages.push(p);
+    if (rangeEnd < total - 1) pages.push('…');
+    pages.push(total);
+  }
 
   pages.forEach(p => {
-    if (p === '…') {
-      container.appendChild(btn('…', null, true, false, true));
-    } else {
-      container.appendChild(btn(p, p, false, p === current, false));
-    }
+    if (p === '…') container.appendChild(btn('…', null, true, false, true));
+    else container.appendChild(btn(p, p, false, p === current, false));
   });
 
-  // Next arrow
   container.appendChild(btn('›', current + 1, current === total, false, false));
 }
 
