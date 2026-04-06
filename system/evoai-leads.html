@@ -1560,25 +1560,26 @@ function buildPagination(container, current, total, onPage) {
 
   container.appendChild(btn('‹', current - 1, current === 1, false, false));
 
-  const SHOW_ALL_THRESHOLD = 25;
-  const WING = 8;
-  const pages = [];
+  const VISIBLE = 15; // always show this many consecutive page buttons
+  const pages   = [];
 
-  if (total <= SHOW_ALL_THRESHOLD) {
+  if (total <= VISIBLE) {
+    // show all — no ellipsis needed
     for (let p = 1; p <= total; p++) pages.push(p);
   } else {
-    pages.push(1);
-    const rangeStart = Math.max(2, current - WING);
-    const rangeEnd   = Math.min(total - 1, current + WING);
-    if (rangeStart > 2) pages.push('…');
-    for (let p = rangeStart; p <= rangeEnd; p++) pages.push(p);
-    if (rangeEnd < total - 1) pages.push('…');
-    pages.push(total);
+    // Anchor a window of VISIBLE pages around current
+    let winStart = Math.max(1, current - Math.floor(VISIBLE / 2));
+    let winEnd   = winStart + VISIBLE - 1;
+    if (winEnd > total) { winEnd = total; winStart = Math.max(1, winEnd - VISIBLE + 1); }
+
+    if (winStart > 1)     { pages.push(1); if (winStart > 2) pages.push('…'); }
+    for (let p = winStart; p <= winEnd; p++) pages.push(p);
+    if (winEnd < total)   { if (winEnd < total - 1) pages.push('…'); pages.push(total); }
   }
 
   pages.forEach(p => {
     if (p === '…') container.appendChild(btn('…', null, true, false, true));
-    else container.appendChild(btn(p, p, false, p === current, false));
+    else           container.appendChild(btn(p, p, false, p === current, false));
   });
 
   container.appendChild(btn('›', current + 1, current === total, false, false));
