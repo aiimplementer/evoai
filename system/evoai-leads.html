@@ -575,83 +575,26 @@
   }
 
   /* ── LIST VIEW ── */
-  #listView {
-    display: none;
-  }
+  #listView { display: none; }
+
   .list-wrap {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
   }
+
+  /* 7-column grid: contact | company/role | industry | phone | status | date | actions */
+  .list-header,
   .list-item {
     display: grid;
-    grid-template-columns: 180px 1fr auto auto auto;
+    grid-template-columns: 190px 180px 1fr 130px auto 100px auto;
     align-items: center;
-    gap: 16px;
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(30,45,66,.6);
-    cursor: pointer;
-    transition: background .12s;
+    gap: 14px;
+    padding: 10px 16px;
   }
-  .list-item:last-child { border-bottom: none; }
-  .list-item:hover { background: rgba(255,255,255,.025); }
-  .list-item-contact { min-width: 0; }
-  .list-item-name {
-    font-size: .84rem;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .list-item-email {
-    font-size: .71rem;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 2px;
-  }
-  .list-item-meta {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-  .list-item-company {
-    font-size: .78rem;
-    font-weight: 500;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .list-item-service {
-    font-size: .72rem;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .list-item-date {
-    font-family: var(--mono);
-    font-size: .68rem;
-    color: var(--muted);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .list-item-actions {
-    display: flex;
-    gap: 5px;
-    flex-shrink: 0;
-  }
+
   .list-header {
-    display: grid;
-    grid-template-columns: 180px 1fr auto auto auto;
-    gap: 16px;
-    padding: 9px 16px;
     background: var(--surface2);
     border-bottom: 1px solid var(--border);
   }
@@ -663,7 +606,74 @@
     color: var(--muted);
   }
 
+  .list-item {
+    border-bottom: 1px solid rgba(30,45,66,.6);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item:hover { background: rgba(255,255,255,.025); }
+
+  /* col 1: contact */
+  .list-item-contact { min-width: 0; }
+  .list-item-name {
+    font-size: .84rem; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .list-item-email {
+    font-size: .71rem; color: var(--muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* col 2: company / job title */
+  .list-item-company-wrap { min-width: 0; }
+  .list-item-company {
+    font-size: .80rem; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .list-item-jobtitle {
+    font-size: .70rem; color: var(--muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* col 3: industry */
+  .list-item-industry {
+    font-size: .72rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  /* col 4: phone */
+  .list-item-phone {
+    font-family: var(--mono); font-size: .72rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .list-item-phone a {
+    color: var(--accent2); text-decoration: none;
+  }
+  .list-item-phone a:hover { text-decoration: underline; }
+  .list-item-phone.empty { opacity: .35; }
+
+  /* col 5: status — let badge size itself */
+  /* col 6: date */
+  .list-item-date {
+    font-family: var(--mono); font-size: .68rem; color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* col 7: actions */
+  .list-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
+
   /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    /* hide industry column on medium screens */
+    .list-header,
+    .list-item {
+      grid-template-columns: 180px 160px 120px auto 90px auto;
+    }
+    .list-header span:nth-child(3),
+    .list-item .list-item-industry { display: none; }
+  }
   @media (max-width: 960px) {
     .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
     aside { display: none; }
@@ -672,9 +682,19 @@
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .full, .form-section-title { grid-column: 1; }
     .user-info { display: none; }
-    .list-item { grid-template-columns: 1fr auto; }
-    .list-item-meta, .list-item-date { display: none; }
+    /* compact list on small screens */
     .list-header { display: none; }
+    .list-item {
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+    }
+    .list-item-contact   { grid-column: 1; grid-row: 1; }
+    .list-item-actions   { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+    .list-item-company-wrap,
+    .list-item-industry,
+    .list-item-phone,
+    .list-item-date      { display: none; }
+    .list-item > div:nth-child(5) { grid-column: 1; grid-row: 2; } /* status */
   }
 </style>
 </head>
@@ -942,9 +962,12 @@
     <!-- LIST VIEW -->
     <div id="listView">
       <div class="list-wrap">
+        <!-- 7-column header matching the grid -->
         <div class="list-header">
           <span>Contact</span>
-          <span>Company / Service</span>
+          <span>Company / Role</span>
+          <span>Industry</span>
+          <span>Phone</span>
           <span>Status</span>
           <span>Date</span>
           <span>Actions</span>
@@ -1117,8 +1140,6 @@ function handleUnauthorized() {
     if (secs <= 0) { clearInterval(tick); window.location.replace('evoai-login.html'); }
   }, 1000);
 }
-
-function safe(v) { return encodeURIComponent(v || ''); }
 
 /* ── apiCall ── */
 async function apiCall(body) {
@@ -1295,7 +1316,7 @@ function renderTable() {
 }
 
 /* ── DRAG AND DROP STATE ── */
-let dragLeadId   = null;
+let dragLeadId    = null;
 let dragFromStage = null;
 let dragOverBody  = null;
 let dragIndicator = null;
@@ -1322,15 +1343,12 @@ function renderBoard() {
     body.className = 'board-col-body';
     body.dataset.stage = stage.key;
 
-    /* ── drop zone events ── */
     body.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       if (dragOverBody && dragOverBody !== body) dragOverBody.classList.remove('drag-over');
       dragOverBody = body;
       body.classList.add('drag-over');
-
-      // Move drop indicator
       const afterEl = getDragAfterElement(body, e.clientY);
       if (dragIndicator) {
         dragIndicator.classList.add('visible');
@@ -1349,20 +1367,16 @@ function renderBoard() {
     body.addEventListener('drop', async e => {
       e.preventDefault();
       body.classList.remove('drag-over');
-      if (dragIndicator) { dragIndicator.classList.remove('visible'); }
-
+      if (dragIndicator) dragIndicator.classList.remove('visible');
       const newStage = body.dataset.stage;
       if (!dragLeadId || newStage === dragFromStage) return;
-
       await moveLead(dragLeadId, newStage);
     });
 
     if (!stageLeads.length) {
       body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
     } else {
-      stageLeads.forEach(l => {
-        body.appendChild(createBoardCard(l));
-      });
+      stageLeads.forEach(l => body.appendChild(createBoardCard(l)));
     }
 
     col.appendChild(body);
@@ -1395,7 +1409,6 @@ function createBoardCard(l) {
       <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
     </div>`;
 
-  /* click = view (only if not dragging) */
   let didDrag = false;
   card.addEventListener('dragstart', e => {
     didDrag = true;
@@ -1404,12 +1417,8 @@ function createBoardCard(l) {
     card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', l.leadId);
-
-    // create indicator element once
     dragIndicator = document.createElement('div');
     dragIndicator.className = 'drop-indicator';
-
-    // ghost card for drag image
     setTimeout(() => card.classList.add('drag-ghost'), 0);
   });
 
@@ -1417,19 +1426,15 @@ function createBoardCard(l) {
     card.classList.remove('dragging', 'drag-ghost');
     document.querySelectorAll('.board-col-body').forEach(b => b.classList.remove('drag-over'));
     if (dragIndicator && dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
-    dragIndicator  = null;
-    dragOverBody   = null;
+    dragIndicator = null;
+    dragOverBody  = null;
     setTimeout(() => { didDrag = false; }, 0);
   });
 
-  card.addEventListener('click', () => {
-    if (!didDrag) viewLead(l.leadId);
-  });
-
+  card.addEventListener('click', () => { if (!didDrag) viewLead(l.leadId); });
   return card;
 }
 
-/* helper: find element to insert before based on mouse Y */
 function getDragAfterElement(container, y) {
   const draggables = [...container.querySelectorAll('.board-card:not(.dragging)')];
   return draggables.reduce((closest, child) => {
@@ -1440,48 +1445,28 @@ function getDragAfterElement(container, y) {
   }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-/* ── MOVE LEAD (API save) ── */
 async function moveLead(leadId, newStatus) {
-  // Optimistic update in memory
   const lead = allLeads.find(l => l.leadId === leadId);
   if (!lead) return;
   const oldStatus = lead.status;
   lead.status = newStatus;
-
-  // Also update filteredLeads
   const fLead = filteredLeads.find(l => l.leadId === leadId);
   if (fLead) fLead.status = newStatus;
-
-  // Re-render board immediately (optimistic)
   renderBoard();
   updateCounts();
-
   toast(`Moving ${lead.name} → ${newStatus}…`, 'success');
 
-  // Build minimal update payload (all required fields from lead)
   const payload = {
-    action:   'update',
-    leadId,
-    name:     lead.name     || '',
-    email:    lead.email    || '',
-    phone:    lead.phone    || '',
-    linkedin: lead.linkedin || '',
-    company:  lead.company  || '',
-    jobtitle: lead.jobtitle || '',
-    industry: lead.industry || '',
-    service:  lead.service  || '',
-    status:   newStatus,
-    source:   lead.source   || '',
-    page:     lead.page     || '',
-    message:  lead.message  || '',
-    comments: lead.comments || '',
-    useragent: navigator.userAgent
+    action: 'update', leadId,
+    name: lead.name||'', email: lead.email||'', phone: lead.phone||'',
+    linkedin: lead.linkedin||'', company: lead.company||'', jobtitle: lead.jobtitle||'',
+    industry: lead.industry||'', service: lead.service||'', status: newStatus,
+    source: lead.source||'', page: lead.page||'', message: lead.message||'',
+    comments: lead.comments||'', useragent: navigator.userAgent
   };
 
   const data = await apiCall(payload);
-
   if (!data || data.error) {
-    // Rollback on failure
     lead.status = oldStatus;
     if (fLead) fLead.status = oldStatus;
     renderBoard();
@@ -1489,7 +1474,6 @@ async function moveLead(leadId, newStatus) {
     toast('Failed to save — change rolled back', 'error');
     return;
   }
-
   toast(`${lead.name} moved to ${newStatus}`, 'success');
 }
 
@@ -1512,18 +1496,36 @@ function renderList() {
   const start = (listPage - 1) * PAGE_SIZE;
   const slice = filteredLeads.slice(start, start + PAGE_SIZE);
 
-  listBody.innerHTML = slice.map(l => `
+  listBody.innerHTML = slice.map(l => {
+    const phoneHtml = l.phone
+      ? `<a href="tel:${esc(l.phone)}" onclick="event.stopPropagation()">${esc(l.phone)}</a>`
+      : `<span style="opacity:.3">—</span>`;
+
+    return `
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}')">
+      <!-- col 1: contact -->
       <div class="list-item-contact">
         <div class="list-item-name">${esc(l.name||'—')}</div>
         <div class="list-item-email">${esc(l.email||'')}</div>
       </div>
-      <div class="list-item-meta">
-        <span class="list-item-company">${esc(l.company||'—')}</span>
-        ${l.service ? `<span style="color:var(--border);font-size:.7rem;">·</span><span class="list-item-service">${esc(l.service)}</span>` : ''}
+      <!-- col 2: company / role -->
+      <div class="list-item-company-wrap">
+        <div class="list-item-company">${esc(l.company||'—')}</div>
+        ${l.jobtitle ? `<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>` : ''}
       </div>
+      <!-- col 3: industry -->
+      <div class="list-item-industry" title="${esc(l.industry||'')}">
+        ${esc(l.industry||'—')}
+      </div>
+      <!-- col 4: phone -->
+      <div class="list-item-phone">
+        ${phoneHtml}
+      </div>
+      <!-- col 5: status -->
       <div>${statusBadge(l.status)}</div>
+      <!-- col 6: date -->
       <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
+      <!-- col 7: actions -->
       <div class="list-item-actions" onclick="event.stopPropagation()">
         <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1532,7 +1534,8 @@ function renderList() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   if (total > PAGE_SIZE) {
     listPag.style.display = 'flex';
@@ -1548,7 +1551,6 @@ function renderList() {
 /* ── SMART PAGINATION BUILDER ── */
 function buildPagination(container, current, total, onPage) {
   container.innerHTML = '';
-
   const btn = (label, page, disabled, active, isEllipsis) => {
     const b = document.createElement('button');
     b.className = 'page-btn' + (active ? ' active' : '') + (isEllipsis ? ' ellipsis' : '');
@@ -1557,31 +1559,23 @@ function buildPagination(container, current, total, onPage) {
     if (!disabled && !isEllipsis) b.onclick = () => onPage(page);
     return b;
   };
-
   container.appendChild(btn('‹', current - 1, current === 1, false, false));
-
-  const VISIBLE = 15; // always show this many consecutive page buttons
+  const VISIBLE = 15;
   const pages   = [];
-
   if (total <= VISIBLE) {
-    // show all — no ellipsis needed
     for (let p = 1; p <= total; p++) pages.push(p);
   } else {
-    // Anchor a window of VISIBLE pages around current
     let winStart = Math.max(1, current - Math.floor(VISIBLE / 2));
     let winEnd   = winStart + VISIBLE - 1;
     if (winEnd > total) { winEnd = total; winStart = Math.max(1, winEnd - VISIBLE + 1); }
-
-    if (winStart > 1)     { pages.push(1); if (winStart > 2) pages.push('…'); }
+    if (winStart > 1)   { pages.push(1); if (winStart > 2) pages.push('…'); }
     for (let p = winStart; p <= winEnd; p++) pages.push(p);
-    if (winEnd < total)   { if (winEnd < total - 1) pages.push('…'); pages.push(total); }
+    if (winEnd < total) { if (winEnd < total - 1) pages.push('…'); pages.push(total); }
   }
-
   pages.forEach(p => {
     if (p === '…') container.appendChild(btn('…', null, true, false, true));
     else           container.appendChild(btn(p, p, false, p === current, false));
   });
-
   container.appendChild(btn('›', current + 1, current === total, false, false));
 }
 
@@ -1620,17 +1614,14 @@ function openCreate() {
 function editLead(leadId) {
   const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
-
   editingLeadId = leadId;
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
-
   ['name','email','phone','linkedin','company','jobtitle',
    'service','status','source','page','message','comments'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if (el) el.value = lead[f] || '';
   });
-
   const industryEl  = document.getElementById('f-industry');
   const industryVal = (lead.industry || '').trim();
   industryEl.value  = '';
@@ -1638,7 +1629,6 @@ function editLead(leadId) {
     opt.value.trim() === industryVal || opt.text.trim() === industryVal
   );
   if (matched) industryEl.value = matched.value;
-
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
@@ -1648,22 +1638,17 @@ async function submitForm() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
   const phone = document.getElementById('f-phone').value.trim();
-
   if (!name)  { toast('Name is required', 'error'); return; }
   if (!email) { toast('Email is required', 'error'); return; }
-
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) { toast('Enter a valid email address', 'error'); return; }
-
   const cleanPhone = phone.replace(/\D/g, '');
   if (phone && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
     toast('Enter a valid phone number', 'error'); return;
   }
-
   const btn = document.getElementById('formSubmitBtn');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
-
   const payload = {
     action:    editingLeadId ? 'update' : 'add',
     name, email,
@@ -1680,9 +1665,7 @@ async function submitForm() {
     comments:  document.getElementById('f-comments').value.trim(),
     useragent: navigator.userAgent
   };
-
   if (editingLeadId) payload.leadId = editingLeadId;
-
   const data = await apiCall(payload);
   btn.disabled = false;
   btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
@@ -1699,7 +1682,6 @@ function viewLead(leadId) {
   if (!lead) { toast('Lead not found', 'error'); return; }
   document.getElementById('viewLeadId').textContent = lead.leadId;
   document.getElementById('viewEditBtn').onclick = () => editLead(leadId);
-
   const section = (title, rows) => {
     const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
     if (!filled.length) return '';
@@ -1716,13 +1698,11 @@ function viewLead(leadId) {
         </div>`).join('')}
     </div>`;
   };
-
   document.getElementById('viewBody').innerHTML =
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
     section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
     section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
-
   document.getElementById('viewOverlay').classList.add('open');
 }
 
