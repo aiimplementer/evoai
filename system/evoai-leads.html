@@ -315,6 +315,7 @@
     display: flex; align-items: center; justify-content: center; font-size: .79rem; transition: all .14s;
   }
   .page-btn:hover, .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+  .page-btn.ellipsis { border-color: transparent; cursor: default; color: var(--muted); opacity: .5; }
 
   /* ── MODAL ── */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
@@ -1287,13 +1288,7 @@ function renderTable() {
     document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
     const btns = document.getElementById('pageBtns');
     btns.innerHTML = '';
-    for (let p = 1; p <= pages; p++) {
-      const b = document.createElement('button');
-      b.className = 'page-btn' + (p === currentPage ? ' active' : '');
-      b.textContent = p;
-      b.onclick = () => { currentPage = p; renderTable(); };
-      btns.appendChild(b);
-    }
+    buildPagination(btns, currentPage, pages, p => { currentPage = p; renderTable(); });
   } else {
     pagination.style.display = 'none';
   }
@@ -1544,16 +1539,54 @@ function renderList() {
     document.getElementById('listPageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
     const btns = document.getElementById('listPageBtns');
     btns.innerHTML = '';
-    for (let p = 1; p <= pages; p++) {
-      const b = document.createElement('button');
-      b.className = 'page-btn' + (p === listPage ? ' active' : '');
-      b.textContent = p;
-      b.onclick = () => { listPage = p; renderList(); };
-      btns.appendChild(b);
-    }
+    buildPagination(btns, listPage, pages, p => { listPage = p; renderList(); });
   } else {
     listPag.style.display = 'none';
   }
+}
+
+/* ── SMART PAGINATION BUILDER ── */
+function buildPagination(container, current, total, onPage) {
+  container.innerHTML = '';
+
+  const btn = (label, page, disabled, active, isEllipsis) => {
+    const b = document.createElement('button');
+    b.className = 'page-btn' + (active ? ' active' : '') + (isEllipsis ? ' ellipsis' : '');
+    b.textContent = label;
+    b.disabled = disabled || isEllipsis;
+    if (!disabled && !isEllipsis) b.onclick = () => onPage(page);
+    return b;
+  };
+
+  // Prev arrow
+  container.appendChild(btn('‹', current - 1, current === 1, false, false));
+
+  const WING = 2; // pages on each side of current
+  const pages = [];
+
+  // Always show first page
+  pages.push(1);
+
+  const rangeStart = Math.max(2, current - WING);
+  const rangeEnd   = Math.min(total - 1, current + WING);
+
+  if (rangeStart > 2) pages.push('…');
+  for (let p = rangeStart; p <= rangeEnd; p++) pages.push(p);
+  if (rangeEnd < total - 1) pages.push('…');
+
+  // Always show last page
+  if (total > 1) pages.push(total);
+
+  pages.forEach(p => {
+    if (p === '…') {
+      container.appendChild(btn('…', null, true, false, true));
+    } else {
+      container.appendChild(btn(p, p, false, p === current, false));
+    }
+  });
+
+  // Next arrow
+  container.appendChild(btn('›', current + 1, current === total, false, false));
 }
 
 /* ── COUNTS ── */
