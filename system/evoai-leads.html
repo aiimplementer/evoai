@@ -308,7 +308,7 @@
     padding: 13px 14px; border-top: 1px solid var(--border);
     font-size: .76rem; color: var(--muted);
   }
-  .page-btns { display: flex; gap: 4px; flex-wrap: nowrap; }
+  .page-btns { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
   .page-btn {
     min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
@@ -1560,8 +1560,8 @@ function buildPagination(container, current, total, onPage) {
 
   container.appendChild(btn('‹', current - 1, current === 1, false, false));
 
-  const SHOW_ALL_THRESHOLD = 15;
-  const WING = 4;
+  const SHOW_ALL_THRESHOLD = 25;
+  const WING = 8;
   const pages = [];
 
   if (total <= SHOW_ALL_THRESHOLD) {
