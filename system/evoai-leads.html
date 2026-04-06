@@ -1064,22 +1064,29 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw4DQrNr2DFjb6gA5OM9JvYQxZ2L8ghxLqT_-tbB_OUskGRJZuwrvgIa5zKLjUMXNwitQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsjZe_HzG41KflUXlBxkGNnavyMnJIOHlRtcHJduOAjDurfYy_HDDuX4amofnWRICGnw/exec';
 
-// ── Server-side pagination state ──
-let currentPage   = 1;
-let totalRows     = 0;
+let allLeads      = [];
+let filteredLeads = [];
 let currentFilter = 'ALL';
 let currentView   = 'table';
 let editingLeadId = null;
 let searchTimer   = null;
-let lastQuery     = '';
-let pageCache     = [];   // rows for current visible page only
-let leadCache     = {};   // leadId → lead object for modal lookups
+let currentPage   = 1;
+let listPage      = 1;
 const PAGE_SIZE   = 15;
 
 /* ── BOARD CONFIG ── */
-
+const BOARD_STAGES = [
+  { key: 'New',          label: 'New',           color: '#e8f0fe' },
+  { key: 'Contacted',    label: 'Contacted',      color: '#ffb730' },
+  { key: 'Discovery Call', label: 'Discovery',    color: '#b0bec5' },
+  { key: 'Qualified',    label: 'Qualified',      color: '#64b4ff' },
+  { key: 'Proposal Sent', label: 'Proposal Sent', color: '#c084fc' },
+  { key: 'Negotiation',  label: 'Negotiation',    color: '#a0aec0' },
+  { key: 'Won',          label: 'Won',            color: '#00c864' },
+  { key: 'Lost',         label: 'Lost',           color: '#ff4d4d' },
+];
 
 /* ── getAuthToken ── */
 async function getAuthToken() {
@@ -1140,80 +1147,70 @@ async function apiCall(body) {
   return data;
 }
 
-/* ── BUILD API PARAMS FROM CURRENT UI STATE ── */
-function getFilterParams() {
-  return {
-    status:   document.getElementById('statusFilter').value  || (currentFilter !== 'ALL' ? currentFilter : ''),
-    service:  document.getElementById('serviceFilter').value  || '',
-    industry: document.getElementById('industryFilter').value || '',
-    query:    lastQuery,
-    page:     currentPage,
-    pageSize: PAGE_SIZE
-  };
-}
-
-/* ── LOAD (initial + refresh) ── */
+/* ── LOAD ── */
 async function loadLeads() {
-  currentPage = 1;
-  lastQuery   = '';
-  document.getElementById('searchInput').value = '';
-  await fetchPage();
-}
-
-/* ── FETCH A PAGE FROM SERVER ── */
-async function fetchPage() {
   setTableLoading(true);
-  const params  = getFilterParams();
-  const action  = lastQuery ? 'search' : 'list';
-  const data    = await apiCall({ action, ...params });
+  const data = await apiCall({ action: 'list' });
   setTableLoading(false);
-
   if (!data) return;
   if (data.error) { toast(data.error, 'error'); return; }
-
-  // Server returns { rows, total, counts }
-  pageCache  = data.rows  || [];
-  totalRows  = data.total || 0;
-
-  // Cache each row for modal lookups
-  pageCache.forEach(l => { leadCache[l.leadId] = l; });
-
-  updateCounts(data.counts);
-  renderCurrentView();
-
-  toast('Loaded ' + pageCache.length + ' of ' + totalRows + ' leads', 'success');
+  allLeads = Array.isArray(data) ? data : [];
+  updateCounts();
+  applyFilters();
+  toast('Leads loaded (' + allLeads.length + ')', 'success');
 }
 
 /* ── SEARCH ── */
 function onSearchInput(q) {
   clearTimeout(searchTimer);
-  lastQuery   = q.trim();
+  if (!q.trim()) { applyFilters(); return; }
+  searchTimer = setTimeout(() => doSearch(q), 420);
+}
+async function doSearch(q) {
+  setTableLoading(true);
+  const data = await apiCall({ action: 'search', query: q });
+  setTableLoading(false);
+  if (!data || data.error) { applyFilters(); return; }
+  filteredLeads = Array.isArray(data) ? data : [];
   currentPage = 1;
-  if (!lastQuery) { fetchPage(); return; }
-  searchTimer = setTimeout(fetchPage, 420);
+  listPage = 1;
+  renderCurrentView();
 }
 
-/* ── SIDEBAR STATUS FILTER ── */
+/* ── FILTERS ── */
 function filterStatus(status, el) {
   currentFilter = status;
   document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('statusFilter').value = '';
-  currentPage = 1;
-  fetchPage();
+  applyFilters();
 }
 
-/* ── DROPDOWN FILTERS ── */
 function applyFilters() {
-  const statusDrop = document.getElementById('statusFilter').value;
+  const statusDrop   = document.getElementById('statusFilter').value;
+  const serviceDrop  = document.getElementById('serviceFilter').value;
+  const industryDrop = document.getElementById('industryFilter').value;
+  const q            = document.getElementById('searchInput').value.trim().toLowerCase();
+
   if (statusDrop) {
     currentFilter = 'ALL';
     document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
     const allItem = document.querySelector('.aside-item[onclick*="ALL"]');
     if (allItem) allItem.classList.add('active');
   }
+
+  const effectiveStatus = statusDrop || (currentFilter !== 'ALL' ? currentFilter : '');
+
+  filteredLeads = allLeads.filter(l => {
+    const matchStatus   = !effectiveStatus  || l.status   === effectiveStatus;
+    const matchService  = !serviceDrop      || l.service  === serviceDrop;
+    const matchIndustry = !industryDrop     || l.industry === industryDrop;
+    const matchQ        = !q               || JSON.stringify(l).toLowerCase().includes(q);
+    return matchStatus && matchService && matchIndustry && matchQ;
+  });
   currentPage = 1;
-  fetchPage();
+  listPage = 1;
+  renderCurrentView();
 }
 
 /* ── VIEW SWITCHING ── */
@@ -1243,7 +1240,7 @@ function renderTable() {
   const tbody      = document.getElementById('leadsBody');
   const pagination = document.getElementById('pagination');
 
-  if (!pageCache.length) {
+  if (!filteredLeads.length) {
     tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div></td></tr>`;
@@ -1251,7 +1248,13 @@ function renderTable() {
     return;
   }
 
-  tbody.innerHTML = pageCache.map(l => `
+  const total = filteredLeads.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  if (currentPage > pages) currentPage = pages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
+
+  tbody.innerHTML = slice.map(l => `
     <tr>
       <td><span class="lead-id">${esc(l.leadId||'—')}</span></td>
       <td>
@@ -1280,15 +1283,214 @@ function renderTable() {
       </td>
     </tr>`).join('');
 
-  const pages = Math.ceil(totalRows / PAGE_SIZE);
-  if (totalRows > PAGE_SIZE) {
+  if (total > PAGE_SIZE) {
     pagination.style.display = 'flex';
-    const start = (currentPage - 1) * PAGE_SIZE;
-    document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,totalRows)} of ${totalRows}`;
-    buildPagination(document.getElementById('pageBtns'), currentPage, pages, p => { currentPage = p; fetchPage(); });
+    document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
+    const btns = document.getElementById('pageBtns');
+    btns.innerHTML = '';
+    buildPagination(btns, currentPage, pages, p => { currentPage = p; renderTable(); });
   } else {
     pagination.style.display = 'none';
   }
+}
+
+/* ── DRAG AND DROP STATE ── */
+let dragLeadId   = null;
+let dragFromStage = null;
+let dragOverBody  = null;
+let dragIndicator = null;
+
+/* ── RENDER BOARD ── */
+function renderBoard() {
+  const container = document.getElementById('boardScroll');
+  container.innerHTML = '';
+
+  BOARD_STAGES.forEach(stage => {
+    const stageLeads = filteredLeads.filter(l => l.status === stage.key);
+
+    const col = document.createElement('div');
+    col.className = 'board-col';
+
+    const head = document.createElement('div');
+    head.className = 'board-col-head';
+    head.innerHTML = `
+      <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
+      <span class="board-col-count" id="bcnt-${stage.key.replace(/ /g,'-')}">${stageLeads.length}</span>`;
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'board-col-body';
+    body.dataset.stage = stage.key;
+
+    /* ── drop zone events ── */
+    body.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragOverBody && dragOverBody !== body) dragOverBody.classList.remove('drag-over');
+      dragOverBody = body;
+      body.classList.add('drag-over');
+
+      // Move drop indicator
+      const afterEl = getDragAfterElement(body, e.clientY);
+      if (dragIndicator) {
+        dragIndicator.classList.add('visible');
+        if (afterEl) body.insertBefore(dragIndicator, afterEl);
+        else body.appendChild(dragIndicator);
+      }
+    });
+
+    body.addEventListener('dragleave', e => {
+      if (!body.contains(e.relatedTarget)) {
+        body.classList.remove('drag-over');
+        if (dragIndicator) dragIndicator.classList.remove('visible');
+      }
+    });
+
+    body.addEventListener('drop', async e => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+      if (dragIndicator) { dragIndicator.classList.remove('visible'); }
+
+      const newStage = body.dataset.stage;
+      if (!dragLeadId || newStage === dragFromStage) return;
+
+      await moveLead(dragLeadId, newStage);
+    });
+
+    if (!stageLeads.length) {
+      body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
+    } else {
+      stageLeads.forEach(l => {
+        body.appendChild(createBoardCard(l));
+      });
+    }
+
+    col.appendChild(body);
+    container.appendChild(col);
+  });
+}
+
+function createBoardCard(l) {
+  const card = document.createElement('div');
+  card.className = 'board-card';
+  card.draggable = true;
+  card.dataset.leadId = l.leadId;
+  card.style.position = 'relative';
+
+  const initials = (l.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
+      <div style="min-width:0;flex:1;">
+        <div class="board-card-name">${esc(l.name||'—')}</div>
+      </div>
+      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;cursor:grab;" title="Drag to move">
+        <svg viewBox="0 0 14 14" fill="currentColor" width="14" height="14"><circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg>
+      </div>
+    </div>
+    <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle ? ' · ' + esc(l.jobtitle) : ''}</div>
+    <div class="board-card-footer">
+      <span class="board-card-service">${esc(l.service||'—')}</span>
+      <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
+    </div>`;
+
+  /* click = view (only if not dragging) */
+  let didDrag = false;
+  card.addEventListener('dragstart', e => {
+    didDrag = true;
+    dragLeadId    = l.leadId;
+    dragFromStage = l.status;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', l.leadId);
+
+    // create indicator element once
+    dragIndicator = document.createElement('div');
+    dragIndicator.className = 'drop-indicator';
+
+    // ghost card for drag image
+    setTimeout(() => card.classList.add('drag-ghost'), 0);
+  });
+
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging', 'drag-ghost');
+    document.querySelectorAll('.board-col-body').forEach(b => b.classList.remove('drag-over'));
+    if (dragIndicator && dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
+    dragIndicator  = null;
+    dragOverBody   = null;
+    setTimeout(() => { didDrag = false; }, 0);
+  });
+
+  card.addEventListener('click', () => {
+    if (!didDrag) viewLead(l.leadId);
+  });
+
+  return card;
+}
+
+/* helper: find element to insert before based on mouse Y */
+function getDragAfterElement(container, y) {
+  const draggables = [...container.querySelectorAll('.board-card:not(.dragging)')];
+  return draggables.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+/* ── MOVE LEAD (API save) ── */
+async function moveLead(leadId, newStatus) {
+  // Optimistic update in memory
+  const lead = allLeads.find(l => l.leadId === leadId);
+  if (!lead) return;
+  const oldStatus = lead.status;
+  lead.status = newStatus;
+
+  // Also update filteredLeads
+  const fLead = filteredLeads.find(l => l.leadId === leadId);
+  if (fLead) fLead.status = newStatus;
+
+  // Re-render board immediately (optimistic)
+  renderBoard();
+  updateCounts();
+
+  toast(`Moving ${lead.name} → ${newStatus}…`, 'success');
+
+  // Build minimal update payload (all required fields from lead)
+  const payload = {
+    action:   'update',
+    leadId,
+    name:     lead.name     || '',
+    email:    lead.email    || '',
+    phone:    lead.phone    || '',
+    linkedin: lead.linkedin || '',
+    company:  lead.company  || '',
+    jobtitle: lead.jobtitle || '',
+    industry: lead.industry || '',
+    service:  lead.service  || '',
+    status:   newStatus,
+    source:   lead.source   || '',
+    page:     lead.page     || '',
+    message:  lead.message  || '',
+    comments: lead.comments || '',
+    useragent: navigator.userAgent
+  };
+
+  const data = await apiCall(payload);
+
+  if (!data || data.error) {
+    // Rollback on failure
+    lead.status = oldStatus;
+    if (fLead) fLead.status = oldStatus;
+    renderBoard();
+    updateCounts();
+    toast('Failed to save — change rolled back', 'error');
+    return;
+  }
+
+  toast(`${lead.name} moved to ${newStatus}`, 'success');
 }
 
 /* ── RENDER LIST ── */
@@ -1296,7 +1498,7 @@ function renderList() {
   const listBody = document.getElementById('listBody');
   const listPag  = document.getElementById('listPagination');
 
-  if (!pageCache.length) {
+  if (!filteredLeads.length) {
     listBody.innerHTML = `<div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div>`;
@@ -1304,7 +1506,13 @@ function renderList() {
     return;
   }
 
-  listBody.innerHTML = pageCache.map(l => `
+  const total = filteredLeads.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  if (listPage > pages) listPage = pages;
+  const start = (listPage - 1) * PAGE_SIZE;
+  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
+
+  listBody.innerHTML = slice.map(l => `
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}')">
       <div class="list-item-contact">
         <div class="list-item-name">${esc(l.name||'—')}</div>
@@ -1326,40 +1534,91 @@ function renderList() {
       </div>
     </div>`).join('');
 
-  const pages = Math.ceil(totalRows / PAGE_SIZE);
-  if (totalRows > PAGE_SIZE) {
+  if (total > PAGE_SIZE) {
     listPag.style.display = 'flex';
-    const start = (currentPage - 1) * PAGE_SIZE;
-    document.getElementById('listPageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,totalRows)} of ${totalRows}`;
-    buildPagination(document.getElementById('listPageBtns'), currentPage, pages, p => { currentPage = p; fetchPage(); });
+    document.getElementById('listPageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
+    const btns = document.getElementById('listPageBtns');
+    btns.innerHTML = '';
+    buildPagination(btns, listPage, pages, p => { listPage = p; renderList(); });
   } else {
     listPag.style.display = 'none';
   }
 }
 
-/* ── COUNTS (from server response) ── */
-function updateCounts(counts) {
-  if (!counts) return;
-  document.getElementById('cnt-all').textContent         = counts['ALL']           || 0;
-  document.getElementById('cnt-new').textContent         = counts['New']           || 0;
-  document.getElementById('cnt-contacted').textContent   = counts['Contacted']     || 0;
-  document.getElementById('cnt-discovery').textContent   = counts['Discovery Call']|| 0;
-  document.getElementById('cnt-qualified').textContent   = counts['Qualified']     || 0;
-  document.getElementById('cnt-proposal').textContent    = counts['Proposal Sent'] || 0;
-  document.getElementById('cnt-negotiation').textContent = counts['Negotiation']   || 0;
-  document.getElementById('cnt-won').textContent         = counts['Won']           || 0;
-  document.getElementById('cnt-lost').textContent        = counts['Lost']          || 0;
-  document.getElementById('s-total').textContent = counts['ALL']       || 0;
-  document.getElementById('s-new').textContent   = counts['New']       || 0;
-  document.getElementById('s-qual').textContent  = counts['Qualified'] || 0;
-  document.getElementById('s-won').textContent   = counts['Won']       || 0;
+/* ── SMART PAGINATION BUILDER ── */
+function buildPagination(container, current, total, onPage) {
+  container.innerHTML = '';
+
+  const btn = (label, page, disabled, active, isEllipsis) => {
+    const b = document.createElement('button');
+    b.className = 'page-btn' + (active ? ' active' : '') + (isEllipsis ? ' ellipsis' : '');
+    b.textContent = label;
+    b.disabled = disabled || isEllipsis;
+    if (!disabled && !isEllipsis) b.onclick = () => onPage(page);
+    return b;
+  };
+
+  container.appendChild(btn('‹', current - 1, current === 1, false, false));
+
+  const VISIBLE = 15; // always show this many consecutive page buttons
+  const pages   = [];
+
+  if (total <= VISIBLE) {
+    // show all — no ellipsis needed
+    for (let p = 1; p <= total; p++) pages.push(p);
+  } else {
+    // Anchor a window of VISIBLE pages around current
+    let winStart = Math.max(1, current - Math.floor(VISIBLE / 2));
+    let winEnd   = winStart + VISIBLE - 1;
+    if (winEnd > total) { winEnd = total; winStart = Math.max(1, winEnd - VISIBLE + 1); }
+
+    if (winStart > 1)     { pages.push(1); if (winStart > 2) pages.push('…'); }
+    for (let p = winStart; p <= winEnd; p++) pages.push(p);
+    if (winEnd < total)   { if (winEnd < total - 1) pages.push('…'); pages.push(total); }
+  }
+
+  pages.forEach(p => {
+    if (p === '…') container.appendChild(btn('…', null, true, false, true));
+    else           container.appendChild(btn(p, p, false, p === current, false));
+  });
+
+  container.appendChild(btn('›', current + 1, current === total, false, false));
 }
 
-/* old openCreate removed */
+/* ── COUNTS ── */
+function updateCounts() {
+  const count = s => allLeads.filter(l => s === 'ALL' || l.status === s).length;
+  document.getElementById('cnt-all').textContent         = count('ALL');
+  document.getElementById('cnt-new').textContent         = count('New');
+  document.getElementById('cnt-contacted').textContent   = count('Contacted');
+  document.getElementById('cnt-discovery').textContent   = count('Discovery Call');
+  document.getElementById('cnt-qualified').textContent   = count('Qualified');
+  document.getElementById('cnt-proposal').textContent    = count('Proposal Sent');
+  document.getElementById('cnt-negotiation').textContent = count('Negotiation');
+  document.getElementById('cnt-won').textContent         = count('Won');
+  document.getElementById('cnt-lost').textContent        = count('Lost');
+  document.getElementById('s-total').textContent = count('ALL');
+  document.getElementById('s-new').textContent   = count('New');
+  document.getElementById('s-qual').textContent  = count('Qualified');
+  document.getElementById('s-won').textContent   = count('Won');
+}
+
+/* ── CREATE ── */
+function openCreate() {
+  editingLeadId = null;
+  document.getElementById('formModalTitle').textContent = 'New Lead';
+  document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
+  ['name','email','phone','linkedin','company','jobtitle','industry',
+   'service','status','source','page','message','comments'].forEach(f => {
+    const el = document.getElementById('f-'+f);
+    if (el) el.value = f === 'status' ? 'New' : '';
+  });
+  document.getElementById('formOverlay').classList.add('open');
+}
 
 /* ── EDIT ── */
 function editLead(leadId) {
-  const lead = leadCache[leadId];
+  const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
 
   editingLeadId = leadId;
@@ -1431,12 +1690,12 @@ async function submitForm() {
   if (data.error) { toast(data.error, 'error'); return; }
   toast(editingLeadId ? 'Lead updated!' : 'Lead created — ' + data.leadId, 'success');
   closeModal('formOverlay');
-  await fetchPage();
+  await loadLeads();
 }
 
 /* ── VIEW ── */
 function viewLead(leadId) {
-  const lead = leadCache[leadId];
+  const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
   document.getElementById('viewLeadId').textContent = lead.leadId;
   document.getElementById('viewEditBtn').onclick = () => editLead(leadId);
@@ -1467,13 +1726,9 @@ function viewLead(leadId) {
   document.getElementById('viewOverlay').classList.add('open');
 }
 
-/* ── EXPORT CSV ── server fetches all matching rows ── */
-async function exportCSV() {
-  toast('Preparing export…', 'success');
-  const params = getFilterParams();
-  const data   = await apiCall({ action: 'export', ...params });
-  if (!data || data.error) { toast('Export failed', 'error'); return; }
-  const leads = data.rows || [];
+/* ── EXPORT CSV ── */
+function exportCSV() {
+  const leads = filteredLeads.length ? filteredLeads : allLeads;
   if (!leads.length) { toast('No leads to export', 'warn'); return; }
   const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','message','comments'];
   const header = cols.join(',');
@@ -1484,242 +1739,9 @@ async function exportCSV() {
   const a = document.createElement('a');
   a.href = url; a.download = 'leads-export.csv'; a.click();
   URL.revokeObjectURL(url);
-  toast('Exported ' + leads.length + ' leads', 'success');
+  toast('Exported ' + leads.length + ' leads as CSV', 'success');
 }
 
-/* ── SMART PAGINATION BUILDER ── */
-function buildPagination(container, current, total, onPage) {
-  container.innerHTML = '';
-
-  const btn = (label, page, disabled, active, isEllipsis) => {
-    const b = document.createElement('button');
-    b.className = 'page-btn' + (active ? ' active' : '') + (isEllipsis ? ' ellipsis' : '');
-    b.textContent = label;
-    b.disabled = disabled || isEllipsis;
-    if (!disabled && !isEllipsis) b.onclick = () => onPage(page);
-    return b;
-  };
-
-  container.appendChild(btn('‹', current - 1, current === 1, false, false));
-
-  const VISIBLE = 15; // always show this many consecutive page buttons
-  const pages   = [];
-
-  if (total <= VISIBLE) {
-    // show all — no ellipsis needed
-    for (let p = 1; p <= total; p++) pages.push(p);
-  } else {
-    // Anchor a window of VISIBLE pages around current
-    let winStart = Math.max(1, current - Math.floor(VISIBLE / 2));
-    let winEnd   = winStart + VISIBLE - 1;
-    if (winEnd > total) { winEnd = total; winStart = Math.max(1, winEnd - VISIBLE + 1); }
-
-    if (winStart > 1)     { pages.push(1); if (winStart > 2) pages.push('…'); }
-    for (let p = winStart; p <= winEnd; p++) pages.push(p);
-    if (winEnd < total)   { if (winEnd < total - 1) pages.push('…'); pages.push(total); }
-  }
-
-  pages.forEach(p => {
-    if (p === '…') container.appendChild(btn('…', null, true, false, true));
-    else           container.appendChild(btn(p, p, false, p === current, false));
-  });
-
-  container.appendChild(btn('›', current + 1, current === total, false, false));
-}
-
-
-/* ── DRAG AND DROP STATE ── */
-let dragLeadId    = null;
-let dragFromStage = null;
-let dragOverBody  = null;
-let dragIndicator = null;
-
-/* ── BOARD CONFIG ── */
-const BOARD_STAGES = [
-  { key: 'New',           label: 'New',           color: '#e8f0fe' },
-  { key: 'Contacted',     label: 'Contacted',      color: '#ffb730' },
-  { key: 'Discovery Call',label: 'Discovery',      color: '#b0bec5' },
-  { key: 'Qualified',     label: 'Qualified',      color: '#64b4ff' },
-  { key: 'Proposal Sent', label: 'Proposal Sent',  color: '#c084fc' },
-  { key: 'Negotiation',   label: 'Negotiation',    color: '#a0aec0' },
-  { key: 'Won',           label: 'Won',            color: '#00c864' },
-  { key: 'Lost',          label: 'Lost',           color: '#ff4d4d' },
-];
-
-/* ── RENDER BOARD ── */
-function renderBoard() {
-  const container = document.getElementById('boardScroll');
-  container.innerHTML = '';
-
-  BOARD_STAGES.forEach(stage => {
-    const stageLeads = pageCache.filter(l => l.status === stage.key);
-    const col = document.createElement('div');
-    col.className = 'board-col';
-
-    const head = document.createElement('div');
-    head.className = 'board-col-head';
-    head.innerHTML = `<span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
-      <span class="board-col-count">${stageLeads.length}</span>`;
-    col.appendChild(head);
-
-    const body = document.createElement('div');
-    body.className = 'board-col-body';
-    body.dataset.stage = stage.key;
-
-    body.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      if (dragOverBody && dragOverBody !== body) dragOverBody.classList.remove('drag-over');
-      dragOverBody = body;
-      body.classList.add('drag-over');
-      const afterEl = getDragAfterElement(body, e.clientY);
-      if (dragIndicator) {
-        dragIndicator.classList.add('visible');
-        if (afterEl) body.insertBefore(dragIndicator, afterEl);
-        else body.appendChild(dragIndicator);
-      }
-    });
-
-    body.addEventListener('dragleave', e => {
-      if (!body.contains(e.relatedTarget)) {
-        body.classList.remove('drag-over');
-        if (dragIndicator) dragIndicator.classList.remove('visible');
-      }
-    });
-
-    body.addEventListener('drop', async e => {
-      e.preventDefault();
-      body.classList.remove('drag-over');
-      if (dragIndicator) dragIndicator.classList.remove('visible');
-      const newStage = body.dataset.stage;
-      if (!dragLeadId || newStage === dragFromStage) return;
-      await moveLead(dragLeadId, newStage);
-    });
-
-    if (!stageLeads.length) {
-      body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
-    } else {
-      stageLeads.forEach(l => body.appendChild(createBoardCard(l)));
-    }
-
-    col.appendChild(body);
-    container.appendChild(col);
-  });
-}
-
-function createBoardCard(l) {
-  const card = document.createElement('div');
-  card.className = 'board-card';
-  card.draggable = true;
-  card.dataset.leadId = l.leadId;
-  card.style.position = 'relative';
-
-  const initials = (l.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
-
-  card.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
-      <div style="min-width:0;flex:1;"><div class="board-card-name">${esc(l.name||'—')}</div></div>
-      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;cursor:grab;">
-        <svg viewBox="0 0 14 14" fill="currentColor" width="14" height="14"><circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg>
-      </div>
-    </div>
-    <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle ? ' · ' + esc(l.jobtitle) : ''}</div>
-    <div class="board-card-footer">
-      <span class="board-card-service">${esc(l.service||'—')}</span>
-      <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
-    </div>`;
-
-  let didDrag = false;
-
-  card.addEventListener('dragstart', e => {
-    didDrag = true;
-    dragLeadId    = l.leadId;
-    dragFromStage = l.status;
-    card.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', l.leadId);
-    dragIndicator = document.createElement('div');
-    dragIndicator.className = 'drop-indicator';
-    setTimeout(() => card.classList.add('drag-ghost'), 0);
-  });
-
-  card.addEventListener('dragend', () => {
-    card.classList.remove('dragging', 'drag-ghost');
-    document.querySelectorAll('.board-col-body').forEach(b => b.classList.remove('drag-over'));
-    if (dragIndicator && dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
-    dragIndicator = null; dragOverBody = null;
-    setTimeout(() => { didDrag = false; }, 0);
-  });
-
-  card.addEventListener('click', () => { if (!didDrag) viewLead(l.leadId); });
-
-  return card;
-}
-
-function getDragAfterElement(container, y) {
-  const draggables = [...container.querySelectorAll('.board-card:not(.dragging)')];
-  return draggables.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) return { offset, element: child };
-    return closest;
-  }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
-
-/* ── MOVE LEAD (optimistic + API save) ── */
-async function moveLead(leadId, newStatus) {
-  const lead = leadCache[leadId];
-  if (!lead) return;
-  const oldStatus = lead.status;
-
-  // Optimistic update
-  lead.status = newStatus;
-  renderBoard();
-
-  toast(`Moving ${lead.name} to ${newStatus}…`, 'success');
-
-  const payload = {
-    action: 'update', leadId,
-    name: lead.name||'', email: lead.email||'', phone: lead.phone||'',
-    linkedin: lead.linkedin||'', company: lead.company||'', jobtitle: lead.jobtitle||'',
-    industry: lead.industry||'', service: lead.service||'', status: newStatus,
-    source: lead.source||'', page: lead.page||'',
-    message: lead.message||'', comments: lead.comments||'',
-    useragent: navigator.userAgent
-  };
-
-  const data = await apiCall(payload);
-
-  if (!data || data.error) {
-    lead.status = oldStatus;
-    renderBoard();
-    toast('Failed to save — rolled back', 'error');
-    return;
-  }
-
-  toast(`${lead.name} moved to ${newStatus}`, 'success');
-}
-
-/* old updateCounts removed */
-
-/* ── CREATE ── */
-function openCreate() {
-  editingLeadId = null;
-  document.getElementById('formModalTitle').textContent = 'New Lead';
-  document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
-  ['name','email','phone','linkedin','company','jobtitle','industry',
-   'service','status','source','page','message','comments'].forEach(f => {
-    const el = document.getElementById('f-'+f);
-    if (el) el.value = f === 'status' ? 'New' : '';
-  });
-  document.getElementById('formOverlay').classList.add('open');
-}
-
-/* old editLead removed */
-/* old submitForm removed */
-/* old viewLead removed */
-/* old exportCSV removed */
 /* ── HELPERS ── */
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
