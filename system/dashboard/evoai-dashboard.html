@@ -1642,7 +1642,7 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwMx9LWT23ojQpz2Nn7OgmRm8We1CtIF0UgbOuzEmAX8XKciJLXA_pJL2RHLKq1cjqMiA/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx44sOoUN5FjdOwEmo7jVSD1LUZK1kGIlM9im1yUbdzlbgoY_3AE4g9YGsNvLxe6P4jjA/exec';
 
 let allLeads      = [];
 let filteredLeads = [];
@@ -2375,21 +2375,7 @@ function renderTimeline(leadId) {
     </div>`).join('');
 }
 
-function addNote() {
-  const text = document.getElementById('noteInput').value.trim();
-  const type = document.getElementById('noteType').value;
-  if (!text) { toast('Note cannot be empty', 'warn'); return; }
-  
-  //_addLocalActivity(_viewingLeadId, type, text);
-  saveNote();
-  
-  
-  document.getElementById('noteInput').value = '';
-  renderTimeline(_viewingLeadId);
-  toast('Activity added', 'success');
-}
-
-async function saveNote() {
+async function addNote() {
   const text = document.getElementById('noteInput').value.trim();
   const type = document.getElementById('noteType').value;
   if (!text) { toast('Note cannot be empty', 'warn'); return; }
@@ -2405,7 +2391,7 @@ async function saveNote() {
   if (!data || data.error) { toast('Failed to save note', 'error'); return; }
 
   document.getElementById('noteInput').value = '';
-  await loadActivities(_viewingLeadId);   // reload from sheet
+  await loadActivities(_viewingLeadId);
   toast('Activity saved', 'success');
 }
 
