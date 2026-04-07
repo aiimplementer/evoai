@@ -992,12 +992,12 @@
 	appId: "1:900829259085:web:907aee15a33c75210f0304"
   };
 
-  const app  = initializeApp(firebaseAuthConfig, "app");
-  const dbapp  = initializeApp(firebaseDBConfig, "dbApp");
+  const authAppVar  = initializeApp(firebaseAuthConfig, "authApp");
+  const dbAppVar  = initializeApp(firebaseDBConfig, "dbApp");
   
   
-  const auth = getAuth(app);
-  const db   = getFirestore(dbapp);
+  const authApp = getAuth(authAppVar);
+  const dbApp   = getFirestore(dbAppVar);
 
   /* ── helpers ── */
 
