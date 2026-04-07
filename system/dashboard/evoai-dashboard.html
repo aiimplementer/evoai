@@ -1134,10 +1134,16 @@
   /* ── AUTH GUARD ── */
   onAuthStateChanged(auth, user => {
     if (!user) {
-      document.getElementById('unauthOverlay').classList.add('open');
-      setTimeout(() => window.location.replace('evoai-login.html'), 3000);
-      return;
-    }
+		// Wait briefly in case token is still being restored
+		setTimeout(() => {
+		  // Re-check — don't redirect if user appeared in the meantime
+		  if (!auth.currentUser) {
+			document.getElementById('unauthOverlay').classList.add('open');
+			setTimeout(() => window.location.replace('evoai-login.html'), 2000);
+		  }
+		}, 1500); // give Firebase time to restore session
+		return;
+  }
 
     /* Populate UI */
     const name     = user.displayName || user.email.split('@')[0];
