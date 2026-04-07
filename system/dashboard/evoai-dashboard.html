@@ -1642,7 +1642,7 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsjZe_HzG41KflUXlBxkGNnavyMnJIOHlRtcHJduOAjDurfYy_HDDuX4amofnWRICGnw/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxvI4pVD5iSm35-rM3qnKif46XRMcIYhqaIFcXcbEQE56R913XKxmEoTe7OlNHTvMRYnw/exec';
 
 let allLeads      = [];
 let filteredLeads = [];
@@ -2379,14 +2379,51 @@ function addNote() {
   const text = document.getElementById('noteInput').value.trim();
   const type = document.getElementById('noteType').value;
   if (!text) { toast('Note cannot be empty', 'warn'); return; }
-  _addLocalActivity(_viewingLeadId, type, text);
+  
+  //_addLocalActivity(_viewingLeadId, type, text);
+  addNote();
+  
+  
   document.getElementById('noteInput').value = '';
   renderTimeline(_viewingLeadId);
   toast('Activity added', 'success');
 }
 
+async function addNote() {
+  const text = document.getElementById('noteInput').value.trim();
+  const type = document.getElementById('noteType').value;
+  if (!text) { toast('Note cannot be empty', 'warn'); return; }
+
+  const data = await apiCall({
+    action: 'addActivity',
+    leadId: _viewingLeadId,
+    type,
+    text,
+    user: document.getElementById('sideUserName').textContent || 'Team'
+  });
+
+  if (!data || data.error) { toast('Failed to save note', 'error'); return; }
+
+  document.getElementById('noteInput').value = '';
+  await loadActivities(_viewingLeadId);   // reload from sheet
+  toast('Activity saved', 'success');
+}
+
+async function loadActivities(leadId) {
+  const data = await apiCall({ action: 'listActivities', leadId });
+  if (!data || data.error) return;
+
+  // Replace the in-memory store with fresh data from sheet
+  _activities[leadId] = Array.isArray(data) ? data : [];
+  renderTimeline(leadId);
+}
+
 function viewLead(leadId) {
   _viewingLeadId = leadId;
+  
+  // Inside viewLead(), replace the existing timeline seed block:
+  await loadActivities(leadId);
+
   const lead = allLeads.find(l => l.leadId === leadId) || filteredLeads.find(l => l.leadId === leadId);
   if (!lead) { toast('Lead not found', 'error'); return; }
 
