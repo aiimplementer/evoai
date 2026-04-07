@@ -2381,7 +2381,7 @@ function addNote() {
   if (!text) { toast('Note cannot be empty', 'warn'); return; }
   
   //_addLocalActivity(_viewingLeadId, type, text);
-  addNote();
+  saveNote();
   
   
   document.getElementById('noteInput').value = '';
@@ -2389,7 +2389,7 @@ function addNote() {
   toast('Activity added', 'success');
 }
 
-async function addNote() {
+async function saveNote() {
   const text = document.getElementById('noteInput').value.trim();
   const type = document.getElementById('noteType').value;
   if (!text) { toast('Note cannot be empty', 'warn'); return; }
@@ -2418,7 +2418,7 @@ async function loadActivities(leadId) {
   renderTimeline(leadId);
 }
 
-function viewLead(leadId) {
+async function viewLead(leadId) {
   _viewingLeadId = leadId;
   
   // Inside viewLead(), replace the existing timeline seed block:
@@ -2477,7 +2477,7 @@ function viewLead(leadId) {
   if (!_getActivities(leadId).length && lead.date) {
     _addLocalActivity(leadId, 'status', `Lead created · Status: ${lead.status||'New'}`, 'System');
   }
-  renderTimeline(leadId);
+  //renderTimeline(leadId);
 
   // Automations tab
   document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a => `
