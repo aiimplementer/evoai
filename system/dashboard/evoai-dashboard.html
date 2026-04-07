@@ -992,8 +992,8 @@
 	appId: "1:900829259085:web:907aee15a33c75210f0304"
   };
 
-  const app  = initializeApp(firebaseAuthConfig);
-  const dbapp  = initializeApp(firebaseDBConfig);
+  const app  = initializeApp(firebaseAuthConfig, "app");
+  const dbapp  = initializeApp(firebaseDBConfig, "dbApp");
   
   
   const auth = getAuth(app);
