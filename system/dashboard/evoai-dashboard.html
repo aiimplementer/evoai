@@ -962,10 +962,18 @@
      We dispatch a custom event "firebaseReady" when done so
      the regular script below knows it is safe to proceed.
 ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════
+     FIREBASE SDK  — FIXED AUTH + DB SPLIT PROJECT SETUP
+════════════════════════════════════════════════════════════ -->
 <script type="module">
   import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut }
-                             from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import {
+    getAuth,
+    onAuthStateChanged,
+    signOut,
+    setPersistence,
+    browserLocalPersistence
+  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
   import {
     getFirestore,
     collection, doc,
@@ -982,26 +990,28 @@
     messagingSenderId: "77079760801",
     appId:             "1:77079760801:web:2bbfeffffc38a6265c45e0"
   };
-  
+
   const firebaseDBConfig = {
-    apiKey: "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
-	authDomain: "evoai-lead-manager.firebaseapp.com",
-	projectId: "evoai-lead-manager",
-	storageBucket: "evoai-lead-manager.firebasestorage.app",
-	messagingSenderId: "900829259085",
-	appId: "1:900829259085:web:907aee15a33c75210f0304"
+    apiKey:            "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
+    authDomain:        "evoai-lead-manager.firebaseapp.com",
+    projectId:         "evoai-lead-manager",
+    storageBucket:     "evoai-lead-manager.firebasestorage.app",
+    messagingSenderId: "900829259085",
+    appId:             "1:900829259085:web:907aee15a33c75210f0304"
   };
 
-  const authAppVar  = initializeApp(firebaseAuthConfig, "authApp");
-  const dbAppVar  = initializeApp(firebaseDBConfig, "dbApp");
-  
-  
-  // AFTER (fixed)
-	const auth = getAuth(authAppVar);
-	const db   = getFirestore(dbAppVar);
+  const authApp = initializeApp(firebaseAuthConfig, "authApp");
+  const dbApp   = initializeApp(firebaseDBConfig,   "dbApp");
+
+  const auth = getAuth(authApp);
+  const db   = getFirestore(dbApp);
+
+  /* ── Ensure persistence is LOCAL (survives page reload) ── */
+  setPersistence(auth, browserLocalPersistence).catch(e => {
+    console.warn('[evoAI] setPersistence failed:', e);
+  });
 
   /* ── helpers ── */
-
   function generateLeadId() {
     const n = new Date(), p = (v,l=2) => String(v).padStart(l,'0');
     return `EVOWEB-${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
@@ -1014,7 +1024,6 @@
     return '';
   }
 
-  /* Firestore doc → internal lead object */
   function docToLead(snap) {
     const d = snap.data();
     return {
@@ -1039,65 +1048,50 @@
     };
   }
 
-  /* Internal lead object → Firestore doc fields
-     FIX: leadId is now guaranteed to be set BEFORE calling this */
   function leadToDoc(lead, isNew) {
     const raw = String(lead.dealvalue || '').replace(/[^0-9.]/g, '');
     const dealVal = raw ? (parseFloat(raw) || 0) : 0;
-
     const data = {
-      leadId:              lead.leadId   || '',   // always present now
-      fullName:            lead.name     || '',
-      email:               lead.email    || '',
-      phone:               lead.phone    || '',
-      linkedin:            lead.linkedin || '',
-      companyName:         lead.company  || '',
-      jobTitle:            lead.jobtitle || '',
-      industry:            lead.industry || '',
-      service:             lead.service  || '',
-      status:              lead.status   || 'New',
-      source:              lead.source   || '',
-      page:                lead.page     || '',
-      message:             lead.message  || '',
-      comments:            lead.comments || '',
-      dealValue:           dealVal,
-      followupDate:        lead.followup || '',
-      lastUpdated:         serverTimestamp(),
+      leadId:       lead.leadId   || '',
+      fullName:     lead.name     || '',
+      email:        lead.email    || '',
+      phone:        lead.phone    || '',
+      linkedin:     lead.linkedin || '',
+      companyName:  lead.company  || '',
+      jobTitle:     lead.jobtitle || '',
+      industry:     lead.industry || '',
+      service:      lead.service  || '',
+      status:       lead.status   || 'New',
+      source:       lead.source   || '',
+      page:         lead.page     || '',
+      message:      lead.message  || '',
+      comments:     lead.comments || '',
+      dealValue:    dealVal,
+      followupDate: lead.followup || '',
+      lastUpdated:  serverTimestamp(),
     };
     if (isNew) data.createdAt = serverTimestamp();
     return data;
   }
 
   /* ── CRUD ── */
-
-  /* Load all leads */
   window.dbLoadLeads = async () => {
     const snap = await getDocs(collection(db, 'leads'));
     return snap.docs.map(docToLead);
   };
 
-  /* Add lead — FIX: set leadId BEFORE building the doc object */
   window.dbAddLead = async (lead) => {
     const id = generateLeadId();
-    lead.leadId = id;              // ← set on the object first
-    const data = leadToDoc(lead, true);  // ← then build the doc
-    dbg(`Saving to Firestore id=${id}`, 'info');
-    dbg(`Payload: ${JSON.stringify(data)}`, 'info');
+    lead.leadId = id;
+    const data = leadToDoc(lead, true);
     await setDoc(doc(db, 'leads', id), data);
-    dbg(`Saved OK — id=${id}`, 'ok');
     return id;
   };
 
-  /* Update lead */
   window.dbUpdateLead = async (docId, lead) => {
-    const data = leadToDoc(lead, false);
-    dbg(`Updating doc=${docId}`, 'info');
-    dbg(`Payload: ${JSON.stringify(data)}`, 'info');
-    await updateDoc(doc(db, 'leads', docId), data);
-    dbg(`Update OK`, 'ok');
+    await updateDoc(doc(db, 'leads', docId), leadToDoc(lead, false));
   };
 
-  /* Add activity */
   window.dbAddActivity = async (leadDocId, activity) => {
     await addDoc(collection(db, 'leads', leadDocId, 'activities'), {
       type:      activity.type || 'note',
@@ -1107,7 +1101,6 @@
     });
   };
 
-  /* Load activities */
   window.dbLoadActivities = async (leadDocId) => {
     try {
       const snap = await getDocs(
@@ -1125,59 +1118,84 @@
     } catch { return []; }
   };
 
-  /* Sign out */
   window.doSignOut = async () => {
     await signOut(auth);
     window.location.replace('evoai-login.html');
   };
 
-  /* ── AUTH GUARD ── */
-  onAuthStateChanged(auth, user => {
-    if (!user) {
-		// Wait briefly in case token is still being restored
-		setTimeout(() => {
-		  // Re-check — don't redirect if user appeared in the meantime
-		  if (!auth.currentUser) {
-			document.getElementById('unauthOverlay').classList.add('open');
-			setTimeout(() => window.location.replace('evoai-login.html'), 2000);
-		  }
-		}, 1500); // give Firebase time to restore session
-		return;
-  }
-
-    /* Populate UI */
-    const name     = user.displayName || user.email.split('@')[0];
-    const email    = user.email;
-    const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-
-    document.getElementById('userInitials').textContent     = initials;
-    document.getElementById('userName').textContent         = name;
-    document.getElementById('userEmail').textContent        = email;
-    document.getElementById('sideUserInitials').textContent = initials;
-    document.getElementById('sideUserName').textContent     = name;
-    document.getElementById('sideUserEmail').textContent    = email;
-
-    document.getElementById('authShell').style.display  = 'contents';
-    document.getElementById('authLoading').style.display = 'none';
-
-    dbg('Auth OK — user: ' + email, 'ok');
-
-    /* FIX: dispatch event so the regular script knows Firebase is ready */
-    window.dispatchEvent(new CustomEvent('firebaseReady'));
-  });
-
-  /* small debug helper exposed globally */
+  /* ── DEBUG HELPER (defined early so AUTH GUARD can use it) ── */
   window.dbg = function(msg, type='info') {
     console[type==='err'?'error':'log']('[evoAI]', msg);
     const panel = document.getElementById('debugPanel');
     if (!panel) return;
     const p = document.createElement('p');
-    p.className = type; p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    p.className = type;
+    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     panel.prepend(p);
-    // keep last 30 lines
     while (panel.children.length > 30) panel.removeChild(panel.lastChild);
   };
+
+  /* ══════════════════════════════════════════════════
+     AUTH GUARD — THE KEY FIX
+     onAuthStateChanged fires TWICE on a fresh page load
+     in split-project setups:
+       1st call → user = null  (token not yet hydrated)
+       2nd call → user = <obj> (token restored from localStorage)
+     We use a flag to ignore the first null and only
+     redirect if we're STILL null after Firebase settles.
+  ══════════════════════════════════════════════════ */
+  let authResolved = false;
+
+  onAuthStateChanged(auth, (user) => {
+
+    if (user) {
+      /* ── AUTHENTICATED ── */
+      authResolved = true;
+
+      const name     = user.displayName || user.email.split('@')[0];
+      const email    = user.email;
+      const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+      document.getElementById('userInitials').textContent     = initials;
+      document.getElementById('userName').textContent         = name;
+      document.getElementById('userEmail').textContent        = email;
+      document.getElementById('sideUserInitials').textContent = initials;
+      document.getElementById('sideUserName').textContent     = name;
+      document.getElementById('sideUserEmail').textContent    = email;
+
+      document.getElementById('authShell').style.display   = 'contents';
+      document.getElementById('authLoading').style.display = 'none';
+
+      dbg('Auth OK — ' + email, 'ok');
+      window.dispatchEvent(new CustomEvent('firebaseReady'));
+
+    } else {
+      /* ── NOT YET / NOT AUTHENTICATED ──
+         Wait 2 s before giving up — this covers the gap
+         between page load and Firebase restoring the token
+         from localStorage (which is async).             */
+      if (authResolved) {
+        /* User actively signed out — redirect immediately */
+        window.location.replace('evoai-login.html');
+        return;
+      }
+
+      dbg('Auth state: null — waiting for token restore…', 'info');
+
+      setTimeout(() => {
+        if (!auth.currentUser) {
+          /* Still no user after 2 s — genuinely unauthenticated */
+          dbg('No user after 2 s — redirecting to login', 'err');
+          document.getElementById('authLoadingMsg').textContent = 'Redirecting to login…';
+          document.getElementById('unauthOverlay').classList.add('open');
+          setTimeout(() => window.location.replace('evoai-login.html'), 1500);
+        }
+        /* else: second onAuthStateChanged call already handled it */
+      }, 2000);
+    }
+  });
 </script>
+
 
 
 <!-- ═══════════════════════════════════════════════════════════
