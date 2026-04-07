@@ -996,8 +996,9 @@
   const dbAppVar  = initializeApp(firebaseDBConfig, "dbApp");
   
   
-  const authApp = getAuth(authAppVar);
-  const dbApp   = getFirestore(dbAppVar);
+  // AFTER (fixed)
+	const auth = getAuth(authAppVar);
+	const db   = getFirestore(dbAppVar);
 
   /* ── helpers ── */
 
