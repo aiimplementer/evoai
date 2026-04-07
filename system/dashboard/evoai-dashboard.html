@@ -974,7 +974,7 @@
     serverTimestamp
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-  const firebaseConfig = {
+  const firebaseAuthConfig = {
     apiKey:            "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
     authDomain:        "evoai-authentication.firebaseapp.com",
     projectId:         "evoai-authentication",
@@ -982,10 +982,22 @@
     messagingSenderId: "77079760801",
     appId:             "1:77079760801:web:2bbfeffffc38a6265c45e0"
   };
+  
+  const firebaseDBConfig = {
+    apiKey: "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
+	authDomain: "evoai-lead-manager.firebaseapp.com",
+	projectId: "evoai-lead-manager",
+	storageBucket: "evoai-lead-manager.firebasestorage.app",
+	messagingSenderId: "900829259085",
+	appId: "1:900829259085:web:907aee15a33c75210f0304"
+  };
 
-  const app  = initializeApp(firebaseConfig);
+  const app  = initializeApp(firebaseAuthConfig);
+  const dbapp  = initializeApp(firebaseDBConfig);
+  
+  
   const auth = getAuth(app);
-  const db   = getFirestore(app);
+  const db   = getFirestore(dbapp);
 
   /* ── helpers ── */
 
