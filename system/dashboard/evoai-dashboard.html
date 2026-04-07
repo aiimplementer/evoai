@@ -1491,12 +1491,17 @@ async function apiCall(body) {
 
 /* ── LOAD ── */
 async function loadLeads() {
+  alert("call 1");
   setTableLoading(true);
   const data = await apiCall({ action: 'list' });
   setTableLoading(false);
+  alert("call 2");
+  
   if (!data) return;
   if (data.error) { toast(data.error, 'error'); return; }
   allLeads = Array.isArray(data) ? data : [];
+  alert("call 3");
+  
   updateCounts();
   applyFilters();
   toast('Leads loaded (' + allLeads.length + ')', 'success');
