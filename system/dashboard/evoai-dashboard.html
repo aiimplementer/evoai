@@ -7,6 +7,202 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
 
+<!-- ── FIREBASE SDK ── -->
+<script type="module">
+  import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut }
+                                  from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import {
+    getFirestore,
+    collection,
+    doc,
+    getDocs,
+    getDoc,
+    addDoc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    orderBy,
+    serverTimestamp,
+    Timestamp
+  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+	  apiKey: "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
+	  authDomain: "evoai-lead-manager.firebaseapp.com",
+	  projectId: "evoai-lead-manager",
+	  storageBucket: "evoai-lead-manager.firebasestorage.app",
+	  messagingSenderId: "900829259085",
+	  appId: "1:900829259085:web:907aee15a33c75210f0304"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  let authChecked = false;
+  window._firebaseAuth = auth;
+  window._db = db;
+
+  /* ─── Expose Firestore helpers globally ─── */
+
+  /* Generate lead ID */
+  window.generateLeadId = () => {
+    const now = new Date();
+    const pad = (n, l=2) => String(n).padStart(l,'0');
+    return `EVOWEB-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  };
+
+  /* Map Firestore doc → internal lead object */
+  window.docToLead = (docSnap) => {
+    const d = docSnap.data();
+    const toDate = (v) => {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      if (v?.toDate) return v.toDate().toISOString().slice(0,10);
+      return String(v);
+    };
+    return {
+      _docId:    docSnap.id,
+      leadId:    d.leadId    || docSnap.id,
+      name:      d.fullName  || d.name      || '',
+      email:     d.email     || '',
+      phone:     d.phone     || '',
+      linkedin:  d.linkedin  || '',
+      company:   d.companyName || d.company || '',
+      jobtitle:  d.jobTitle  || d.jobtitle  || '',
+      industry:  d.industry  || '',
+      service:   d.service   || '',
+      status:    d.status    || 'New',
+      source:    d.source    || '',
+      page:      d.page      || '',
+      message:   d.message   || '',
+      comments:  d.comments  || '',
+      dealvalue: d.dealValue != null ? String(d.dealValue) : '',
+      followup:  toDate(d.followupDate),
+      date:      toDate(d.createdAt),
+    };
+  };
+
+  /* Map internal lead → Firestore doc fields */
+  window.leadToDoc = (lead, isNew = false) => {
+    const doc = {
+      leadId:             lead.leadId    || lead._docId || '',
+      fullName:           lead.name      || '',
+      email:              lead.email     || '',
+      phone:              lead.phone     || '',
+      linkedin:           lead.linkedin  || '',
+      companyName:        lead.company   || '',
+      jobTitle:           lead.jobtitle  || '',
+      industry:           lead.industry  || '',
+      service:            lead.service   || '',
+      status:             lead.status    || 'New',
+      source:             lead.source    || '',
+      page:               lead.page      || '',
+      message:            lead.message   || '',
+      comments:           lead.comments  || '',
+      dealValue:          lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
+      followupDate:       lead.followup  || '',
+      lastUpdateTimestamp: serverTimestamp(),
+    };
+    if (isNew) doc.createdAt = serverTimestamp();
+    return doc;
+  };
+
+  /* ─── CRUD ─── */
+
+  /* Load all leads */
+  window.dbLoadLeads = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'leads'));
+      return snap.docs.map(d => window.docToLead(d));
+    } catch(e) {
+      console.error('dbLoadLeads', e);
+      throw e;
+    }
+  };
+
+  /* Add lead */
+  window.dbAddLead = async (lead) => {
+    const id  = window.generateLeadId();
+    lead.leadId = id;
+    const data = window.leadToDoc(lead, true);
+    await setDoc(doc(db, 'leads', id), data);
+    return id;
+  };
+
+  /* Update lead */
+  window.dbUpdateLead = async (docId, lead) => {
+    const data = window.leadToDoc(lead, false);
+    await updateDoc(doc(db, 'leads', docId), data);
+  };
+
+  /* Add activity */
+  window.dbAddActivity = async (leadDocId, activity) => {
+    const activitiesRef = collection(db, 'leads', leadDocId, 'activities');
+    await addDoc(activitiesRef, {
+      type:      activity.type  || 'note',
+      text:      activity.text  || '',
+      user:      activity.user  || 'Team',
+      createdAt: serverTimestamp(),
+    });
+  };
+
+  /* Load activities */
+  window.dbLoadActivities = async (leadDocId) => {
+    try {
+      const activitiesRef = collection(db, 'leads', leadDocId, 'activities');
+      const snap = await getDocs(query(activitiesRef, orderBy('createdAt', 'desc')));
+      return snap.docs.map(d => {
+        const data = d.data();
+        const ts   = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
+        return { type: data.type, text: data.text, user: data.user, ts };
+      });
+    } catch(e) {
+      // activities subcollection may not exist yet
+      return [];
+    }
+  };
+
+  /* ─── AUTH GUARD ─── */
+  onAuthStateChanged(auth, user => {
+    if (authChecked) return;
+    authChecked = true;
+
+    if (!user) {
+      window.location.replace("evoai-login.html");
+      return;
+    }
+
+    document.getElementById('authShell').style.display = 'contents';
+    document.getElementById('authLoading').style.display = 'none';
+
+    const name     = user.displayName || user.email.split('@')[0];
+    const email    = user.email;
+    const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+    document.getElementById('userInitials').textContent     = initials;
+    document.getElementById('userName').textContent         = name;
+    document.getElementById('userEmail').textContent        = email;
+    document.getElementById('sideUserInitials').textContent = initials;
+    document.getElementById('sideUserName').textContent     = name;
+    document.getElementById('sideUserEmail').textContent    = email;
+
+    window.loadLeads();
+  });
+
+  window.doSignOut = async () => {
+    try {
+      await signOut(auth);
+      window.location.replace("evoai-login.html");
+    } catch(e) {
+      console.error("Sign out error", e);
+    }
+  };
+</script>
+
 <style>
   :root {
     --bg:       #080c10;
@@ -30,6 +226,7 @@
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── AUTH LOADING ── */
   #authLoading {
     position: fixed; inset: 0; z-index: 9999;
     background: var(--bg);
@@ -43,6 +240,7 @@
   }
   #authLoading p { font-size: .75rem; color: var(--muted); font-family: var(--mono); letter-spacing: .08em; }
 
+  /* ── NAV ── */
   nav {
     position: sticky; top: 0; z-index: 100;
     background: rgba(8,12,16,.88); backdrop-filter: blur(18px);
@@ -92,6 +290,7 @@
   }
   .signout-btn:hover { border-color: var(--danger); color: var(--danger); background: rgba(255,77,109,.05); }
 
+  /* ── LAYOUT ── */
   .shell {
     display: grid;
     grid-template-columns: 230px 1fr;
@@ -99,6 +298,7 @@
     overflow: hidden;
   }
 
+  /* ── SIDEBAR ── */
   aside {
     border-right: 1px solid var(--border);
     background: var(--surface);
@@ -159,6 +359,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* ── MAIN ── */
   main {
     padding: 30px 34px;
     overflow-y: auto;
@@ -169,6 +370,7 @@
   .page-title { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
   .page-sub { font-size: .79rem; color: var(--muted); margin-top: 4px; }
 
+  /* ── STATS ── */
   .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 13px; margin-bottom: 24px; }
   .stat-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -179,21 +381,23 @@
   .stat-value { font-size: 1.65rem; font-weight: 700; font-family: var(--mono); color: var(--accent); }
   .stat-sub { font-size: .68rem; color: var(--muted); margin-top: 4px; }
 
+  /* ── TOOLBAR ── */
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .search-wrap { position: relative; flex: 1; min-width: 200px; }
   .search-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
-  input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="date"], select, textarea {
+  input[type="text"], input[type="email"], input[type="tel"], input[type="url"], select, textarea {
     background: var(--surface); border: 1px solid var(--border);
     color: var(--text); font-family: var(--font); font-size: .82rem;
     border-radius: 7px; outline: none; transition: border-color .18s;
   }
   input[type="text"]:focus, input[type="email"]:focus, input[type="tel"]:focus,
-  input[type="url"]:focus, input[type="date"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type="url"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
   .search-wrap input { width: 100%; padding: 9px 12px 9px 34px; }
   select { padding: 9px 12px; cursor: pointer; }
   select option { background: var(--surface2); }
 
+  /* ── TABLE ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; }
   thead tr { background: var(--surface2); }
@@ -211,6 +415,7 @@
   .lead-name { font-weight: 600; }
   .lead-sub { font-size: .73rem; color: var(--muted); margin-top: 2px; }
 
+  /* ── BADGES ── */
   .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .67rem; font-weight: 600; letter-spacing: .05em; white-space: nowrap; }
   .badge-new         { background: rgba(255,255,255,.08); color: #e8f0fe; border: 1px solid rgba(255,255,255,.2); }
   .badge-contacted   { background: rgba(255,183,48,.15);  color: #ffb730; border: 1px solid rgba(255,183,48,.3); }
@@ -221,6 +426,7 @@
   .badge-won         { background: rgba(0,200,100,.12);   color: #00c864; border: 1px solid rgba(0,200,100,.28); }
   .badge-lost        { background: rgba(255,60,60,.12);   color: #ff4d4d; border: 1px solid rgba(255,60,60,.28); }
 
+  /* ── ACTION BUTTONS ── */
   .row-actions { display: flex; gap: 5px; }
   .icon-btn {
     min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
@@ -229,10 +435,12 @@
   }
   .icon-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
 
+  /* ── EMPTY / LOADING ── */
   .empty-state { padding: 56px 20px; text-align: center; color: var(--muted); }
   .empty-state svg { margin-bottom: 12px; opacity: .35; }
   .empty-state p { font-size: .88rem; }
 
+  /* ── PAGINATION ── */
   .pagination {
     display: flex; align-items: center; justify-content: space-between;
     padding: 13px 14px; border-top: 1px solid var(--border);
@@ -247,6 +455,7 @@
   .page-btn:hover, .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
   .page-btn.ellipsis { border-color: transparent; cursor: default; color: var(--muted); opacity: .4; min-width: 20px; }
 
+  /* ── MODAL ── */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
   .overlay.open { display: flex; }
   .modal {
@@ -267,6 +476,7 @@
   .modal-body { padding: 22px; }
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid var(--border); }
 
+  /* ── FORM ── */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .form-grid .full { grid-column: 1 / -1; }
   .form-section-title {
@@ -281,24 +491,10 @@
   .field input, .field select, .field textarea { width: 100%; }
   .field textarea { padding: 9px 11px; resize: vertical; min-height: 76px; }
   .field input[type="text"], .field input[type="email"],
-  .field input[type="tel"],  .field input[type="url"],
-  .field input[type="date"] { padding: 8px 11px; }
+  .field input[type="tel"],  .field input[type="url"] { padding: 8px 11px; }
   .field select { padding: 8px 11px; }
 
-  /* debug panel */
-  #debugPanel {
-    position: fixed; bottom: 70px; right: 22px; z-index: 998;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; font-size: .68rem;
-    font-family: var(--mono); color: var(--muted); max-width: 360px;
-    max-height: 200px; overflow-y: auto; display: none;
-  }
-  #debugPanel.show { display: block; }
-  #debugPanel p { margin-bottom: 4px; line-height: 1.4; }
-  #debugPanel p.ok   { color: var(--accent); }
-  #debugPanel p.err  { color: var(--danger); }
-  #debugPanel p.info { color: var(--accent2); }
-
+  /* ── VIEW MODAL ── */
   .view-section { margin-bottom: 18px; }
   .view-section-title {
     font-size: .65rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
@@ -311,9 +507,11 @@
   .view-val a { color: var(--accent2); text-decoration: none; }
   .view-val a:hover { text-decoration: underline; }
 
+  /* ── SPINNER / TOAST ── */
   .spinner { width: 17px; height: 17px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── TOAST ── */
   #toast {
     position: fixed; bottom: 22px; right: 22px; z-index: 999;
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
@@ -328,8 +526,10 @@
   #toast.warn    .toast-dot { background: var(--warn); }
   .toast-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
+  /* ── UNAUTHORIZED OVERLAY ── */
   #unauthOverlay {
-    display: none; position: fixed; inset: 0; z-index: 9998;
+    display: none;
+    position: fixed; inset: 0; z-index: 9998;
     background: rgba(4,8,14,.92); backdrop-filter: blur(12px);
     align-items: center; justify-content: center;
   }
@@ -337,11 +537,28 @@
   .unauth-card {
     background: var(--surface); border: 1px solid rgba(255,77,109,.3);
     border-radius: 16px; padding: 40px 44px; max-width: 420px; width: 90%;
-    text-align: center; animation: slideUp .28s ease;
+    text-align: center; box-shadow: 0 0 60px rgba(255,77,109,.12);
+    animation: slideUp .28s ease;
   }
-  .unauth-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; }
-  .unauth-msg   { font-size: .82rem; color: var(--muted); margin-bottom: 24px; }
+  .unauth-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px; color: var(--danger);
+  }
+  .unauth-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -.02em; }
+  .unauth-msg   { font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 24px; }
+  .unauth-progress { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 18px; }
+  .unauth-progress-bar {
+    height: 100%; background: var(--danger); border-radius: 2px;
+    width: 100%; transform-origin: left;
+    animation: drainProgress 3s linear forwards;
+  }
+  @keyframes drainProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  .unauth-sub { font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em; }
+  .unauth-redirect-count { color: var(--danger); font-weight: 600; }
 
+  /* ── LEAD SCORE BADGE ── */
   .score-badge {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 8px; border-radius: 20px; font-size: .64rem; font-weight: 700;
@@ -352,6 +569,20 @@
   .score-cold { background: rgba(100,180,255,.1); color: #64b4ff; border: 1px solid rgba(100,180,255,.25); }
   .score-dot  { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
+  /* ── HOT LEADS BADGE (sidebar) ── */
+  .hot-pulse {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--danger); margin-left: auto;
+    box-shadow: 0 0 0 0 rgba(255,77,109,.5);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,77,109,.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(255,77,109,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,77,109,0); }
+  }
+
+  /* ── OVERDUE TAG ── */
   .overdue-tag {
     display: inline-flex; align-items: center; gap: 4px;
     background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25);
@@ -359,13 +590,18 @@
     font-size: .63rem; font-weight: 700; font-family: var(--mono);
   }
 
+  /* ── BULK ACTION BAR ── */
   .bulk-bar {
     display: none; align-items: center; gap: 10px;
     background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.22);
     border-radius: 8px; padding: 8px 14px; margin-bottom: 10px;
+    animation: slideUp .16s ease;
   }
   .bulk-bar.show { display: flex; }
-  .bulk-count { font-size: .78rem; font-weight: 700; color: var(--accent); font-family: var(--mono); margin-right: 4px; }
+  .bulk-count {
+    font-size: .78rem; font-weight: 700; color: var(--accent);
+    font-family: var(--mono); margin-right: 4px;
+  }
   .bulk-action {
     display: flex; align-items: center; gap: 6px;
     background: var(--surface2); border: 1px solid var(--border);
@@ -379,18 +615,23 @@
   }
   .bulk-deselect:hover { color: var(--danger); }
 
-  th.sortable { cursor: pointer; user-select: none; }
+  /* ── SORTABLE HEADERS ── */
+  th.sortable { cursor: pointer; user-select: none; position: relative; }
   th.sortable:hover { color: var(--accent); }
-  th.sortable .sort-arrow { display: inline-block; margin-left: 4px; opacity: .3; font-size: .7em; }
-  th.sortable.asc .sort-arrow, th.sortable.desc .sort-arrow { opacity: 1; color: var(--accent); }
-  th.sortable.desc .sort-arrow { transform: rotate(180deg); display: inline-block; }
+  th.sortable .sort-arrow { display: inline-block; margin-left: 4px; opacity: .3; font-size: .7em; transition: opacity .14s; }
+  th.sortable.asc  .sort-arrow,
+  th.sortable.desc .sort-arrow { opacity: 1; color: var(--accent); }
+  th.sortable.desc .sort-arrow { transform: rotate(180deg); }
 
+  /* ── ROW CHECKBOX ── */
   .row-check {
     width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--border);
     background: transparent; cursor: pointer; accent-color: var(--accent);
   }
   tr.selected-row { background: rgba(0,229,160,.04) !important; }
+  tr.selected-row td { border-color: rgba(0,229,160,.15) !important; }
 
+  /* ── BOARD VIEW ── */
   #boardView { display: none; overflow-x: auto; padding-bottom: 16px; }
   .board-scroll { display: flex; gap: 12px; min-width: max-content; }
   .board-col {
@@ -409,18 +650,40 @@
   .board-col-body {
     flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
   }
+  .board-col-body::-webkit-scrollbar { width: 3px; }
+  .board-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .board-card {
     background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 11px 12px; cursor: pointer; transition: border-color .15s;
+    border-radius: 8px; padding: 11px 12px; cursor: pointer; transition: border-color .15s, transform .12s;
+    position: relative;
   }
-  .board-card:hover { border-color: rgba(0,229,160,.35); }
+  .board-card:hover { border-color: rgba(0,229,160,.35); transform: translateY(-1px); }
   .board-card-name { font-size: .81rem; font-weight: 600; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .board-card-company { font-size: .72rem; color: var(--muted); margin-bottom: 8px; }
+  .board-card-company { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; }
   .board-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
-  .board-card-service { font-size: .64rem; color: var(--muted); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .board-card-service {
+    font-size: .64rem; color: var(--muted); background: rgba(255,255,255,.04);
+    border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px;
+    max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .board-card-date { font-family: var(--mono); font-size: .62rem; color: var(--muted); }
+  .board-card-value { font-family: var(--mono); font-size: .64rem; color: #c084fc; font-weight: 700; letter-spacing: .02em; }
   .board-empty { text-align: center; padding: 24px 12px; color: var(--muted); font-size: .76rem; opacity: .5; }
 
+  /* ── DRAG AND DROP ── */
+  .board-card[draggable="true"] { cursor: grab; }
+  .board-card[draggable="true"]:active { cursor: grabbing; }
+  .board-card.dragging { opacity: .35; transform: scale(.97); border-color: var(--accent) !important; }
+  .board-card.drag-ghost { opacity: .55; border: 1px dashed var(--accent); background: rgba(0,229,160,.06); }
+  .board-col-body.drag-over {
+    background: rgba(0,229,160,.04); outline: 2px dashed rgba(0,229,160,.3);
+    outline-offset: -4px; border-radius: 6px;
+  }
+  .board-col-body.drag-over .board-empty { color: var(--accent); opacity: .7; }
+  .drop-indicator { height: 3px; background: var(--accent); border-radius: 2px; margin: 2px 0; pointer-events: none; opacity: 0; transition: opacity .1s; }
+  .drop-indicator.visible { opacity: 1; }
+
+  /* ── LIST VIEW ── */
   #listView { display: none; }
   .list-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .list-header,
@@ -434,18 +697,22 @@
   .list-item { border-bottom: 1px solid rgba(30,45,66,.6); cursor: pointer; transition: background .12s; }
   .list-item:last-child { border-bottom: none; }
   .list-item:hover { background: rgba(255,255,255,.025); }
+  .list-item-contact { min-width: 0; }
   .list-item-name { font-size: .84rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list-item-email { font-size: .71rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item-company-wrap { min-width: 0; }
   .list-item-company { font-size: .80rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list-item-jobtitle { font-size: .70rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list-item-industry { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .list-item-phone { font-family: var(--mono); font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list-item-phone a { color: var(--accent2); text-decoration: none; }
+  .list-item-phone a:hover { text-decoration: underline; }
   .list-item-date { font-family: var(--mono); font-size: .68rem; color: var(--muted); white-space: nowrap; }
   .list-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
 
+  /* ── ACTIVITY TIMELINE ── */
   .timeline-wrap { display: flex; flex-direction: column; gap: 0; }
-  .timeline-entry { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(30,45,66,.45); }
+  .timeline-entry { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(30,45,66,.45); position: relative; }
   .timeline-entry:last-child { border-bottom: none; }
   .tl-icon { width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; }
   .tl-icon-status { background: rgba(0,229,160,.12); color: var(--accent); border: 1px solid rgba(0,229,160,.2); }
@@ -457,9 +724,13 @@
   .tl-title { font-size: .79rem; font-weight: 600; color: var(--text); }
   .tl-meta  { font-size: .68rem; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
 
+  /* ── ADD NOTE FORM ── */
   .note-form { display: flex; gap: 8px; margin-top: 14px; align-items: flex-end; }
   .note-form textarea { flex: 1; padding: 8px 11px; resize: none; min-height: 60px; font-size: .78rem; }
 
+  /* ── n8n AUTOMATION PANEL ── */
+  .auto-section { margin-bottom: 16px; }
+  .auto-title { font-size: .62rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
   .auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
   .auto-btn {
     display: flex; align-items: center; gap: 8px; background: var(--surface2);
@@ -470,14 +741,14 @@
   .auto-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.05); }
   .auto-btn.running { border-color: var(--warn); color: var(--warn); pointer-events: none; }
   .auto-btn.done    { border-color: #00c864; color: #00c864; pointer-events: none; }
+  .auto-btn svg { flex-shrink: 0; }
   .auto-badge {
     font-size: .58rem; font-family: var(--mono); letter-spacing: .06em;
     background: rgba(255,183,48,.12); color: var(--warn); border: 1px solid rgba(255,183,48,.3);
     border-radius: 3px; padding: 1px 5px; margin-left: auto;
   }
-  .auto-section { margin-bottom: 16px; }
-  .auto-title { font-size: .62rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 
+  /* ── VIEW MODAL TABS ── */
   .view-tabs {
     display: flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border);
     border-radius: 8px; padding: 3px; margin-bottom: 18px;
@@ -489,6 +760,7 @@
   }
   .view-tab.active { background: var(--surface); color: var(--accent); }
 
+  /* ── NEXT ACTION CHIP ── */
   .next-action-chip {
     display: inline-flex; align-items: center; gap: 5px;
     background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.2);
@@ -496,17 +768,81 @@
     font-size: .72rem; font-weight: 600;
   }
 
-  .hot-pulse {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--danger); margin-left: auto;
-    animation: pulse 1.6s infinite;
+  /* ── HELP PANEL ── */
+  #helpPanel {
+    position: fixed; top: 0; right: -480px; bottom: 0; z-index: 500;
+    width: 460px; background: var(--surface); border-left: 1px solid var(--border);
+    box-shadow: -20px 0 60px rgba(0,0,0,.5); display: flex; flex-direction: column;
+    transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden;
   }
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(255,77,109,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(255,77,109,0); }
-    100% { box-shadow: 0 0 0 0 rgba(255,77,109,0); }
+  #helpPanel.open { right: 0; }
+  .help-overlay { display: none; position: fixed; inset: 0; z-index: 499; background: rgba(4,8,14,.5); backdrop-filter: blur(3px); }
+  .help-overlay.open { display: block; }
+  .help-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface2);
   }
+  .help-head-left { display: flex; align-items: center; gap: 10px; }
+  .help-head-icon {
+    width: 32px; height: 32px; border-radius: 8px; background: rgba(0,229,160,.1);
+    border: 1px solid rgba(0,229,160,.25); display: flex; align-items: center; justify-content: center; color: var(--accent);
+  }
+  .help-title { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; }
+  .help-subtitle { font-size: .7rem; color: var(--muted); margin-top: 2px; }
+  .help-body { flex: 1; overflow-y: auto; padding: 20px 22px; }
+  .help-section { margin-bottom: 22px; }
+  .help-section-title {
+    font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .help-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(30,45,66,.4); font-size: .8rem; }
+  .help-row:last-child { border-bottom: none; }
+  .help-row-key { flex-shrink: 0; width: 130px; font-weight: 600; color: var(--text); font-size: .78rem; }
+  .help-row-val { color: var(--muted); line-height: 1.55; font-size: .77rem; }
+  .score-meter-wrap { margin: 12px 0 6px; }
+  .score-tier {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border-radius: 8px; margin-bottom: 6px; border: 1px solid transparent;
+  }
+  .score-tier.hot  { background: rgba(255,77,109,.08); border-color: rgba(255,77,109,.2); }
+  .score-tier.warm { background: rgba(255,183,48,.08); border-color: rgba(255,183,48,.2); }
+  .score-tier.cold { background: rgba(100,180,255,.08); border-color: rgba(100,180,255,.2); }
+  .score-tier-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .score-tier.hot  .score-tier-dot { background: #ff4d6d; }
+  .score-tier.warm .score-tier-dot { background: #ffb730; }
+  .score-tier.cold .score-tier-dot { background: #64b4ff; }
+  .score-tier-label { font-weight: 700; font-size: .78rem; flex-shrink: 0; width: 46px; }
+  .score-tier.hot  .score-tier-label { color: #ff4d6d; }
+  .score-tier.warm .score-tier-label { color: #ffb730; }
+  .score-tier.cold .score-tier-label { color: #64b4ff; }
+  .score-tier-range { font-family: var(--mono); font-size: .7rem; color: var(--muted); flex-shrink: 0; width: 54px; }
+  .score-tier-desc { font-size: .73rem; color: var(--muted); }
+  .points-table { width: 100%; border-collapse: collapse; font-size: .76rem; margin-top: 4px; }
+  .points-table th { text-align: left; padding: 6px 10px; font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .points-table td { padding: 7px 10px; border-bottom: 1px solid rgba(30,45,66,.4); color: var(--muted); }
+  .points-table tr:last-child td { border-bottom: none; }
+  .points-table td:first-child { color: var(--text); font-weight: 600; }
+  .points-table td:last-child { font-family: var(--mono); font-size: .72rem; color: var(--accent); text-align: right; }
+  .stage-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid rgba(30,45,66,.4); font-size: .77rem; }
+  .stage-row:last-child { border-bottom: none; }
+  .stage-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .stage-name { font-weight: 600; color: var(--text); width: 120px; flex-shrink: 0; }
+  .stage-pts { font-family: var(--mono); font-size: .7rem; color: var(--accent); background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.18); border-radius: 4px; padding: 1px 7px; flex-shrink: 0; }
+  .stage-bar-wrap { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .stage-bar-fill { height: 100%; border-radius: 3px; }
+  .stage-desc { font-size: .7rem; color: var(--muted); flex-shrink: 0; width: 100px; text-align: right; }
+  .help-tip { display: flex; gap: 10px; align-items: flex-start; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 7px; font-size: .76rem; }
+  .help-tip-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+  .help-tip-text { color: var(--muted); line-height: 1.5; }
+  .help-tip-text strong { color: var(--text); }
+  .help-footer { flex-shrink: 0; padding: 12px 22px; border-top: 1px solid var(--border); background: var(--surface2); font-size: .68rem; color: var(--muted); text-align: center; font-family: var(--mono); letter-spacing: .04em; }
 
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    .list-header, .list-item { grid-template-columns: 180px 160px 120px auto 90px auto; }
+    .list-header span:nth-child(3), .list-item .list-item-industry { display: none; }
+  }
   @media (max-width: 960px) {
     .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
     aside { display: none; }
@@ -515,6 +851,12 @@
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .full, .form-section-title { grid-column: 1; }
     .user-info { display: none; }
+    .list-header { display: none; }
+    .list-item { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
+    .list-item-contact   { grid-column: 1; grid-row: 1; }
+    .list-item-actions   { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+    .list-item-company-wrap, .list-item-industry, .list-item-phone, .list-item-date { display: none; }
+    .list-item > div:nth-child(5) { grid-column: 1; grid-row: 2; }
   }
 </style>
 </head>
@@ -524,20 +866,29 @@
 <div id="authLoading">
   <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
   <div class="auth-spinner"></div>
-  <p id="authLoadingMsg">Verifying session…</p>
+  <p>Verifying session…</p>
 </div>
 
 <!-- UNAUTHORIZED OVERLAY -->
 <div id="unauthOverlay">
   <div class="unauth-card">
+    <div class="unauth-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    </div>
     <div class="unauth-title">Access Denied</div>
     <div class="unauth-msg">Your account does not have permission to access Lead Manager.</div>
+    <div class="unauth-progress"><div class="unauth-progress-bar"></div></div>
+    <div class="unauth-sub">Redirecting in <span class="unauth-redirect-count" id="unauthCountdown">3</span>s…</div>
   </div>
 </div>
 
-<!-- MAIN APP (hidden until auth confirmed) -->
+<!-- MAIN APP -->
 <div id="authShell" style="display:none">
 
+<!-- NAV -->
 <nav>
   <a class="nav-logo" href="#">
     <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI" style="height:32px;width:auto;display:block;"/>
@@ -553,6 +904,10 @@
         <div class="user-info-email" id="userEmail">—</div>
       </div>
     </div>
+    <button class="pill-btn outline" onclick="toggleHelpPanel()" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Help
+    </button>
     <button class="signout-btn" onclick="doSignOut()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -565,6 +920,7 @@
 </nav>
 
 <div class="shell">
+  <!-- SIDEBAR -->
   <aside>
     <div class="aside-scroll">
       <div class="aside-section">
@@ -625,8 +981,13 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Create Lead
         </div>
+        <div class="aside-item" onclick="document.getElementById('searchInput').focus()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search
+        </div>
       </div>
     </div>
+
     <div class="aside-user-footer">
       <div class="user-avatar" id="sideUserInitials">—</div>
       <div class="aside-user-text">
@@ -636,6 +997,7 @@
     </div>
   </aside>
 
+  <!-- MAIN -->
   <main>
     <div class="page-header">
       <div>
@@ -718,8 +1080,18 @@
     <div class="bulk-bar" id="bulkBar">
       <span class="bulk-count" id="bulkCount">0</span>
       <span style="font-size:.76rem;color:var(--muted);">leads selected</span>
-      <button class="bulk-action" onclick="bulkChangeStatus()">Change Status</button>
-      <button class="bulk-action" onclick="bulkExport()">Export Selected</button>
+      <button class="bulk-action" onclick="bulkChangeStatus()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Change Status
+      </button>
+      <button class="bulk-action" onclick="bulkExport()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Selected
+      </button>
+      <button class="bulk-action" onclick="bulkTriggerN8n()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Trigger Automation
+      </button>
       <button class="bulk-deselect" onclick="clearSelection()">✕ Deselect all</button>
     </div>
 
@@ -740,6 +1112,15 @@
           <button class="pill-btn outline" onclick="closeModal('bulkStatusOverlay')">Cancel</button>
           <button class="pill-btn primary" onclick="applyBulkStatus()">Apply</button>
         </div>
+      </div>
+    </div>
+
+    <!-- BULK N8N MODAL -->
+    <div class="overlay" id="bulkAutoOverlay">
+      <div class="modal" style="max-width:420px;">
+        <div class="modal-head"><div class="modal-title">Trigger Automation for Selected</div><button class="modal-close" onclick="closeModal('bulkAutoOverlay')">✕</button></div>
+        <div class="modal-body"><div class="auto-grid" id="bulkAutoGrid"></div></div>
+        <div class="modal-foot"><button class="pill-btn outline" onclick="closeModal('bulkAutoOverlay')">Close</button></div>
       </div>
     </div>
 
@@ -928,11 +1309,17 @@
 
       <div id="vtab-automations" style="display:none;">
         <div class="auto-section">
-          <div class="auto-title">⚡ n8n Automation Triggers</div>
+          <div class="auto-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            n8n Automation Triggers
+          </div>
           <div class="auto-grid" id="autoGrid"></div>
         </div>
         <div class="auto-section" style="margin-top:18px;">
-          <div class="auto-title">📞 Quick Outreach</div>
+          <div class="auto-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.29 6.19 2 2 0 0 1 6.28 4h3a2 2 0 0 1 2 1.72 12.9 12.9 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L10.09 11a16 16 0 0 0 6 6z"/></svg>
+            Quick Outreach
+          </div>
           <div class="auto-grid" id="outreachGrid"></div>
         </div>
       </div>
@@ -947,333 +1334,129 @@
   </div>
 </div>
 
-</div><!-- end #authShell -->
+<!-- HELP OVERLAY BACKDROP -->
+<div class="help-overlay" id="helpOverlay" onclick="toggleHelpPanel()"></div>
 
-<!-- Debug Panel -->
-<div id="debugPanel"></div>
+<!-- HELP REFERENCE PANEL -->
+<div id="helpPanel">
+  <div class="help-head">
+    <div class="help-head-left">
+      <div class="help-head-icon">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <div class="help-title">Reference Guide</div>
+        <div class="help-subtitle">Scoring logic, statuses &amp; field definitions</div>
+      </div>
+    </div>
+    <button class="modal-close" onclick="toggleHelpPanel()">&#x2715;</button>
+  </div>
+  <div class="help-body">
+    <div class="help-section">
+      <div class="help-section-title">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Lead Score Tiers
+      </div>
+      <div class="score-meter-wrap">
+        <div class="score-tier hot"><div class="score-tier-dot"></div><div class="score-tier-label">🔴 HOT</div><div class="score-tier-range">60 – 100</div><div class="score-tier-desc">High-intent lead. Prioritise immediately.</div></div>
+        <div class="score-tier warm"><div class="score-tier-dot"></div><div class="score-tier-label">🟡 WARM</div><div class="score-tier-range">35 – 59</div><div class="score-tier-desc">Showing interest. Nurture with follow-ups.</div></div>
+        <div class="score-tier cold"><div class="score-tier-dot"></div><div class="score-tier-label">🔵 COLD</div><div class="score-tier-range">0 – 34</div><div class="score-tier-desc">Early stage. Add details to improve score.</div></div>
+      </div>
+    </div>
+    <div class="help-section">
+      <div class="help-section-title">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        How Points Are Calculated
+      </div>
+      <table class="points-table">
+        <thead><tr><th>Attribute</th><th>Condition</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td>Email</td><td>Filled in</td><td>+10</td></tr>
+          <tr><td>Phone</td><td>Filled in</td><td>+15</td></tr>
+          <tr><td>Company</td><td>Filled in</td><td>+10</td></tr>
+          <tr><td>LinkedIn</td><td>Filled in</td><td>+10</td></tr>
+          <tr><td>Service</td><td>Selected</td><td>+10</td></tr>
+          <tr><td>Deal Value</td><td>+1 per $5k, capped</td><td>+0 – 20</td></tr>
+          <tr><td>Pipeline Stage</td><td>See stage table below</td><td>varies</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="help-section">
+      <div class="help-section-title">Pipeline Stages</div>
+      <div>
+        <div class="stage-row"><div class="stage-dot" style="background:#e8f0fe"></div><div class="stage-name">New</div><div class="stage-pts">+5</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:5%;background:#e8f0fe"></div></div><div class="stage-desc">Just submitted</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#ffb730"></div><div class="stage-name">Contacted</div><div class="stage-pts">+15</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:15%;background:#ffb730"></div></div><div class="stage-desc">First touch made</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#b0bec5"></div><div class="stage-name">Discovery Call</div><div class="stage-pts">+25</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:25%;background:#b0bec5"></div></div><div class="stage-desc">Call booked/done</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#64b4ff"></div><div class="stage-name">Qualified</div><div class="stage-pts">+40</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:40%;background:#64b4ff"></div></div><div class="stage-desc">High intent</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#c084fc"></div><div class="stage-name">Proposal Sent</div><div class="stage-pts">+55</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:55%;background:#c084fc"></div></div><div class="stage-desc">Offer sent</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#a0aec0"></div><div class="stage-name">Negotiation</div><div class="stage-pts">+70</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:70%;background:#a0aec0"></div></div><div class="stage-desc">Terms discussed</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#00c864"></div><div class="stage-name">Won</div><div class="stage-pts">+100</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:100%;background:#00c864"></div></div><div class="stage-desc">Closed ✓</div></div>
+        <div class="stage-row"><div class="stage-dot" style="background:#ff4d4d"></div><div class="stage-name">Lost</div><div class="stage-pts">+0</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:1%;background:#ff4d4d"></div></div><div class="stage-desc">Not closed</div></div>
+      </div>
+    </div>
+    <div class="help-section">
+      <div class="help-section-title">Pro Tips</div>
+      <div class="help-tip"><div class="help-tip-icon">🎯</div><div class="help-tip-text"><strong>Maximise scores fast:</strong> Fill in phone, LinkedIn, and deal value — these three fields alone add up to +45 points.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">📅</div><div class="help-tip-text"><strong>Never miss a follow-up:</strong> Always set a Follow-Up date. Use <em>Overdue Follow-ups</em> filter daily.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">⚡</div><div class="help-tip-text"><strong>Bulk actions save time:</strong> Select multiple leads with checkboxes to change status or export at once.</div></div>
+    </div>
+  </div>
+  <div class="help-footer">evoAI Lead Manager · Firebase Edition v2.0</div>
+</div>
+
+</div><!-- end #authShell -->
 
 <!-- TOAST -->
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
-
-<!-- ═══════════════════════════════════════════════════════════
-     FIREBASE SDK  (type="module" — self-contained, no globals)
-     All Firestore helpers are stored on window.* once ready.
-     We dispatch a custom event "firebaseReady" when done so
-     the regular script below knows it is safe to proceed.
-════════════════════════════════════════════════════════════ -->
-<!-- ═══════════════════════════════════════════════════════════
-     FIREBASE SDK  — FIXED AUTH + DB SPLIT PROJECT SETUP
-════════════════════════════════════════════════════════════ -->
-<script type="module">
-  import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-  import {
-    getAuth,
-    onAuthStateChanged,
-    signOut,
-    setPersistence,
-    browserLocalPersistence
-  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-  import {
-    getFirestore,
-    collection, doc,
-    getDocs, addDoc, setDoc, updateDoc,
-    query, orderBy,
-    serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-
-  const firebaseAuthConfig = {
-    apiKey:            "AIzaSyC4k4kJZ2aDrYs7Ah-H0SuMF-d8s55X9ZM",
-    authDomain:        "evoai-authentication.firebaseapp.com",
-    projectId:         "evoai-authentication",
-    storageBucket:     "evoai-authentication.firebasestorage.app",
-    messagingSenderId: "77079760801",
-    appId:             "1:77079760801:web:2bbfeffffc38a6265c45e0"
-  };
-
-  const firebaseDBConfig = {
-    apiKey:            "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
-    authDomain:        "evoai-lead-manager.firebaseapp.com",
-    projectId:         "evoai-lead-manager",
-    storageBucket:     "evoai-lead-manager.firebasestorage.app",
-    messagingSenderId: "900829259085",
-    appId:             "1:900829259085:web:907aee15a33c75210f0304"
-  };
-
-  const authApp = initializeApp(firebaseAuthConfig, "authApp");
-  const dbApp   = initializeApp(firebaseDBConfig,   "dbApp");
-
-  const auth = getAuth(authApp);
-  const db   = getFirestore(dbApp);
-
-  /* ── Ensure persistence is LOCAL (survives page reload) ── */
-  setPersistence(auth, browserLocalPersistence).catch(e => {
-    console.warn('[evoAI] setPersistence failed:', e);
-  });
-
-  /* ── helpers ── */
-  function generateLeadId() {
-    const n = new Date(), p = (v,l=2) => String(v).padStart(l,'0');
-    return `EVOWEB-${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
-  }
-
-  function toDateStr(v) {
-    if (!v) return '';
-    if (typeof v === 'string') return v.slice(0,10);
-    if (v?.toDate) return v.toDate().toISOString().slice(0,10);
-    return '';
-  }
-
-  function docToLead(snap) {
-    const d = snap.data();
-    return {
-      _docId:    snap.id,
-      leadId:    d.leadId      || snap.id,
-      name:      d.fullName    || d.name      || '',
-      email:     d.email       || '',
-      phone:     d.phone       || '',
-      linkedin:  d.linkedin    || '',
-      company:   d.companyName || d.company   || '',
-      jobtitle:  d.jobTitle    || d.jobtitle  || '',
-      industry:  d.industry    || '',
-      service:   d.service     || '',
-      status:    d.status      || 'New',
-      source:    d.source      || '',
-      page:      d.page        || '',
-      message:   d.message     || '',
-      comments:  d.comments    || '',
-      dealvalue: d.dealValue != null ? String(d.dealValue) : '',
-      followup:  toDateStr(d.followupDate),
-      date:      toDateStr(d.createdAt),
-    };
-  }
-
-  function leadToDoc(lead, isNew) {
-    const raw = String(lead.dealvalue || '').replace(/[^0-9.]/g, '');
-    const dealVal = raw ? (parseFloat(raw) || 0) : 0;
-    const data = {
-      leadId:       lead.leadId   || '',
-      fullName:     lead.name     || '',
-      email:        lead.email    || '',
-      phone:        lead.phone    || '',
-      linkedin:     lead.linkedin || '',
-      companyName:  lead.company  || '',
-      jobTitle:     lead.jobtitle || '',
-      industry:     lead.industry || '',
-      service:      lead.service  || '',
-      status:       lead.status   || 'New',
-      source:       lead.source   || '',
-      page:         lead.page     || '',
-      message:      lead.message  || '',
-      comments:     lead.comments || '',
-      dealValue:    dealVal,
-      followupDate: lead.followup || '',
-      lastUpdated:  serverTimestamp(),
-    };
-    if (isNew) data.createdAt = serverTimestamp();
-    return data;
-  }
-
-  /* ── CRUD ── */
-  window.dbLoadLeads = async () => {
-    const snap = await getDocs(collection(db, 'leads'));
-    return snap.docs.map(docToLead);
-  };
-
-  window.dbAddLead = async (lead) => {
-    const id = generateLeadId();
-    lead.leadId = id;
-    const data = leadToDoc(lead, true);
-    await setDoc(doc(db, 'leads', id), data);
-    return id;
-  };
-
-  window.dbUpdateLead = async (docId, lead) => {
-    await updateDoc(doc(db, 'leads', docId), leadToDoc(lead, false));
-  };
-
-  window.dbAddActivity = async (leadDocId, activity) => {
-    await addDoc(collection(db, 'leads', leadDocId, 'activities'), {
-      type:      activity.type || 'note',
-      text:      activity.text || '',
-      user:      activity.user || 'Team',
-      createdAt: serverTimestamp(),
-    });
-  };
-
-  window.dbLoadActivities = async (leadDocId) => {
-    try {
-      const snap = await getDocs(
-        query(collection(db, 'leads', leadDocId, 'activities'), orderBy('createdAt', 'desc'))
-      );
-      return snap.docs.map(d => {
-        const data = d.data();
-        return {
-          type: data.type,
-          text: data.text,
-          user: data.user,
-          ts: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
-        };
-      });
-    } catch { return []; }
-  };
-
-  window.doSignOut = async () => {
-    await signOut(auth);
-    window.location.replace('evoai-login.html');
-  };
-
-  /* ── DEBUG HELPER (defined early so AUTH GUARD can use it) ── */
-  window.dbg = function(msg, type='info') {
-    console[type==='err'?'error':'log']('[evoAI]', msg);
-    const panel = document.getElementById('debugPanel');
-    if (!panel) return;
-    const p = document.createElement('p');
-    p.className = type;
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    panel.prepend(p);
-    while (panel.children.length > 30) panel.removeChild(panel.lastChild);
-  };
-
-  /* ══════════════════════════════════════════════════
-     AUTH GUARD — THE KEY FIX
-     onAuthStateChanged fires TWICE on a fresh page load
-     in split-project setups:
-       1st call → user = null  (token not yet hydrated)
-       2nd call → user = <obj> (token restored from localStorage)
-     We use a flag to ignore the first null and only
-     redirect if we're STILL null after Firebase settles.
-  ══════════════════════════════════════════════════ */
-  let authResolved = false;
-
-  onAuthStateChanged(auth, (user) => {
-
-    if (user) {
-      /* ── AUTHENTICATED ── */
-      authResolved = true;
-
-      const name     = user.displayName || user.email.split('@')[0];
-      const email    = user.email;
-      const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-
-      document.getElementById('userInitials').textContent     = initials;
-      document.getElementById('userName').textContent         = name;
-      document.getElementById('userEmail').textContent        = email;
-      document.getElementById('sideUserInitials').textContent = initials;
-      document.getElementById('sideUserName').textContent     = name;
-      document.getElementById('sideUserEmail').textContent    = email;
-
-      document.getElementById('authShell').style.display   = 'contents';
-      document.getElementById('authLoading').style.display = 'none';
-
-      dbg('Auth OK — ' + email, 'ok');
-      window.dispatchEvent(new CustomEvent('firebaseReady'));
-
-    } else {
-      /* ── NOT YET / NOT AUTHENTICATED ──
-         Wait 2 s before giving up — this covers the gap
-         between page load and Firebase restoring the token
-         from localStorage (which is async).             */
-      if (authResolved) {
-        /* User actively signed out — redirect immediately */
-        window.location.replace('evoai-login.html');
-        return;
-      }
-
-      dbg('Auth state: null — waiting for token restore…', 'info');
-
-      setTimeout(() => {
-        if (!auth.currentUser) {
-          /* Still no user after 2 s — genuinely unauthenticated */
-          dbg('No user after 2 s — redirecting to login', 'err');
-          document.getElementById('authLoadingMsg').textContent = 'Redirecting to login…';
-          document.getElementById('unauthOverlay').classList.add('open');
-          setTimeout(() => window.location.replace('evoai-login.html'), 1500);
-        }
-        /* else: second onAuthStateChanged call already handled it */
-      }, 2000);
-    }
-  });
-</script>
-
-
-
-<!-- ═══════════════════════════════════════════════════════════
-     APP LOGIC  (regular script — waits for firebaseReady)
-════════════════════════════════════════════════════════════ -->
 <script>
-/* ── state ── */
+/* ════════════════════════════════════════════════════
+   EVOAI LEAD MANAGER — Firebase Firestore Edition
+   All CRUD goes directly to Firestore via the SDK
+   helpers exposed on window.* by the module above.
+════════════════════════════════════════════════════ */
+
 let allLeads      = [];
 let filteredLeads = [];
 let currentFilter = 'ALL';
 let currentView   = 'table';
-let editingLeadId = null;
-let editingDocId  = null;
+let editingLeadId = null;   // the leadId string
+let editingDocId  = null;   // the Firestore doc ID (_docId)
 let searchTimer   = null;
 let currentPage   = 1;
 let listPage      = 1;
 const PAGE_SIZE   = 15;
 
 const BOARD_STAGES = [
-  { key:'New',            label:'New',           color:'#e8f0fe' },
-  { key:'Contacted',      label:'Contacted',      color:'#ffb730' },
-  { key:'Discovery Call', label:'Discovery',      color:'#b0bec5' },
-  { key:'Qualified',      label:'Qualified',      color:'#64b4ff' },
-  { key:'Proposal Sent',  label:'Proposal Sent',  color:'#c084fc' },
-  { key:'Negotiation',    label:'Negotiation',    color:'#a0aec0' },
-  { key:'Won',            label:'Won',            color:'#00c864' },
-  { key:'Lost',           label:'Lost',           color:'#ff4d4d' },
+  { key:'New',           label:'New',           color:'#e8f0fe' },
+  { key:'Contacted',     label:'Contacted',      color:'#ffb730' },
+  { key:'Discovery Call',label:'Discovery',      color:'#b0bec5' },
+  { key:'Qualified',     label:'Qualified',      color:'#64b4ff' },
+  { key:'Proposal Sent', label:'Proposal Sent',  color:'#c084fc' },
+  { key:'Negotiation',   label:'Negotiation',    color:'#a0aec0' },
+  { key:'Won',           label:'Won',            color:'#00c864' },
+  { key:'Lost',          label:'Lost',           color:'#ff4d4d' },
 ];
 
-const N8N_WEBHOOKS = {
-  send_intro_email:  'https://your-n8n-instance/webhook/send-intro-email',
-  send_proposal:     'https://your-n8n-instance/webhook/send-proposal',
-  enrich_linkedin:   'https://your-n8n-instance/webhook/enrich-linkedin',
-  add_to_crm:        'https://your-n8n-instance/webhook/add-to-crm',
-  schedule_followup: 'https://your-n8n-instance/webhook/schedule-followup',
-  send_whatsapp:     'https://your-n8n-instance/webhook/send-whatsapp',
-  notify_slack:      'https://your-n8n-instance/webhook/notify-slack',
-  send_nurture_seq:  'https://your-n8n-instance/webhook/nurture-sequence',
-};
-
-const AUTO_ACTIONS = [
-  {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
-  {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
-  {id:'enrich_linkedin',  label:'Enrich via LinkedIn', icon:'🔍', badge:'Enrich'},
-  {id:'add_to_crm',       label:'Sync to CRM',         icon:'🔗', badge:'Sync'},
-  {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Cal'},
-  {id:'send_nurture_seq', label:'Start Nurture Seq.',  icon:'🔄', badge:'Email'},
-];
-const OUTREACH_ACTIONS = [
-  {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
-  {id:'notify_slack',  label:'Notify Slack',  icon:'🔔', badge:'Slack'},
-];
-
-/* ── FIX: wait for firebaseReady before triggering first load ── */
-window.addEventListener('firebaseReady', () => {
-  dbg('firebaseReady received — loading leads', 'ok');
-  loadLeads();
-});
-
-/* ── LOAD ── */
+/* ── LOAD ALL LEADS FROM FIRESTORE ── */
 window.loadLeads = async function() {
   setTableLoading(true);
   try {
     allLeads = await window.dbLoadLeads();
+    // Sort by createdAt desc (date string)
     allLeads.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     updateCounts();
     applyFilters();
-    toast('Loaded ' + allLeads.length + ' leads', 'success');
-    dbg('Loaded ' + allLeads.length + ' leads', 'ok');
+    toast('Leads loaded (' + allLeads.length + ')', 'success');
   } catch(e) {
     console.error(e);
-    toast('Failed to load: ' + e.message, 'error');
-    dbg('Load error: ' + e.message, 'err');
+    toast('Failed to load leads: ' + e.message, 'error');
     setTableLoading(false);
   }
 };
 
-/* ── SEARCH ── */
+/* ── SEARCH (client-side) ── */
 function onSearchInput(q) {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => applyFilters(), 320);
@@ -1292,19 +1475,26 @@ function applyFilters() {
   const statusDrop   = document.getElementById('statusFilter').value;
   const serviceDrop  = document.getElementById('serviceFilter').value;
   const industryDrop = document.getElementById('industryFilter').value;
-  const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+  const q            = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+
+  if (statusDrop) {
+    currentFilter = 'ALL';
+    document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
+    const allItem = document.querySelector('.aside-item[onclick*="ALL"]');
+    if (allItem) allItem.classList.add('active');
+  }
 
   const effectiveStatus = statusDrop || (currentFilter !== 'ALL' ? currentFilter : '');
 
   filteredLeads = allLeads.filter(l => {
-    if (effectiveStatus  && l.status   !== effectiveStatus)  return false;
-    if (serviceDrop      && l.service  !== serviceDrop)      return false;
-    if (industryDrop     && l.industry !== industryDrop)     return false;
-    if (q && !JSON.stringify(l).toLowerCase().includes(q))   return false;
-    return true;
+    const matchStatus   = !effectiveStatus  || l.status   === effectiveStatus;
+    const matchService  = !serviceDrop      || l.service  === serviceDrop;
+    const matchIndustry = !industryDrop     || l.industry === industryDrop;
+    const matchQ        = !q               || JSON.stringify(l).toLowerCase().includes(q);
+    return matchStatus && matchService && matchIndustry && matchQ;
   });
   currentPage = 1;
-  listPage    = 1;
+  listPage = 1;
   renderCurrentView();
 }
 
@@ -1322,14 +1512,14 @@ function renderCurrentView() {
   document.getElementById('tableView').style.display = currentView === 'table' ? 'block' : 'none';
   document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
-  if      (currentView === 'table') renderTable();
+  if (currentView === 'table')     renderTable();
   else if (currentView === 'board') renderBoard();
   else if (currentView === 'list')  renderList();
 }
 
 /* ── RENDER TABLE ── */
 function renderTable() {
-  const tbody      = document.getElementById('leadsBody');
+  const tbody = document.getElementById('leadsBody');
   const pagination = document.getElementById('pagination');
 
   if (!filteredLeads.length) {
@@ -1339,35 +1529,31 @@ function renderTable() {
     pagination.style.display = 'none'; return;
   }
 
-  const total  = filteredLeads.length;
-  const pages  = Math.ceil(total / PAGE_SIZE);
+  const total = filteredLeads.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
   if (currentPage > pages) currentPage = pages;
-  const start  = (currentPage - 1) * PAGE_SIZE;
-  const slice  = filteredLeads.slice(start, start + PAGE_SIZE);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
 
   tbody.innerHTML = slice.map(l => {
-    const score   = computeScore(l);
+    const score = computeScore(l);
     const overdue = isOverdue(l);
-    const sel     = selectedLeadIds.has(l.leadId);
+    const sel = selectedLeadIds.has(l.leadId);
     return `
-    <tr class="${sel ? 'selected-row' : ''}">
-      <td style="padding:11px 10px;">
-        <input type="checkbox" class="row-check" data-id="${esc(l.leadId)}"
-          ${sel ? 'checked' : ''} onchange="toggleSelect('${esc(l.leadId)}',this)"/>
-      </td>
-      <td><span class="lead-id">${esc(l.leadId || '—')}</span></td>
+    <tr class="${sel?'selected-row':''}">
+      <td style="padding:11px 10px;"><input type="checkbox" class="row-check" data-id="${esc(l.leadId)}" ${sel?'checked':''} onchange="toggleSelect('${esc(l.leadId)}',this)"/></td>
+      <td><span class="lead-id">${esc(l.leadId||'—')}</span></td>
       <td>
-        <div class="lead-name">${esc(l.name || '—')}
-          ${overdue ? `<span class="overdue-tag" style="font-size:.55rem;padding:1px 5px;">⏰</span>` : ''}
+        <div class="lead-name">${esc(l.name||'—')}${overdue?` <span class="overdue-tag" style="font-size:.55rem;padding:1px 5px;">⏰</span>`:''}
         </div>
-        <div class="lead-sub">${esc(l.email || '')}</div>
+        <div class="lead-sub">${esc(l.email||'')}</div>
       </td>
       <td>
-        <div style="font-weight:600;font-size:.81rem">${esc(l.company || '—')}</div>
-        ${l.jobtitle ? `<div class="lead-sub">${esc(l.jobtitle)}</div>` : ''}
+        <div style="font-weight:600;font-size:.81rem">${esc(l.company||'—')}</div>
+        ${l.jobtitle?`<div class="lead-sub">${esc(l.jobtitle)}</div>`:''}
       </td>
-      <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry || '—')}</td>
-      <td style="font-size:.78rem">${esc(l.service || '—')}</td>
+      <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry||'—')}</td>
+      <td style="font-size:.78rem">${esc(l.service||'—')}</td>
       <td>${statusBadge(l.status)}</td>
       <td>${scoreBadge(score)}</td>
       <td style="font-size:.73rem;color:var(--muted);font-family:var(--mono)">${esc(String(l.date||'').slice(0,10))}</td>
@@ -1386,48 +1572,139 @@ function renderTable() {
 
   if (total > PAGE_SIZE) {
     pagination.style.display = 'flex';
-    document.getElementById('pageInfo').textContent =
-      `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
-    buildPagination(document.getElementById('pageBtns'), currentPage, pages,
-      p => { currentPage = p; renderTable(); });
-  } else {
-    pagination.style.display = 'none';
-  }
+    document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
+    buildPagination(document.getElementById('pageBtns'), currentPage, pages, p => { currentPage = p; renderTable(); });
+  } else { pagination.style.display = 'none'; }
 }
+
+/* ── DRAG AND DROP STATE ── */
+let dragLeadId=null, dragFromStage=null, dragOverBody=null, dragIndicator=null;
 
 /* ── RENDER BOARD ── */
 function renderBoard() {
   const container = document.getElementById('boardScroll');
   container.innerHTML = '';
+
   BOARD_STAGES.forEach(stage => {
     const stageLeads = filteredLeads.filter(l => l.status === stage.key);
-    const col  = document.createElement('div'); col.className = 'board-col';
-    const head = document.createElement('div'); head.className = 'board-col-head';
+    const col = document.createElement('div');
+    col.className = 'board-col';
+
+    const stageValue = stageLeads.reduce((s,l) => s + Number(String(l.dealvalue||'').replace(/[^0-9.]/g,'')||0), 0);
+    const head = document.createElement('div');
+    head.className = 'board-col-head';
     head.innerHTML = `
       <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
-      <span class="board-col-count">${stageLeads.length}</span>`;
+      <div style="display:flex;align-items:center;gap:5px;">
+        ${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">$${stageValue>=1000?(stageValue/1000).toFixed(0)+'k':stageValue}</span>`:''}
+        <span class="board-col-count">${stageLeads.length}</span>
+      </div>`;
     col.appendChild(head);
-    const body = document.createElement('div'); body.className = 'board-col-body';
-    if (!stageLeads.length) {
-      body.innerHTML = `<div class="board-empty">No leads</div>`;
-    } else {
-      stageLeads.forEach(l => {
-        const card = document.createElement('div');
-        card.className = 'board-card';
-        card.innerHTML = `
-          <div class="board-card-name">${esc(l.name||'—')}</div>
-          <div class="board-card-company">${esc(l.company||'—')}</div>
-          <div class="board-card-footer">
-            <span class="board-card-service">${esc(l.service||'—')}</span>
-            <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
-          </div>`;
-        card.onclick = () => viewLead(l.leadId);
-        body.appendChild(card);
-      });
-    }
+
+    const body = document.createElement('div');
+    body.className = 'board-col-body';
+    body.dataset.stage = stage.key;
+
+    body.addEventListener('dragover', e => {
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      if (dragOverBody && dragOverBody!==body) dragOverBody.classList.remove('drag-over');
+      dragOverBody=body; body.classList.add('drag-over');
+      const afterEl = getDragAfterElement(body, e.clientY);
+      if (dragIndicator) { dragIndicator.classList.add('visible'); if(afterEl) body.insertBefore(dragIndicator,afterEl); else body.appendChild(dragIndicator); }
+    });
+    body.addEventListener('dragleave', e => {
+      if (!body.contains(e.relatedTarget)) { body.classList.remove('drag-over'); if(dragIndicator) dragIndicator.classList.remove('visible'); }
+    });
+    body.addEventListener('drop', async e => {
+      e.preventDefault(); body.classList.remove('drag-over');
+      if(dragIndicator) dragIndicator.classList.remove('visible');
+      const newStage = body.dataset.stage;
+      if (!dragLeadId || newStage===dragFromStage) return;
+      await moveLead(dragLeadId, newStage);
+    });
+
+    if (!stageLeads.length) body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
+    else stageLeads.forEach(l => body.appendChild(createBoardCard(l)));
+
     col.appendChild(body);
     container.appendChild(col);
   });
+}
+
+function createBoardCard(l) {
+  const card = document.createElement('div');
+  card.className = 'board-card';
+  card.draggable = true;
+  card.dataset.leadId = l.leadId;
+
+  const initials = (l.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
+      <div style="min-width:0;flex:1;"><div class="board-card-name">${esc(l.name||'—')}</div></div>
+      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;" title="Drag to move">
+        <svg viewBox="0 0 14 14" fill="currentColor" width="14" height="14"><circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg>
+      </div>
+    </div>
+    <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle?' · '+esc(l.jobtitle):''}</div>
+    <div class="board-card-footer">
+      <span class="board-card-service">${esc(l.service||'—')}</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        ${l.dealvalue?`<span class="board-card-value">$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}</span>`:''}
+        ${isOverdue(l)?`<span style="font-size:.6rem;color:var(--danger);">⏰</span>`:''}
+        <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
+      </div>
+    </div>`;
+
+  let didDrag = false;
+  card.addEventListener('dragstart', e => {
+    didDrag=true; dragLeadId=l.leadId; dragFromStage=l.status;
+    card.classList.add('dragging'); e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain',l.leadId);
+    dragIndicator=document.createElement('div'); dragIndicator.className='drop-indicator';
+    setTimeout(()=>card.classList.add('drag-ghost'),0);
+  });
+  card.addEventListener('dragend', ()=>{
+    card.classList.remove('dragging','drag-ghost');
+    document.querySelectorAll('.board-col-body').forEach(b=>b.classList.remove('drag-over'));
+    if(dragIndicator&&dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
+    dragIndicator=null; dragOverBody=null;
+    setTimeout(()=>{didDrag=false;},0);
+  });
+  card.addEventListener('click', ()=>{ if(!didDrag) viewLead(l.leadId); });
+  return card;
+}
+
+function getDragAfterElement(container, y) {
+  const draggables=[...container.querySelectorAll('.board-card:not(.dragging)')];
+  return draggables.reduce((closest,child)=>{
+    const box=child.getBoundingClientRect(), offset=y-box.top-box.height/2;
+    if(offset<0&&offset>closest.offset) return{offset,element:child};
+    return closest;
+  },{offset:Number.NEGATIVE_INFINITY}).element;
+}
+
+async function moveLead(leadId, newStatus) {
+  const lead = allLeads.find(l=>l.leadId===leadId);
+  if (!lead) return;
+  const oldStatus = lead.status;
+  lead.status = newStatus;
+  const fl = filteredLeads.find(l=>l.leadId===leadId);
+  if (fl) fl.status = newStatus;
+  renderBoard(); updateCounts();
+  toast(`Moving ${lead.name} → ${newStatus}…`, 'success');
+
+  try {
+    await window.dbUpdateLead(lead._docId, lead);
+    toast(`${lead.name} moved to ${newStatus}`, 'success');
+    // Log activity
+    await window.dbAddActivity(lead._docId, { type:'status', text:`Status changed to ${newStatus}`, user: document.getElementById('sideUserName').textContent||'Team' });
+  } catch(e) {
+    lead.status = oldStatus;
+    if (fl) fl.status = oldStatus;
+    renderBoard(); updateCounts();
+    toast('Failed to save — change rolled back', 'error');
+  }
 }
 
 /* ── RENDER LIST ── */
@@ -1436,62 +1713,65 @@ function renderList() {
   const listPag  = document.getElementById('listPagination');
 
   if (!filteredLeads.length) {
-    listBody.innerHTML = `<div class="empty-state"><p>No leads found.</p></div>`;
-    listPag.style.display = 'none'; return;
+    listBody.innerHTML = `<div class="empty-state"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No leads found.</p></div>`;
+    listPag.style.display='none'; return;
   }
 
-  const total = filteredLeads.length, pages = Math.ceil(total / PAGE_SIZE);
-  if (listPage > pages) listPage = pages;
-  const start = (listPage - 1) * PAGE_SIZE;
-  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
+  const total=filteredLeads.length, pages=Math.ceil(total/PAGE_SIZE);
+  if(listPage>pages) listPage=pages;
+  const start=(listPage-1)*PAGE_SIZE, slice=filteredLeads.slice(start,start+PAGE_SIZE);
 
-  listBody.innerHTML = slice.map(l => `
+  listBody.innerHTML = slice.map(l=>`
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}')">
-      <div><div class="list-item-name">${esc(l.name||'—')}</div><div class="list-item-email">${esc(l.email||'')}</div></div>
-      <div><div class="list-item-company">${esc(l.company||'—')}</div>${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}</div>
-      <div class="list-item-industry">${esc(l.industry||'—')}</div>
-      <div class="list-item-phone">${l.phone?`<a href="tel:${esc(l.phone)}" onclick="event.stopPropagation()">${esc(l.phone)}</a>`:'—'}</div>
+      <div class="list-item-contact"><div class="list-item-name">${esc(l.name||'—')}</div><div class="list-item-email">${esc(l.email||'')}</div></div>
+      <div class="list-item-company-wrap"><div class="list-item-company">${esc(l.company||'—')}</div>${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}</div>
+      <div class="list-item-industry" title="${esc(l.industry||'')}">${esc(l.industry||'—')}</div>
+      <div class="list-item-phone">${l.phone?`<a href="tel:${esc(l.phone)}" onclick="event.stopPropagation()">${esc(l.phone)}</a>`:'<span style="opacity:.35">—</span>'}</div>
       <div>${statusBadge(l.status)}</div>
       <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
       <div class="list-item-actions" onclick="event.stopPropagation()">
-        <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-        <button class="icon-btn" title="Edit" onclick="editLead('${esc(l.leadId)}')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
+        <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="icon-btn" title="Edit" onclick="editLead('${esc(l.leadId)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       </div>
     </div>`).join('');
 
-  if (total > PAGE_SIZE) {
-    listPag.style.display = 'flex';
-    document.getElementById('listPageInfo').textContent =
-      `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
-    buildPagination(document.getElementById('listPageBtns'), listPage, pages,
-      p => { listPage = p; renderList(); });
-  } else listPag.style.display = 'none';
+  if (total>PAGE_SIZE) {
+    listPag.style.display='flex';
+    document.getElementById('listPageInfo').textContent=`Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
+    buildPagination(document.getElementById('listPageBtns'),listPage,pages,p=>{listPage=p;renderList();});
+  } else listPag.style.display='none';
 }
 
-/* ── PAGINATION ── */
+/* ── SMART PAGINATION ── */
 function buildPagination(container, current, total, onPage) {
-  container.innerHTML = '';
-  const btn = (label, page, disabled, active) => {
-    const b = document.createElement('button');
-    b.className = 'page-btn' + (active ? ' active' : '');
-    b.textContent = label; b.disabled = disabled;
-    if (!disabled) b.onclick = () => onPage(page);
+  container.innerHTML='';
+  const btn=(label,page,disabled,active,isEllipsis)=>{
+    const b=document.createElement('button');
+    b.className='page-btn'+(active?' active':'')+(isEllipsis?' ellipsis':'');
+    b.textContent=label; b.disabled=disabled||isEllipsis;
+    if(!disabled&&!isEllipsis) b.onclick=()=>onPage(page);
     return b;
   };
-  container.appendChild(btn('‹', current-1, current===1, false));
-  for (let p = Math.max(1,current-2); p <= Math.min(total,current+2); p++) {
-    container.appendChild(btn(p, p, false, p===current));
+  container.appendChild(btn('‹',current-1,current===1,false,false));
+  const pages=[];
+  if(total<=15){for(let p=1;p<=total;p++) pages.push(p);}
+  else{
+    let ws=Math.max(1,current-7),we=ws+14;
+    if(we>total){we=total;ws=Math.max(1,we-14);}
+    if(ws>1){pages.push(1);if(ws>2)pages.push('…');}
+    for(let p=ws;p<=we;p++)pages.push(p);
+    if(we<total){if(we<total-1)pages.push('…');pages.push(total);}
   }
-  container.appendChild(btn('›', current+1, current===total, false));
+  pages.forEach(p=>{
+    if(p==='…') container.appendChild(btn('…',null,true,false,true));
+    else container.appendChild(btn(p,p,false,p===current,false));
+  });
+  container.appendChild(btn('›',current+1,current===total,false,false));
 }
 
 /* ── COUNTS ── */
 function updateCounts() {
-  const count = s => allLeads.filter(l => s==='ALL' || l.status===s).length;
+  const count=s=>allLeads.filter(l=>s==='ALL'||l.status===s).length;
   document.getElementById('cnt-all').textContent         = count('ALL');
   document.getElementById('cnt-new').textContent         = count('New');
   document.getElementById('cnt-contacted').textContent   = count('Contacted');
@@ -1505,13 +1785,11 @@ function updateCounts() {
   document.getElementById('s-new').textContent   = count('New');
   document.getElementById('s-qual').textContent  = count('Qualified');
   document.getElementById('s-won').textContent   = count('Won');
-
-  const active = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation'];
-  const pipeTotal = allLeads
-    .filter(l => active.includes(l.status) && l.dealvalue)
-    .reduce((s,l) => s + (parseFloat(String(l.dealvalue).replace(/[^0-9.]/g,'')) || 0), 0);
-  document.getElementById('s-pipeline').textContent =
-    pipeTotal > 0 ? '$' + (pipeTotal >= 1000 ? (pipeTotal/1000).toFixed(1)+'k' : pipeTotal.toLocaleString()) : '—';
+  const active=['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation'];
+  const pipeTotal=allLeads.filter(l=>active.includes(l.status)&&l.dealvalue)
+    .reduce((s,l)=>s+Number(String(l.dealvalue).replace(/[^0-9.]/g,'')||0),0);
+  document.getElementById('s-pipeline').textContent=pipeTotal>0
+    ?'$'+(pipeTotal>=1000?(pipeTotal/1000).toFixed(1)+'k':pipeTotal.toLocaleString()):'—';
 }
 
 /* ── CREATE ── */
@@ -1519,119 +1797,96 @@ function openCreate() {
   editingLeadId = null; editingDocId = null;
   document.getElementById('formModalTitle').textContent = 'New Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
-  ['name','email','phone','linkedin','company','jobtitle','service',
-   'source','page','message','comments','dealvalue','followup'].forEach(f => {
-    const el = document.getElementById('f-'+f);
-    if (el) el.value = '';
+  ['name','email','phone','linkedin','company','jobtitle','industry',
+   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f=>{
+    const el=document.getElementById('f-'+f);
+    if(el) el.value=f==='status'?'New':'';
   });
-  document.getElementById('f-status').value   = 'New';
-  document.getElementById('f-industry').value = '';
   document.getElementById('formOverlay').classList.add('open');
 }
 
 /* ── EDIT ── */
 function editLead(leadId) {
-  const lead = allLeads.find(l => l.leadId === leadId);
-  if (!lead) { toast('Lead not found', 'error'); return; }
+  const lead=allLeads.find(l=>l.leadId===leadId)||filteredLeads.find(l=>l.leadId===leadId);
+  if(!lead){toast('Lead not found','error');return;}
   editingLeadId = leadId;
   editingDocId  = lead._docId;
-
-  document.getElementById('formModalTitle').textContent = 'Edit Lead';
-  document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
-
+  document.getElementById('formModalTitle').textContent='Edit Lead';
+  document.getElementById('formSubmitBtn').textContent='Save Changes';
   ['name','email','phone','linkedin','company','jobtitle',
-   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f => {
-    const el = document.getElementById('f-'+f);
-    if (el) el.value = lead[f] || '';
+   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f=>{
+    const el=document.getElementById('f-'+f);
+    if(el) el.value=lead[f]||'';
   });
-  // industry needs exact option match
-  const iSel = document.getElementById('f-industry');
-  const iv   = (lead.industry || '').trim();
-  iSel.value = '';
-  const match = Array.from(iSel.options).find(o => o.value.trim() === iv || o.text.trim() === iv);
-  if (match) iSel.value = match.value;
-
+  const industryEl=document.getElementById('f-industry');
+  const iv=(lead.industry||'').trim();
+  industryEl.value='';
+  const matched=Array.from(industryEl.options).find(opt=>opt.value.trim()===iv||opt.text.trim()===iv);
+  if(matched) industryEl.value=matched.value;
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
 
-/* ── SUBMIT ── */
+/* ── SUBMIT (Create or Update) ── */
 async function submitForm() {
-  const name  = (document.getElementById('f-name').value  || '').trim();
-  const email = (document.getElementById('f-email').value || '').trim();
-  const phone = (document.getElementById('f-phone').value || '').trim();
+  const name  = document.getElementById('f-name').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  if(!name)  {toast('Name is required','error');return;}
+  if(!email) {toast('Email is required','error');return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('Enter a valid email address','error');return;}
+  const cleanPhone=phone.replace(/\D/g,'');
+  if(phone&&(cleanPhone.length<10||cleanPhone.length>15)){toast('Enter a valid phone number','error');return;}
 
-  if (!name)  { toast('Name is required', 'error');  return; }
-  if (!email) { toast('Email is required', 'error'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    toast('Enter a valid email address', 'error'); return;
-  }
-  if (phone) {
-    const digits = phone.replace(/\D/g,'');
-    if (digits.length < 7 || digits.length > 15) {
-      toast('Enter a valid phone number', 'error'); return;
-    }
-  }
+  const btn=document.getElementById('formSubmitBtn');
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div>';
 
-  /* ── FIX: read ALL fields into a plain object before any async call ── */
   const lead = {
-    leadId:    editingLeadId || '',
-    _docId:    editingDocId  || '',
-    name,
-    email,
+    leadId:    editingLeadId||'',
+    _docId:    editingDocId||'',
+    name, email,
     phone,
-    linkedin:  (document.getElementById('f-linkedin').value  || '').trim(),
-    company:   (document.getElementById('f-company').value   || '').trim(),
-    jobtitle:  (document.getElementById('f-jobtitle').value  || '').trim(),
-    industry:  document.getElementById('f-industry').value   || '',
-    service:   document.getElementById('f-service').value    || '',
-    status:    document.getElementById('f-status').value     || 'New',
-    source:    (document.getElementById('f-source').value    || '').trim(),
-    page:      (document.getElementById('f-page').value      || '').trim(),
-    message:   (document.getElementById('f-message').value   || '').trim(),
-    comments:  (document.getElementById('f-comments').value  || '').trim(),
-    dealvalue: (document.getElementById('f-dealvalue').value || '').trim(),
-    followup:  document.getElementById('f-followup').value   || '',
+    linkedin:  document.getElementById('f-linkedin').value.trim(),
+    company:   document.getElementById('f-company').value.trim(),
+    jobtitle:  document.getElementById('f-jobtitle').value.trim(),
+    industry:  document.getElementById('f-industry').value,
+    service:   document.getElementById('f-service').value,
+    status:    document.getElementById('f-status').value,
+    source:    document.getElementById('f-source').value.trim(),
+    page:      document.getElementById('f-page').value.trim(),
+    message:   document.getElementById('f-message').value.trim(),
+    comments:  document.getElementById('f-comments').value.trim(),
+    dealvalue: document.getElementById('f-dealvalue').value.trim(),
+    followup:  document.getElementById('f-followup').value,
   };
-
-  dbg('submitForm — payload: ' + JSON.stringify(lead), 'info');
-
-  const btn = document.getElementById('formSubmitBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="display:inline-block;margin-right:6px;"></div> Saving…';
 
   try {
     if (editingLeadId) {
-      /* UPDATE */
       await window.dbUpdateLead(editingDocId, lead);
-      const idx = allLeads.findIndex(l => l.leadId === editingLeadId);
-      if (idx !== -1) allLeads[idx] = { ...allLeads[idx], ...lead };
-      const fi = filteredLeads.findIndex(l => l.leadId === editingLeadId);
-      if (fi  !== -1) filteredLeads[fi] = { ...filteredLeads[fi], ...lead };
-      toast('Lead updated!', 'success');
-      await window.dbAddActivity(editingDocId, {
-        type: 'note', text: 'Lead details updated',
-        user: document.getElementById('sideUserName').textContent || 'Team'
-      });
+      // Update local copy
+      const idx=allLeads.findIndex(l=>l.leadId===editingLeadId);
+      if(idx!==-1) allLeads[idx]={...allLeads[idx],...lead};
+      const fi=filteredLeads.findIndex(l=>l.leadId===editingLeadId);
+      if(fi!==-1) filteredLeads[fi]={...filteredLeads[fi],...lead};
+      toast('Lead updated!','success');
+      // Log activity
+      await window.dbAddActivity(editingDocId,{type:'note',text:'Lead details updated',user:document.getElementById('sideUserName').textContent||'Team'});
     } else {
-      /* CREATE — dbAddLead sets lead.leadId internally */
       const newId = await window.dbAddLead(lead);
-      lead._docId = newId;
-      lead.date   = new Date().toISOString().slice(0, 10);
+      lead.leadId = newId; lead._docId = newId;
+      lead.date = new Date().toISOString().slice(0,10);
       allLeads.unshift(lead);
       toast('Lead created — ' + newId, 'success');
-      dbg('Created lead ' + newId, 'ok');
     }
     updateCounts();
     applyFilters();
     closeModal('formOverlay');
   } catch(e) {
     console.error(e);
-    toast('Error saving: ' + e.message, 'error');
-    dbg('Save error: ' + e.message, 'err');
+    toast('Error: ' + e.message, 'error');
   } finally {
-    btn.disabled  = false;
-    btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
+    btn.disabled=false;
+    btn.textContent=editingLeadId?'Save Changes':'Create Lead';
   }
 }
 
@@ -1639,84 +1894,84 @@ async function submitForm() {
 let _viewingLeadId = null;
 let _viewingDocId  = null;
 
-async function viewLead(leadId) {
-  const lead = allLeads.find(l => l.leadId === leadId);
-  if (!lead) { toast('Lead not found', 'error'); return; }
-  _viewingLeadId = leadId;
-  _viewingDocId  = lead._docId;
+const N8N_WEBHOOKS = {
+  send_intro_email:   'https://your-n8n-instance/webhook/send-intro-email',
+  send_proposal:      'https://your-n8n-instance/webhook/send-proposal',
+  enrich_linkedin:    'https://your-n8n-instance/webhook/enrich-linkedin',
+  add_to_crm:         'https://your-n8n-instance/webhook/add-to-crm',
+  schedule_followup:  'https://your-n8n-instance/webhook/schedule-followup',
+  send_whatsapp:      'https://your-n8n-instance/webhook/send-whatsapp',
+  notify_slack:       'https://your-n8n-instance/webhook/notify-slack',
+  send_nurture_seq:   'https://your-n8n-instance/webhook/nurture-sequence',
+};
 
-  document.getElementById('viewLeadId').textContent   = lead.leadId;
-  document.getElementById('viewLeadName').textContent = lead.name || 'Lead Details';
-  document.getElementById('viewEditBtn').onclick = () => editLead(leadId);
+const AUTO_ACTIONS = [
+  {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
+  {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
+  {id:'enrich_linkedin',  label:'Enrich via LinkedIn', icon:'🔍', badge:'Enrich'},
+  {id:'add_to_crm',       label:'Sync to CRM',         icon:'🔗', badge:'Sync'},
+  {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Cal'},
+  {id:'send_nurture_seq', label:'Start Nurture Seq.',  icon:'🔄', badge:'Email'},
+];
+const OUTREACH_ACTIONS = [
+  {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
+  {id:'notify_slack',  label:'Notify Slack',  icon:'🔔', badge:'Slack'},
+];
 
-  const score = computeScore(lead);
-  document.getElementById('viewScoreBadge').innerHTML   = scoreBadge(score);
-  document.getElementById('viewOverdueBadge').innerHTML = isOverdue(lead)
-    ? `<span class="overdue-tag">⏰ Follow-up overdue</span>` : '';
-
-  const dealVal = lead.dealvalue
-    ? '$' + (parseFloat(String(lead.dealvalue).replace(/[^0-9.]/g,''))||0).toLocaleString()
-    : '—';
-  document.getElementById('viewQuickBar').innerHTML = [
-    ['💼 Service', lead.service || '—'],
-    ['📊 Status',  lead.status  || '—'],
-    ['💰 Deal Value', dealVal],
-    ['📅 Follow-up', lead.followup || '—'],
-  ].map(([k,v]) => `
-    <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;">
-      <div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div>
-      <div style="font-size:.81rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div>
-    </div>`).join('') + `<div style="width:14px;"></div>`;
-
-  const section = (title, rows) => {
-    const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
-    if (!filled.length) return '';
-    return `<div class="view-section"><div class="view-section-title">${title}</div>
-      ${filled.map(([k,v,link]) => `<div class="view-row">
-        <span class="view-key">${k}</span>
-        <span class="view-val">${k==='Status' ? statusBadge(v) : link
-          ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>`
-          : esc(String(v||'—'))
-        }</span>
-      </div>`).join('')}</div>`;
-  };
-
-  document.getElementById('viewBody').innerHTML =
-    section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
-    section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
-    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
-    section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
-
-  // Load timeline
-  document.getElementById('timelineBody').innerHTML = `
-    <div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;">
-      <div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
-  await loadActivities(lead._docId);
-
-  // Automations
-  const lp = JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
-  document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
-    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${lp},this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`).join('');
-  document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
-    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${lp},this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`).join('');
-
-  const na = document.getElementById('viewNextAction');
-  if (lead.followup) {
-    na.innerHTML = `<span class="next-action-chip">
-      ${isOverdue(lead) ? '⏰ Overdue' : '📅 Follow-up'}: ${new Date(lead.followup).toLocaleDateString()}</span>`;
-  } else {
-    na.innerHTML = `<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
+async function triggerN8n(actionId, lead, btnEl) {
+  const url = N8N_WEBHOOKS[actionId];
+  btnEl.classList.add('running');
+  btnEl.innerHTML=`<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
+  try {
+    await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,
+        triggeredAt:new Date().toISOString()})});
+    btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent='✓ Triggered';
+    toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
+    if(_viewingDocId) {
+      await window.dbAddActivity(_viewingDocId,{type:'auto',text:`Automation triggered: ${actionId.replace(/_/g,' ')}`,user:document.getElementById('sideUserName').textContent||'Team'});
+      await loadActivities(_viewingDocId);
+    }
+  } catch(e) {
+    btnEl.classList.remove('running'); btnEl.textContent='⚠ Failed';
+    toast('n8n webhook failed — check URL config','error');
   }
-
-  switchViewTab('details', document.querySelector('.view-tab'));
-  document.getElementById('viewOverlay').classList.add('open');
 }
 
-/* ── TIMELINE ── */
+function computeScore(lead) {
+  let s=0;
+  if(lead.email)    s+=10;
+  if(lead.phone)    s+=15;
+  if(lead.company)  s+=10;
+  if(lead.linkedin) s+=10;
+  const stageScore={'New':5,'Contacted':15,'Discovery Call':25,'Qualified':40,'Proposal Sent':55,'Negotiation':70,'Won':100,'Lost':0};
+  s+=stageScore[lead.status]||5;
+  if(lead.service)   s+=10;
+  if(lead.dealvalue) s+=Math.min(20,Math.floor(Number(String(lead.dealvalue).replace(/[^0-9.]/g,''))/5000));
+  return Math.min(100,s);
+}
+
+function scoreBadge(score) {
+  if(score>=60) return `<span class="score-badge score-hot"><span class="score-dot"></span> HOT ${score}</span>`;
+  if(score>=35) return `<span class="score-badge score-warm"><span class="score-dot"></span> WARM ${score}</span>`;
+  return `<span class="score-badge score-cold"><span class="score-dot"></span> COLD ${score}</span>`;
+}
+
+function isOverdue(lead) {
+  if(!lead.followup) return false;
+  return new Date(lead.followup)<new Date();
+}
+
+function switchViewTab(tab, btnEl) {
+  ['details','timeline','automations'].forEach(t=>{
+    document.getElementById('vtab-'+t).style.display=t===tab?'':'none';
+  });
+  document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('active'));
+  if(btnEl) btnEl.classList.add('active');
+}
+
+/* ── ACTIVITIES (Firestore subcollection) ── */
 async function loadActivities(docId) {
   const acts = await window.dbLoadActivities(docId);
   renderTimeline(acts);
@@ -1724,13 +1979,13 @@ async function loadActivities(docId) {
 
 function renderTimeline(acts) {
   const body = document.getElementById('timelineBody');
-  if (!acts || !acts.length) {
-    body.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);font-size:.8rem;opacity:.6;">No activity yet.</div>`;
+  if(!acts||!acts.length){
+    body.innerHTML=`<div style="padding:28px;text-align:center;color:var(--muted);font-size:.8rem;opacity:.6;">No activity yet. Add a note or trigger an automation.</div>`;
     return;
   }
-  const iconMap  = {note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto'};
-  const emojiMap = {note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡'};
-  body.innerHTML = acts.map(a => `
+  const iconMap={note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto'};
+  const emojiMap={note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡'};
+  body.innerHTML=acts.map(a=>`
     <div class="timeline-entry">
       <div class="tl-icon ${iconMap[a.type]||'tl-icon-note'}">${emojiMap[a.type]||'📝'}</div>
       <div class="tl-body">
@@ -1741,232 +1996,258 @@ function renderTimeline(acts) {
 }
 
 async function addNote() {
-  const text = (document.getElementById('noteInput').value || '').trim();
+  const text = document.getElementById('noteInput').value.trim();
   const type = document.getElementById('noteType').value;
-  if (!text) { toast('Note cannot be empty', 'warn'); return; }
-  if (!_viewingDocId) { toast('No lead selected', 'error'); return; }
+  if(!text){toast('Note cannot be empty','warn');return;}
+  if(!_viewingDocId){toast('No lead selected','error');return;}
+
   try {
-    await window.dbAddActivity(_viewingDocId, {
-      type, text, user: document.getElementById('sideUserName').textContent || 'Team'
-    });
-    document.getElementById('noteInput').value = '';
+    await window.dbAddActivity(_viewingDocId,{type,text,user:document.getElementById('sideUserName').textContent||'Team'});
+    document.getElementById('noteInput').value='';
     await loadActivities(_viewingDocId);
-    toast('Activity saved', 'success');
+    toast('Activity saved','success');
   } catch(e) {
-    toast('Failed to save note: ' + e.message, 'error');
+    toast('Failed to save note: '+e.message,'error');
   }
 }
 
-function switchViewTab(tab, btnEl) {
-  ['details','timeline','automations'].forEach(t => {
-    document.getElementById('vtab-'+t).style.display = t === tab ? '' : 'none';
-  });
-  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
-  if (btnEl) btnEl.classList.add('active');
-}
+async function viewLead(leadId) {
+  const lead=allLeads.find(l=>l.leadId===leadId)||filteredLeads.find(l=>l.leadId===leadId);
+  if(!lead){toast('Lead not found','error');return;}
+  _viewingLeadId=leadId;
+  _viewingDocId=lead._docId;
 
-/* ── n8n ── */
-async function triggerN8n(actionId, lead, btnEl) {
-  const url = N8N_WEBHOOKS[actionId];
-  btnEl.classList.add('running');
-  btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;display:inline-block;"></div> Running…`;
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({...lead, triggeredAt: new Date().toISOString()})
-    });
-    btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
-    toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`, 'success');
-    if (_viewingDocId) {
-      await window.dbAddActivity(_viewingDocId, {
-        type:'auto',
-        text:`Automation triggered: ${actionId.replace(/_/g,' ')}`,
-        user: document.getElementById('sideUserName').textContent || 'Team'
-      });
-      await loadActivities(_viewingDocId);
-    }
-  } catch(e) {
-    btnEl.classList.remove('running'); btnEl.textContent = '⚠ Failed';
-    toast('n8n webhook failed — check URL config', 'error');
+  document.getElementById('viewLeadId').textContent=lead.leadId;
+  document.getElementById('viewLeadName').textContent=lead.name||'Lead Details';
+  document.getElementById('viewEditBtn').onclick=()=>editLead(leadId);
+
+  const score=computeScore(lead);
+  document.getElementById('viewScoreBadge').innerHTML=scoreBadge(score);
+  document.getElementById('viewOverdueBadge').innerHTML=isOverdue(lead)
+    ?`<span class="overdue-tag">⏰ Follow-up overdue</span>`:'';
+
+  const qb=document.getElementById('viewQuickBar');
+  const dealVal=lead.dealvalue?`$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}`:'—';
+  qb.innerHTML=[
+    ['💼 Service',lead.service||'—'],
+    ['📊 Status',lead.status||'—'],
+    ['💰 Deal Value',dealVal],
+    ['📅 Follow-up',lead.followup||'—'],
+  ].map(([k,v])=>`<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('')+`<div style="width:14px;"></div>`;
+
+  const section=(title,rows)=>{
+    const filled=rows.filter(([,v])=>v&&String(v).trim()&&String(v)!=='—');
+    if(!filled.length) return '';
+    return `<div class="view-section"><div class="view-section-title">${title}</div>
+      ${filled.map(([k,v,link])=>`<div class="view-row"><span class="view-key">${k}</span><span class="view-val">${
+        k==='Status'?statusBadge(v):link?`<a href="${esc(v)}" target="_blank">${esc(v)}</a>`:esc(String(v||'—'))
+      }</span></div>`).join('')}</div>`;
+  };
+  document.getElementById('viewBody').innerHTML=
+    section('Contact Information',[['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]])+
+    section('Company',[['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]])+
+    section('Lead Details',[['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]])+
+    section('Notes',[['Message',lead.message],['Comments',lead.comments]]);
+
+  // Load activities from Firestore
+  document.getElementById('timelineBody').innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
+  await loadActivities(lead._docId);
+
+  // Automations
+  const leadPayload=JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
+  document.getElementById('autoGrid').innerHTML=AUTO_ACTIONS.map(a=>`
+    <button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)">
+      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+    </button>`).join('');
+  document.getElementById('outreachGrid').innerHTML=OUTREACH_ACTIONS.map(a=>`
+    <button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)">
+      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+    </button>`).join('');
+
+  const na=document.getElementById('viewNextAction');
+  if(lead.followup){
+    const fd=new Date(lead.followup);
+    na.innerHTML=`<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${fd.toLocaleDateString()}</span>`;
+  } else {
+    na.innerHTML=`<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
   }
+
+  switchViewTab('details',document.querySelector('.view-tab'));
+  document.getElementById('viewOverlay').classList.add('open');
 }
 
-/* ── SCORING ── */
-function computeScore(lead) {
-  let s = 0;
-  if (lead.email)    s += 10;
-  if (lead.phone)    s += 15;
-  if (lead.company)  s += 10;
-  if (lead.linkedin) s += 10;
-  const stage = {New:5,Contacted:15,'Discovery Call':25,Qualified:40,'Proposal Sent':55,Negotiation:70,Won:100,Lost:0};
-  s += stage[lead.status] || 5;
-  if (lead.service)   s += 10;
-  if (lead.dealvalue) s += Math.min(20, Math.floor((parseFloat(String(lead.dealvalue).replace(/[^0-9.]/g,''))||0) / 5000));
-  return Math.min(100, s);
-}
-
-function scoreBadge(score) {
-  if (score >= 60) return `<span class="score-badge score-hot"><span class="score-dot"></span> HOT ${score}</span>`;
-  if (score >= 35) return `<span class="score-badge score-warm"><span class="score-dot"></span> WARM ${score}</span>`;
-  return `<span class="score-badge score-cold"><span class="score-dot"></span> COLD ${score}</span>`;
-}
-
-function isOverdue(lead) {
-  if (!lead.followup) return false;
-  return new Date(lead.followup) < new Date();
-}
-
-/* ── SELECTION ── */
-let selectedLeadIds = new Set();
-
-function toggleSelect(leadId, cb) {
-  if (cb.checked) selectedLeadIds.add(leadId);
-  else selectedLeadIds.delete(leadId);
-  updateBulkBar();
-  const row = cb.closest('tr');
-  if (row) row.classList.toggle('selected-row', cb.checked);
-}
-function toggleSelectAll(masterCb) {
-  const page = filteredLeads.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
-  page.forEach(l => { if (masterCb.checked) selectedLeadIds.add(l.leadId); else selectedLeadIds.delete(l.leadId); });
-  updateBulkBar(); renderTable();
-}
-function clearSelection() {
-  selectedLeadIds.clear(); updateBulkBar(); renderTable();
-  const sa = document.getElementById('selectAll'); if (sa) sa.checked = false;
-}
-function updateBulkBar() {
-  const n = selectedLeadIds.size;
-  document.getElementById('bulkBar').classList.toggle('show', n > 0);
-  document.getElementById('bulkCount').textContent = n;
-}
-function bulkChangeStatus() {
-  if (!selectedLeadIds.size) return;
-  document.getElementById('bulkStatusOverlay').classList.add('open');
-}
-async function applyBulkStatus() {
-  const newStatus = document.getElementById('bulkStatusSelect').value;
-  const ids = [...selectedLeadIds];
-  closeModal('bulkStatusOverlay');
-  toast(`Updating ${ids.length} leads to "${newStatus}"…`, 'success');
-  const user = document.getElementById('sideUserName').textContent || 'Team';
-  for (const leadId of ids) {
-    const lead = allLeads.find(l => l.leadId === leadId);
-    if (!lead) continue;
-    lead.status = newStatus;
-    const fl = filteredLeads.find(l => l.leadId === leadId);
-    if (fl) fl.status = newStatus;
-    try {
-      await window.dbUpdateLead(lead._docId, lead);
-      await window.dbAddActivity(lead._docId, {type:'status', text:`Status changed to ${newStatus}`, user});
-    } catch(e) { console.error('bulk update', e); }
-  }
-  clearSelection(); updateCounts(); renderCurrentView();
-  toast(`${ids.length} leads updated`, 'success');
-}
-function bulkExport() {
-  const selected = allLeads.filter(l => selectedLeadIds.has(l.leadId));
-  if (!selected.length) { toast('No leads selected', 'warn'); return; }
-  doCSVExport(selected, `leads-selected-${selected.length}.csv`);
-  toast(`Exported ${selected.length} selected leads`, 'success');
-}
-
-/* ── SORT ── */
-let sortField = null, sortDir = 'asc';
-function sortBy(field, thEl) {
-  if (sortField === field) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-  else { sortField = field; sortDir = 'asc'; }
-  document.querySelectorAll('th.sortable').forEach(t => t.classList.remove('asc','desc'));
-  thEl.classList.add(sortDir);
-  filteredLeads.sort((a, b) => {
-    let av = field === '_score' ? computeScore(a) : (a[field] || '');
-    let bv = field === '_score' ? computeScore(b) : (b[field] || '');
-    if (typeof av === 'string') av = av.toLowerCase();
-    if (typeof bv === 'string') bv = bv.toLowerCase();
-    return av < bv ? (sortDir==='asc'?-1:1) : av > bv ? (sortDir==='asc'?1:-1) : 0;
-  });
-  currentPage = 1; renderTable();
-}
-
-/* ── QUICK FILTERS ── */
-function filterOverdue(el) {
-  currentFilter = '__overdue__';
-  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  filteredLeads = allLeads.filter(l => isOverdue(l));
-  currentPage = 1; listPage = 1; renderCurrentView();
-  toast(`${filteredLeads.length} overdue follow-up(s)`, filteredLeads.length ? 'warn' : 'success');
-}
-function filterHot(el) {
-  currentFilter = '__hot__';
-  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  filteredLeads = allLeads.filter(l => computeScore(l) >= 60);
-  currentPage = 1; listPage = 1; renderCurrentView();
-  toast(`${filteredLeads.length} hot lead(s)`, 'success');
-}
-
-/* ── EXPORT ── */
+/* ── EXPORT CSV ── */
 function exportCSV() {
-  const leads = filteredLeads.length ? filteredLeads : allLeads;
-  if (!leads.length) { toast('No leads to export', 'warn'); return; }
-  doCSVExport(leads, 'leads-export.csv');
-  toast('Exported ' + leads.length + ' leads', 'success');
-}
-function doCSVExport(leads, filename) {
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
-  const csv  = [cols.join(','), ...leads.map(l =>
-    cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(',')
-  )].join('\n');
-  const a = document.createElement('a');
-  a.href     = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = filename; a.click();
-  URL.revokeObjectURL(a.href);
+  const leads=filteredLeads.length?filteredLeads:allLeads;
+  if(!leads.length){toast('No leads to export','warn');return;}
+  const cols=['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const header=cols.join(',');
+  const rows=leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','));
+  const csv=[header,...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='leads-export.csv'; a.click();
+  URL.revokeObjectURL(url);
+  toast('Exported '+leads.length+' leads as CSV','success');
 }
 
 /* ── HELPERS ── */
-function statusBadge(s) {
-  const map = {New:'new',Contacted:'contacted','Discovery Call':'discovery',Qualified:'qualified','Proposal Sent':'proposal',Negotiation:'negotiation',Won:'won',Lost:'lost'};
-  return `<span class="badge badge-${map[s]||'new'}">${esc(s||'New')}</span>`;
-}
-function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.overlay').forEach(o =>
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); })
-);
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open'));
 });
 
-function setTableLoading(on) {
-  if (!on) return;
-  if (currentView === 'table') {
-    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="10">
-      <div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div>
-    </td></tr>`;
+/* ── SELECTION & BULK ACTIONS ── */
+let selectedLeadIds=new Set();
+
+function toggleSelect(leadId,cb){
+  if(cb.checked) selectedLeadIds.add(leadId); else selectedLeadIds.delete(leadId);
+  updateBulkBar();
+  const row=cb.closest('tr');
+  if(row) row.classList.toggle('selected-row',cb.checked);
+}
+function toggleSelectAll(masterCb){
+  const page=filteredLeads.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
+  page.forEach(l=>{if(masterCb.checked)selectedLeadIds.add(l.leadId);else selectedLeadIds.delete(l.leadId);});
+  updateBulkBar(); renderTable();
+}
+function clearSelection(){selectedLeadIds.clear();updateBulkBar();renderTable();const sa=document.getElementById('selectAll');if(sa)sa.checked=false;}
+function updateBulkBar(){
+  const bar=document.getElementById('bulkBar'),cnt=document.getElementById('bulkCount');
+  const n=selectedLeadIds.size;
+  bar.classList.toggle('show',n>0); cnt.textContent=n;
+}
+function bulkChangeStatus(){if(!selectedLeadIds.size)return;document.getElementById('bulkStatusOverlay').classList.add('open');}
+
+async function applyBulkStatus() {
+  const newStatus=document.getElementById('bulkStatusSelect').value;
+  const ids=[...selectedLeadIds];
+  closeModal('bulkStatusOverlay');
+  toast(`Updating ${ids.length} leads to "${newStatus}"…`,'success');
+  const user=document.getElementById('sideUserName').textContent||'Team';
+  for(const leadId of ids){
+    const lead=allLeads.find(l=>l.leadId===leadId);
+    if(!lead) continue;
+    lead.status=newStatus;
+    const fl=filteredLeads.find(l=>l.leadId===leadId);
+    if(fl) fl.status=newStatus;
+    try {
+      await window.dbUpdateLead(lead._docId,lead);
+      await window.dbAddActivity(lead._docId,{type:'status',text:`Status changed to ${newStatus}`,user});
+    } catch(e){console.error('bulk update',e);}
+  }
+  clearSelection(); updateCounts(); renderCurrentView();
+  toast(`${ids.length} leads updated to "${newStatus}"`,'success');
+}
+
+function bulkExport(){
+  const selected=allLeads.filter(l=>selectedLeadIds.has(l.leadId));
+  if(!selected.length){toast('No leads selected','warn');return;}
+  const cols=['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const csv=[cols.join(','),...selected.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`leads-selected-${selected.length}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${selected.length} selected leads`,'success');
+}
+
+function bulkTriggerN8n(){
+  if(!selectedLeadIds.size)return;
+  const grid=document.getElementById('bulkAutoGrid');
+  grid.innerHTML=AUTO_ACTIONS.concat(OUTREACH_ACTIONS).map(a=>`
+    <button class="auto-btn" onclick="runBulkAuto('${a.id}',this)">
+      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+    </button>`).join('');
+  document.getElementById('bulkAutoOverlay').classList.add('open');
+}
+
+async function runBulkAuto(actionId,btnEl){
+  const ids=[...selectedLeadIds];
+  btnEl.classList.add('running');
+  btnEl.innerHTML=`<div class="spinner" style="width:13px;height:13px;"></div> Sending ${ids.length}…`;
+  try {
+    const leads=ids.map(id=>{const l=allLeads.find(x=>x.leadId===id);return l?{leadId:l.leadId,name:l.name,email:l.email,phone:l.phone,company:l.company,status:l.status,service:l.service}:{leadId:id};});
+    await fetch(N8N_WEBHOOKS[actionId],{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leads,triggeredAt:new Date().toISOString()})});
+    btnEl.classList.remove('running'); btnEl.classList.add('done');
+    btnEl.textContent=`✓ Sent to ${ids.length} leads`;
+    toast(`Bulk automation "${actionId}" triggered for ${ids.length} leads`,'success');
+  } catch(e){btnEl.classList.remove('running');btnEl.textContent='⚠ Failed';toast('n8n bulk webhook failed','error');}
+}
+
+/* ── SORTING ── */
+let sortField=null,sortDir='asc';
+function sortBy(field,thEl){
+  if(sortField===field) sortDir=sortDir==='asc'?'desc':'asc';
+  else{sortField=field;sortDir='asc';}
+  document.querySelectorAll('th.sortable').forEach(t=>t.classList.remove('asc','desc'));
+  thEl.classList.add(sortDir);
+  filteredLeads.sort((a,b)=>{
+    let av=field==='_score'?computeScore(a):(a[field]||'');
+    let bv=field==='_score'?computeScore(b):(b[field]||'');
+    if(typeof av==='string') av=av.toLowerCase();
+    if(typeof bv==='string') bv=bv.toLowerCase();
+    if(av<bv) return sortDir==='asc'?-1:1;
+    if(av>bv) return sortDir==='asc'?1:-1;
+    return 0;
+  });
+  currentPage=1; renderTable();
+}
+
+/* ── QUICK FILTERS ── */
+function filterOverdue(el){
+  currentFilter='__overdue__';
+  document.querySelectorAll('.aside-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  filteredLeads=allLeads.filter(l=>isOverdue(l));
+  currentPage=1;listPage=1;renderCurrentView();
+  toast(`${filteredLeads.length} overdue follow-up(s)`,filteredLeads.length?'warn':'success');
+}
+function filterHot(el){
+  currentFilter='__hot__';
+  document.querySelectorAll('.aside-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  filteredLeads=allLeads.filter(l=>computeScore(l)>=60);
+  currentPage=1;listPage=1;renderCurrentView();
+  toast(`${filteredLeads.length} hot lead(s)`,'success');
+}
+
+function statusBadge(s){
+  const map={'New':'new','Contacted':'contacted','Discovery Call':'discovery','Qualified':'qualified','Proposal Sent':'proposal','Negotiation':'negotiation','Won':'won','Lost':'lost'};
+  return `<span class="badge badge-${map[s]||'new'}">${esc(s||'New')}</span>`;
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function setTableLoading(on){
+  if(!on) return;
+  if(currentView==='table'){
+    document.getElementById('leadsBody').innerHTML=`<tr><td colspan="10"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div></td></tr>`;
+  } else if(currentView==='board'){
+    document.getElementById('boardScroll').innerHTML=`<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading…</div>`;
+  } else if(currentView==='list'){
+    document.getElementById('listBody').innerHTML=`<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div>`;
   }
 }
 
 let toastTimer;
-function toast(msg, type='success') {
-  const el = document.getElementById('toast');
-  document.getElementById('toastMsg').textContent = msg;
-  el.className = 'show ' + type;
+function toast(msg,type='success'){
+  const el=document.getElementById('toast');
+  document.getElementById('toastMsg').textContent=msg;
+  el.className='show '+type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
 }
 
-/* dev shortcut: press ` to toggle debug panel */
-document.addEventListener('keydown', e => {
-  if (e.key === '`') {
-    const p = document.getElementById('debugPanel');
-    p.classList.toggle('show');
-  }
-});
+function toggleHelpPanel(){
+  const panel=document.getElementById('helpPanel'),overlay=document.getElementById('helpOverlay');
+  const isOpen=panel.classList.contains('open');
+  panel.classList.toggle('open',!isOpen); overlay.classList.toggle('open',!isOpen);
+}
 </script>
 </body>
 </html>
