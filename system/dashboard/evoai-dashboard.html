@@ -2283,12 +2283,20 @@ async function viewLead(leadId, docId) {
   await loadActivities(_viewingDocId);
 
   const leadPayload = JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
-  document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
-    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)"><span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span></button>`
-  ).join('');
-  document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
-    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)"><span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span></button>`
-  ).join('');
+  // Store the current lead globally so buttons can access it safely
+	window._viewingLead = lead;
+
+	document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
+	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+	  </button>`
+	).join('');
+
+	document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
+	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+	  </button>`
+	).join('');
 
   const na = document.getElementById('viewNextAction');
   if (lead.followup) {
@@ -2345,10 +2353,14 @@ async function addNote() {
 /* ════════════════════════════════════════════════════
    n8n
 ════════════════════════════════════════════════════ */
+function handleAutoBtn(btnEl) {
+  const actionId = btnEl.dataset.action;
+  triggerN8n(actionId, window._viewingLead, btnEl);
+}
+
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
-  alert('called');
-  
+ 
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
