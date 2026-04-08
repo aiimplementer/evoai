@@ -1786,6 +1786,7 @@ async function loadBoardView() {
     BOARD_STAGES.forEach((s,i) => { boardLeads[s.key] = stageData[i]; });
     renderBoard();
   } catch(e) {
+    alert(e.message);
     toast('Board load failed: ' + e.message, 'error');
   }
 }
