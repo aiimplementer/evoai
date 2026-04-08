@@ -2430,14 +2430,13 @@ function handleAutoBtn(btnEl) {
 
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
-  alert(url);
- 
+   
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,linkedinurl:lead.linkedin,
         triggeredAt:new Date().toISOString()})});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
