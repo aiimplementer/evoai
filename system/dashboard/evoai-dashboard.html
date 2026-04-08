@@ -852,6 +852,72 @@
     .pagination { flex-direction: column; align-items: flex-start; }
     .jump-wrap { display: none; }
   }
+  
+  /* ── COLLAPSIBLE SIDEBAR ── */
+	aside {
+	  transition: width .25s cubic-bezier(.4,0,.2,1);
+	  width: 230px;
+	  min-width: 0;
+	  overflow: hidden;
+	}
+	aside.collapsed {
+	  width: 52px;
+	}
+	aside.collapsed .aside-label,
+	aside.collapsed .aside-count,
+	aside.collapsed .aside-count-danger,
+	aside.collapsed .aside-user-text,
+	aside.collapsed .aside-item span:not(svg):not(.aside-count):not(.aside-count-danger) {
+	  display: none;
+	}
+	aside.collapsed .aside-item {
+	  justify-content: center;
+	  padding: 8px;
+	}
+	aside.collapsed .aside-user-footer {
+	  justify-content: center;
+	  padding: 14px 8px;
+	}
+
+	.sidebar-toggle {
+	  position: absolute;
+	  top: 50%;
+	  right: -13px;
+	  transform: translateY(-50%);
+	  width: 26px;
+	  height: 26px;
+	  border-radius: 50%;
+	  background: var(--surface2);
+	  border: 1px solid var(--border);
+	  color: var(--muted);
+	  display: flex;
+	  align-items: center;
+	  justify-content: center;
+	  cursor: pointer;
+	  z-index: 10;
+	  transition: all .18s;
+	  flex-shrink: 0;
+	}
+	.sidebar-toggle:hover {
+	  border-color: var(--accent);
+	  color: var(--accent);
+	  background: rgba(0,229,160,.08);
+	}
+	.sidebar-toggle svg {
+	  transition: transform .25s;
+	}
+	aside.collapsed .sidebar-toggle svg {
+	  transform: rotate(180deg);
+	}
+
+	/* make shell columns dynamic */
+	.shell {
+	  grid-template-columns: 230px 1fr;
+	  transition: grid-template-columns .25s cubic-bezier(.4,0,.2,1);
+	}
+	.shell.sidebar-collapsed {
+	  grid-template-columns: 52px 1fr;
+	}
 </style>
 </head>
 <body>
@@ -915,7 +981,10 @@
 
 <div class="shell">
   <!-- SIDEBAR -->
-  <aside>
+  <aside id="sidebar">
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Pipeline</div>
@@ -2526,6 +2595,24 @@ function toggleHelpPanel() {
   panel.classList.toggle('open',!isOpen);
   overlay.classList.toggle('open',!isOpen);
 }
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const shell   = sidebar.closest('.shell');
+  sidebar.classList.toggle('collapsed');
+  shell.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+}
+
+// Restore state on load
+(function() {
+  if (localStorage.getItem('sidebarCollapsed') === 'true') {
+    const sidebar = document.getElementById('sidebar');
+    const shell   = sidebar?.closest('.shell');
+    sidebar?.classList.add('collapsed');
+    shell?.classList.add('sidebar-collapsed');
+  }
+})();
 </script>
 </body>
 </html>
