@@ -25,17 +25,22 @@
     query,
     where,
     orderBy,
+    limit,
+    startAfter,
+    endBefore,
+    limitToLast,
+    getCountFromServer,
     serverTimestamp,
     Timestamp
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
   const firebaseConfig = {
-	  apiKey: "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
-	  authDomain: "evoai-lead-manager.firebaseapp.com",
-	  projectId: "evoai-lead-manager",
-	  storageBucket: "evoai-lead-manager.firebasestorage.app",
-	  messagingSenderId: "900829259085",
-	  appId: "1:900829259085:web:907aee15a33c75210f0304"
+    apiKey: "AIzaSyDk0ND9HhrEBAnLZrVxCsYF_Rh9JV5mgko",
+    authDomain: "evoai-lead-manager.firebaseapp.com",
+    projectId: "evoai-lead-manager",
+    storageBucket: "evoai-lead-manager.firebasestorage.app",
+    messagingSenderId: "900829259085",
+    appId: "1:900829259085:web:907aee15a33c75210f0304"
   };
 
   const app  = initializeApp(firebaseConfig);
@@ -46,16 +51,14 @@
   window._firebaseAuth = auth;
   window._db = db;
 
-  /* ─── Expose Firestore helpers globally ─── */
-
-  /* Generate lead ID */
+  /* ─── Generate lead ID ─── */
   window.generateLeadId = () => {
     const now = new Date();
     const pad = (n, l=2) => String(n).padStart(l,'0');
     return `EVOWEB-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   };
 
-  /* Map Firestore doc → internal lead object */
+  /* ─── Map Firestore doc → internal lead object ─── */
   window.docToLead = (docSnap) => {
     const d = docSnap.data();
     const toDate = (v) => {
@@ -66,6 +69,7 @@
     };
     return {
       _docId:    docSnap.id,
+      _snap:     docSnap,            // ← keep raw snapshot for cursors
       leadId:    d.leadId    || docSnap.id,
       name:      d.fullName  || d.name      || '',
       email:     d.email     || '',
@@ -86,45 +90,169 @@
     };
   };
 
-  /* Map internal lead → Firestore doc fields */
+  /* ─── Map internal lead → Firestore doc fields ─── */
   window.leadToDoc = (lead, isNew = false) => {
-    const doc = {
-      leadId:             lead.leadId    || lead._docId || '',
-      fullName:           lead.name      || '',
-      email:              lead.email     || '',
-      phone:              lead.phone     || '',
-      linkedin:           lead.linkedin  || '',
-      companyName:        lead.company   || '',
-      jobTitle:           lead.jobtitle  || '',
-      industry:           lead.industry  || '',
-      service:            lead.service   || '',
-      status:             lead.status    || 'New',
-      source:             lead.source    || '',
-      page:               lead.page      || '',
-      message:            lead.message   || '',
-      comments:           lead.comments  || '',
-      dealValue:          lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
-      followupDate:       lead.followup  || '',
+    const docData = {
+      leadId:              lead.leadId    || lead._docId || '',
+      fullName:            lead.name      || '',
+      email:               lead.email     || '',
+      phone:               lead.phone     || '',
+      linkedin:            lead.linkedin  || '',
+      companyName:         lead.company   || '',
+      jobTitle:            lead.jobtitle  || '',
+      industry:            lead.industry  || '',
+      service:             lead.service   || '',
+      status:              lead.status    || 'New',
+      source:              lead.source    || '',
+      page:                lead.page      || '',
+      message:             lead.message   || '',
+      comments:            lead.comments  || '',
+      dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
+      followupDate:        lead.followup  || '',
       lastUpdateTimestamp: serverTimestamp(),
     };
-    if (isNew) doc.createdAt = serverTimestamp();
-    return doc;
+    if (isNew) docData.createdAt = serverTimestamp();
+    return docData;
   };
 
-  /* ─── CRUD ─── */
+  /* ════════════════════════════════════════════════
+     SERVER-SIDE PAGINATION  — core helpers
+     ════════════════════════════════════════════════
+     Strategy
+     ---------
+     • Primary sort:  createdAt DESC  (always)
+     • Filters:       status / service / industry sent as Firestore where() clauses
+     • Search:        still client-side (Firestore has no native full-text search);
+                      when a search term is active we expand the window to 500 docs
+                      and filter in-memory — acceptable for CRM scale.
+     • Page cursors:  we cache the first and last snapshot of every page we've
+                      visited so we can go forward (startAfter last) or backward
+                      (endBefore first / limitToLast).
+     • Counts:        getCountFromServer() — zero document reads.
+  ════════════════════════════════════════════════ */
 
-  /* Load all leads */
-  window.dbLoadLeads = async () => {
+  const PAGE_SIZE_DEFAULT = 15;
+
+  /**
+   * Build a Firestore query from the current filter state.
+   * @param {object} filters  { status, service, industry }
+   * @param {number} pageSize
+   * @param {object|null} afterSnap   snapshot to startAfter  (forward nav)
+   * @param {object|null} beforeSnap  snapshot to endBefore   (backward nav)
+   */
+  window.buildLeadsQuery = (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
+    const ref = collection(db, 'leads');
+    const constraints = [ orderBy('createdAt', 'desc') ];
+
+    if (filters.status)   constraints.push(where('status',      '==', filters.status));
+    if (filters.service)  constraints.push(where('service',     '==', filters.service));
+    if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
+
+    if (beforeSnap) {
+      // Going backward
+      constraints.push(endBefore(beforeSnap));
+      constraints.push(limitToLast(pageSize));
+    } else if (afterSnap) {
+      // Going forward
+      constraints.push(startAfter(afterSnap));
+      constraints.push(limit(pageSize));
+    } else {
+      // First page
+      constraints.push(limit(pageSize));
+    }
+
+    return query(ref, ...constraints);
+  };
+
+  /**
+   * Count documents matching filters (no document reads).
+   */
+  window.dbCountLeads = async (filters = {}) => {
+    const ref = collection(db, 'leads');
+    const constraints = [];
+    if (filters.status)   constraints.push(where('status',   '==', filters.status));
+    if (filters.service)  constraints.push(where('service',  '==', filters.service));
+    if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+
+    const countQuery = constraints.length ? query(ref, ...constraints) : ref;
+    const snap = await getCountFromServer(countQuery);
+    return snap.data().count;
+  };
+
+  /**
+   * Count all status groups in a single batch (for sidebar counts).
+   * Uses getCountFromServer — 9 count queries, 0 document reads.
+   */
+  window.dbCountAllStatuses = async () => {
+    const ref = collection(db, 'leads');
+    const statuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost'];
+
+    const [totalSnap, ...statusSnaps] = await Promise.all([
+      getCountFromServer(ref),
+      ...statuses.map(s => getCountFromServer(query(ref, where('status','==',s))))
+    ]);
+
+    const result = { ALL: totalSnap.data().count };
+    statuses.forEach((s,i) => { result[s] = statusSnaps[i].data().count; });
+    return result;
+  };
+
+  /**
+   * Load one page of leads.
+   * Returns { leads: [], firstSnap, lastSnap }
+   */
+  window.dbLoadPage = async (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
     try {
-      const snap = await getDocs(collection(db, 'leads'));
-      return snap.docs.map(d => window.docToLead(d));
+      const q = window.buildLeadsQuery(filters, pageSize, afterSnap, beforeSnap);
+      const snap = await getDocs(q);
+      const leads = snap.docs.map(d => window.docToLead(d));
+      return {
+        leads,
+        firstSnap: snap.docs[0]             || null,
+        lastSnap:  snap.docs[snap.docs.length - 1] || null,
+        empty:     snap.empty,
+      };
     } catch(e) {
-      console.error('dbLoadLeads', e);
+      console.error('dbLoadPage', e);
       throw e;
     }
   };
 
-  /* Add lead */
+  /**
+   * Load ALL leads for a stage (board view) — capped at 200 per stage.
+   * Board view doesn't paginate; columns scroll internally.
+   */
+  window.dbLoadStage = async (status) => {
+    const q = query(
+      collection(db, 'leads'),
+      where('status', '==', status),
+      orderBy('createdAt', 'desc'),
+      limit(200)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => window.docToLead(d));
+  };
+
+  /**
+   * Load leads matching a search term — expanded window, client-filtered.
+   * Uses a large limit (500) and returns all matching docs.
+   */
+  window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
+    const ref = collection(db, 'leads');
+    const constraints = [ orderBy('createdAt', 'desc'), limit(maxDocs) ];
+    if (filters.status)   constraints.push(where('status',   '==', filters.status));
+    if (filters.service)  constraints.push(where('service',  '==', filters.service));
+    if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+
+    const snap = await getDocs(query(ref, ...constraints));
+    const term = searchTerm.toLowerCase();
+    return snap.docs
+      .map(d => window.docToLead(d))
+      .filter(l => JSON.stringify(l).toLowerCase().includes(term));
+  };
+
+  /* ─── CRUD ─── */
+
   window.dbAddLead = async (lead) => {
     const id  = window.generateLeadId();
     lead.leadId = id;
@@ -133,13 +261,18 @@
     return id;
   };
 
-  /* Update lead */
   window.dbUpdateLead = async (docId, lead) => {
     const data = window.leadToDoc(lead, false);
     await updateDoc(doc(db, 'leads', docId), data);
   };
 
-  /* Add activity */
+  window.dbGetLead = async (docId) => {
+    const snap = await getDoc(doc(db, 'leads', docId));
+    return snap.exists() ? window.docToLead(snap) : null;
+  };
+
+  /* ─── Activities ─── */
+
   window.dbAddActivity = async (leadDocId, activity) => {
     const activitiesRef = collection(db, 'leads', leadDocId, 'activities');
     await addDoc(activitiesRef, {
@@ -150,18 +283,16 @@
     });
   };
 
-  /* Load activities */
   window.dbLoadActivities = async (leadDocId) => {
     try {
       const activitiesRef = collection(db, 'leads', leadDocId, 'activities');
       const snap = await getDocs(query(activitiesRef, orderBy('createdAt', 'desc')));
       return snap.docs.map(d => {
         const data = d.data();
-        const ts   = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
+        const ts = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
         return { type: data.type, text: data.text, user: data.user, ts };
       });
     } catch(e) {
-      // activities subcollection may not exist yet
       return [];
     }
   };
@@ -190,7 +321,7 @@
     document.getElementById('sideUserName').textContent     = name;
     document.getElementById('sideUserEmail').textContent    = email;
 
-    window.loadLeads();
+    window.initApp();
   });
 
   window.doSignOut = async () => {
@@ -302,17 +433,10 @@
   aside {
     border-right: 1px solid var(--border);
     background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
+    display: flex; flex-direction: column;
+    height: 100%; overflow: hidden;
   }
-
-  .aside-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px 0 8px;
-  }
+  .aside-scroll { flex: 1; overflow-y: auto; padding: 24px 0 8px; }
   .aside-scroll::-webkit-scrollbar { width: 4px; }
   .aside-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
@@ -338,17 +462,10 @@
   }
 
   .aside-user-footer {
-    flex-shrink: 0;
-    padding: 14px 16px;
-    border-top: 1px solid var(--border);
-    background: var(--surface);
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-shrink: 0; padding: 14px 16px; border-top: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; gap: 10px;
   }
-  .aside-user-footer .user-avatar {
-    width: 30px; height: 30px; border-radius: 7px; font-size: .7rem;
-  }
+  .aside-user-footer .user-avatar { width: 30px; height: 30px; border-radius: 7px; font-size: .7rem; }
   .aside-user-text { overflow: hidden; }
   .aside-user-name {
     font-size: .76rem; font-weight: 600; color: var(--text);
@@ -360,11 +477,7 @@
   }
 
   /* ── MAIN ── */
-  main {
-    padding: 30px 34px;
-    overflow-y: auto;
-    height: 100%;
-  }
+  main { padding: 30px 34px; overflow-y: auto; height: 100%; }
 
   .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
   .page-title { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
@@ -396,6 +509,16 @@
   .search-wrap input { width: 100%; padding: 9px 12px 9px 34px; }
   select { padding: 9px 12px; cursor: pointer; }
   select option { background: var(--surface2); }
+
+  /* ── SEARCH MODE BANNER ── */
+  .search-mode-banner {
+    display: none; align-items: center; gap: 8px;
+    background: rgba(0,184,255,.07); border: 1px solid rgba(0,184,255,.22);
+    border-radius: 8px; padding: 7px 13px; margin-bottom: 10px;
+    font-size: .76rem; color: var(--accent2);
+  }
+  .search-mode-banner.show { display: flex; }
+  .search-mode-banner strong { color: var(--text); }
 
   /* ── TABLE ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -444,16 +567,24 @@
   .pagination {
     display: flex; align-items: center; justify-content: space-between;
     padding: 13px 14px; border-top: 1px solid var(--border);
-    font-size: .76rem; color: var(--muted);
+    font-size: .76rem; color: var(--muted); flex-wrap: wrap; gap: 8px;
   }
-  .page-btns { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
+  .page-info-block { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .page-btns { display: flex; gap: 4px; flex-wrap: wrap; }
   .page-btn {
-    min-width: 32px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
+    min-width: 32px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; font-size: .78rem; font-family: var(--mono); transition: all .14s;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .78rem; font-family: var(--mono); transition: all .14s; gap: 5px;
   }
-  .page-btn:hover, .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
-  .page-btn.ellipsis { border-color: transparent; cursor: default; color: var(--muted); opacity: .4; min-width: 20px; }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+  .page-btn:disabled { opacity: .3; cursor: not-allowed; }
+  .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); font-weight: 700; }
+  .page-counter {
+    font-family: var(--mono); font-size: .72rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); padding: 4px 10px; border-radius: 6px;
+  }
 
   /* ── MODAL ── */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
@@ -527,145 +658,62 @@
   .toast-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
   /* ── UNAUTHORIZED OVERLAY ── */
-  #unauthOverlay {
-    display: none;
-    position: fixed; inset: 0; z-index: 9998;
-    background: rgba(4,8,14,.92); backdrop-filter: blur(12px);
-    align-items: center; justify-content: center;
-  }
+  #unauthOverlay { display: none; position: fixed; inset: 0; z-index: 9998; background: rgba(4,8,14,.92); backdrop-filter: blur(12px); align-items: center; justify-content: center; }
   #unauthOverlay.open { display: flex; }
-  .unauth-card {
-    background: var(--surface); border: 1px solid rgba(255,77,109,.3);
-    border-radius: 16px; padding: 40px 44px; max-width: 420px; width: 90%;
-    text-align: center; box-shadow: 0 0 60px rgba(255,77,109,.12);
-    animation: slideUp .28s ease;
-  }
-  .unauth-icon {
-    width: 56px; height: 56px; border-radius: 14px;
-    background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25);
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 20px; color: var(--danger);
-  }
+  .unauth-card { background: var(--surface); border: 1px solid rgba(255,77,109,.3); border-radius: 16px; padding: 40px 44px; max-width: 420px; width: 90%; text-align: center; box-shadow: 0 0 60px rgba(255,77,109,.12); animation: slideUp .28s ease; }
+  .unauth-icon { width: 56px; height: 56px; border-radius: 14px; background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: var(--danger); }
   .unauth-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -.02em; }
   .unauth-msg   { font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 24px; }
   .unauth-progress { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 18px; }
-  .unauth-progress-bar {
-    height: 100%; background: var(--danger); border-radius: 2px;
-    width: 100%; transform-origin: left;
-    animation: drainProgress 3s linear forwards;
-  }
+  .unauth-progress-bar { height: 100%; background: var(--danger); border-radius: 2px; width: 100%; transform-origin: left; animation: drainProgress 3s linear forwards; }
   @keyframes drainProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
   .unauth-sub { font-size: .71rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em; }
   .unauth-redirect-count { color: var(--danger); font-weight: 600; }
 
   /* ── LEAD SCORE BADGE ── */
-  .score-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 20px; font-size: .64rem; font-weight: 700;
-    font-family: var(--mono); letter-spacing: .04em;
-  }
+  .score-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: .64rem; font-weight: 700; font-family: var(--mono); letter-spacing: .04em; }
   .score-hot  { background: rgba(255,77,109,.15); color: #ff4d6d; border: 1px solid rgba(255,77,109,.3); }
   .score-warm { background: rgba(255,183,48,.12); color: #ffb730; border: 1px solid rgba(255,183,48,.3); }
   .score-cold { background: rgba(100,180,255,.1); color: #64b4ff; border: 1px solid rgba(100,180,255,.25); }
   .score-dot  { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
   /* ── HOT LEADS BADGE (sidebar) ── */
-  .hot-pulse {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--danger); margin-left: auto;
-    box-shadow: 0 0 0 0 rgba(255,77,109,.5);
-    animation: pulse 1.6s infinite;
-  }
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(255,77,109,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(255,77,109,0); }
-    100% { box-shadow: 0 0 0 0 rgba(255,77,109,0); }
-  }
+  .hot-pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-left: auto; box-shadow: 0 0 0 0 rgba(255,77,109,.5); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,109,.5); } 70% { box-shadow: 0 0 0 6px rgba(255,77,109,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,109,0); } }
 
   /* ── OVERDUE TAG ── */
-  .overdue-tag {
-    display: inline-flex; align-items: center; gap: 4px;
-    background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25);
-    color: var(--danger); border-radius: 5px; padding: 2px 7px;
-    font-size: .63rem; font-weight: 700; font-family: var(--mono);
-  }
+  .overdue-tag { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25); color: var(--danger); border-radius: 5px; padding: 2px 7px; font-size: .63rem; font-weight: 700; font-family: var(--mono); }
 
   /* ── BULK ACTION BAR ── */
-  .bulk-bar {
-    display: none; align-items: center; gap: 10px;
-    background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.22);
-    border-radius: 8px; padding: 8px 14px; margin-bottom: 10px;
-    animation: slideUp .16s ease;
-  }
+  .bulk-bar { display: none; align-items: center; gap: 10px; background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.22); border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; animation: slideUp .16s ease; }
   .bulk-bar.show { display: flex; }
-  .bulk-count {
-    font-size: .78rem; font-weight: 700; color: var(--accent);
-    font-family: var(--mono); margin-right: 4px;
-  }
-  .bulk-action {
-    display: flex; align-items: center; gap: 6px;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 6px; padding: 5px 12px; font-size: .74rem; font-weight: 600;
-    color: var(--muted); cursor: pointer; font-family: var(--font); transition: all .14s;
-  }
+  .bulk-count { font-size: .78rem; font-weight: 700; color: var(--accent); font-family: var(--mono); margin-right: 4px; }
+  .bulk-action { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; font-size: .74rem; font-weight: 600; color: var(--muted); cursor: pointer; font-family: var(--font); transition: all .14s; }
   .bulk-action:hover { border-color: var(--accent); color: var(--accent); }
-  .bulk-deselect {
-    margin-left: auto; background: transparent; border: none;
-    color: var(--muted); cursor: pointer; font-size: .78rem; padding: 4px 8px; border-radius: 5px;
-  }
+  .bulk-deselect { margin-left: auto; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: .78rem; padding: 4px 8px; border-radius: 5px; }
   .bulk-deselect:hover { color: var(--danger); }
 
-  /* ── SORTABLE HEADERS ── */
-  th.sortable { cursor: pointer; user-select: none; position: relative; }
-  th.sortable:hover { color: var(--accent); }
-  th.sortable .sort-arrow { display: inline-block; margin-left: 4px; opacity: .3; font-size: .7em; transition: opacity .14s; }
-  th.sortable.asc  .sort-arrow,
-  th.sortable.desc .sort-arrow { opacity: 1; color: var(--accent); }
-  th.sortable.desc .sort-arrow { transform: rotate(180deg); }
-
   /* ── ROW CHECKBOX ── */
-  .row-check {
-    width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--border);
-    background: transparent; cursor: pointer; accent-color: var(--accent);
-  }
+  .row-check { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--border); background: transparent; cursor: pointer; accent-color: var(--accent); }
   tr.selected-row { background: rgba(0,229,160,.04) !important; }
   tr.selected-row td { border-color: rgba(0,229,160,.15) !important; }
 
   /* ── BOARD VIEW ── */
   #boardView { display: none; overflow-x: auto; padding-bottom: 16px; }
   .board-scroll { display: flex; gap: 12px; min-width: max-content; }
-  .board-col {
-    width: 240px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 320px);
-  }
-  .board-col-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
+  .board-col { width: 240px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 320px); }
+  .board-col-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .board-col-label { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  .board-col-count {
-    font-family: var(--mono); font-size: .65rem; background: var(--surface2);
-    border: 1px solid var(--border); color: var(--muted); padding: 1px 7px; border-radius: 20px;
-  }
-  .board-col-body {
-    flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
-  }
+  .board-col-count { font-family: var(--mono); font-size: .65rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 1px 7px; border-radius: 20px; }
+  .board-col-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
   .board-col-body::-webkit-scrollbar { width: 3px; }
   .board-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-  .board-card {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 11px 12px; cursor: pointer; transition: border-color .15s, transform .12s;
-    position: relative;
-  }
+  .board-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; cursor: pointer; transition: border-color .15s, transform .12s; position: relative; }
   .board-card:hover { border-color: rgba(0,229,160,.35); transform: translateY(-1px); }
   .board-card-name { font-size: .81rem; font-weight: 600; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .board-card-company { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; }
   .board-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
-  .board-card-service {
-    font-size: .64rem; color: var(--muted); background: rgba(255,255,255,.04);
-    border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px;
-    max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  .board-card-service { font-size: .64rem; color: var(--muted); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .board-card-date { font-family: var(--mono); font-size: .62rem; color: var(--muted); }
   .board-card-value { font-family: var(--mono); font-size: .64rem; color: #c084fc; font-weight: 700; letter-spacing: .02em; }
   .board-empty { text-align: center; padding: 24px 12px; color: var(--muted); font-size: .76rem; opacity: .5; }
@@ -675,10 +723,7 @@
   .board-card[draggable="true"]:active { cursor: grabbing; }
   .board-card.dragging { opacity: .35; transform: scale(.97); border-color: var(--accent) !important; }
   .board-card.drag-ghost { opacity: .55; border: 1px dashed var(--accent); background: rgba(0,229,160,.06); }
-  .board-col-body.drag-over {
-    background: rgba(0,229,160,.04); outline: 2px dashed rgba(0,229,160,.3);
-    outline-offset: -4px; border-radius: 6px;
-  }
+  .board-col-body.drag-over { background: rgba(0,229,160,.04); outline: 2px dashed rgba(0,229,160,.3); outline-offset: -4px; border-radius: 6px; }
   .board-col-body.drag-over .board-empty { color: var(--accent); opacity: .7; }
   .drop-indicator { height: 3px; background: var(--accent); border-radius: 2px; margin: 2px 0; pointer-events: none; opacity: 0; transition: opacity .1s; }
   .drop-indicator.visible { opacity: 1; }
@@ -686,12 +731,7 @@
   /* ── LIST VIEW ── */
   #listView { display: none; }
   .list-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .list-header,
-  .list-item {
-    display: grid;
-    grid-template-columns: 190px 180px 1fr 130px auto 100px auto;
-    align-items: center; gap: 14px; padding: 10px 16px;
-  }
+  .list-header, .list-item { display: grid; grid-template-columns: 190px 180px 1fr 130px auto 100px auto; align-items: center; gap: 14px; padding: 10px 16px; }
   .list-header { background: var(--surface2); border-bottom: 1px solid var(--border); }
   .list-header span { font-size: .64rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
   .list-item { border-bottom: 1px solid rgba(30,45,66,.6); cursor: pointer; transition: background .12s; }
@@ -732,79 +772,40 @@
   .auto-section { margin-bottom: 16px; }
   .auto-title { font-size: .62rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
   .auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-  .auto-btn {
-    display: flex; align-items: center; gap: 8px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px; cursor: pointer;
-    font-family: var(--font); font-size: .74rem; font-weight: 500; color: var(--muted);
-    transition: all .15s; text-align: left;
-  }
+  .auto-btn { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px; cursor: pointer; font-family: var(--font); font-size: .74rem; font-weight: 500; color: var(--muted); transition: all .15s; text-align: left; }
   .auto-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.05); }
   .auto-btn.running { border-color: var(--warn); color: var(--warn); pointer-events: none; }
   .auto-btn.done    { border-color: #00c864; color: #00c864; pointer-events: none; }
   .auto-btn svg { flex-shrink: 0; }
-  .auto-badge {
-    font-size: .58rem; font-family: var(--mono); letter-spacing: .06em;
-    background: rgba(255,183,48,.12); color: var(--warn); border: 1px solid rgba(255,183,48,.3);
-    border-radius: 3px; padding: 1px 5px; margin-left: auto;
-  }
+  .auto-badge { font-size: .58rem; font-family: var(--mono); letter-spacing: .06em; background: rgba(255,183,48,.12); color: var(--warn); border: 1px solid rgba(255,183,48,.3); border-radius: 3px; padding: 1px 5px; margin-left: auto; }
 
   /* ── VIEW MODAL TABS ── */
-  .view-tabs {
-    display: flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 3px; margin-bottom: 18px;
-  }
-  .view-tab {
-    flex: 1; text-align: center; padding: 6px 10px; border-radius: 6px; border: none;
-    background: transparent; color: var(--muted); font-family: var(--font);
-    font-size: .75rem; font-weight: 600; cursor: pointer; transition: all .15s;
-  }
+  .view-tabs { display: flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 18px; }
+  .view-tab { flex: 1; text-align: center; padding: 6px 10px; border-radius: 6px; border: none; background: transparent; color: var(--muted); font-family: var(--font); font-size: .75rem; font-weight: 600; cursor: pointer; transition: all .15s; }
   .view-tab.active { background: var(--surface); color: var(--accent); }
 
   /* ── NEXT ACTION CHIP ── */
-  .next-action-chip {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.2);
-    color: var(--accent); border-radius: 6px; padding: 4px 10px;
-    font-size: .72rem; font-weight: 600;
-  }
+  .next-action-chip { display: inline-flex; align-items: center; gap: 5px; background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.2); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: .72rem; font-weight: 600; }
 
   /* ── HELP PANEL ── */
-  #helpPanel {
-    position: fixed; top: 0; right: -480px; bottom: 0; z-index: 500;
-    width: 460px; background: var(--surface); border-left: 1px solid var(--border);
-    box-shadow: -20px 0 60px rgba(0,0,0,.5); display: flex; flex-direction: column;
-    transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden;
-  }
+  #helpPanel { position: fixed; top: 0; right: -480px; bottom: 0; z-index: 500; width: 460px; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -20px 0 60px rgba(0,0,0,.5); display: flex; flex-direction: column; transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
   #helpPanel.open { right: 0; }
   .help-overlay { display: none; position: fixed; inset: 0; z-index: 499; background: rgba(4,8,14,.5); backdrop-filter: blur(3px); }
   .help-overlay.open { display: block; }
-  .help-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface2);
-  }
+  .help-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface2); }
   .help-head-left { display: flex; align-items: center; gap: 10px; }
-  .help-head-icon {
-    width: 32px; height: 32px; border-radius: 8px; background: rgba(0,229,160,.1);
-    border: 1px solid rgba(0,229,160,.25); display: flex; align-items: center; justify-content: center; color: var(--accent);
-  }
+  .help-head-icon { width: 32px; height: 32px; border-radius: 8px; background: rgba(0,229,160,.1); border: 1px solid rgba(0,229,160,.25); display: flex; align-items: center; justify-content: center; color: var(--accent); }
   .help-title { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; }
   .help-subtitle { font-size: .7rem; color: var(--muted); margin-top: 2px; }
   .help-body { flex: 1; overflow-y: auto; padding: 20px 22px; }
   .help-section { margin-bottom: 22px; }
-  .help-section-title {
-    font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 6px;
-  }
+  .help-section-title { font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
   .help-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(30,45,66,.4); font-size: .8rem; }
   .help-row:last-child { border-bottom: none; }
   .help-row-key { flex-shrink: 0; width: 130px; font-weight: 600; color: var(--text); font-size: .78rem; }
   .help-row-val { color: var(--muted); line-height: 1.55; font-size: .77rem; }
   .score-meter-wrap { margin: 12px 0 6px; }
-  .score-tier {
-    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-    border-radius: 8px; margin-bottom: 6px; border: 1px solid transparent;
-  }
+  .score-tier { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; margin-bottom: 6px; border: 1px solid transparent; }
   .score-tier.hot  { background: rgba(255,77,109,.08); border-color: rgba(255,77,109,.2); }
   .score-tier.warm { background: rgba(255,183,48,.08); border-color: rgba(255,183,48,.2); }
   .score-tier.cold { background: rgba(100,180,255,.08); border-color: rgba(100,180,255,.2); }
@@ -895,7 +896,7 @@
   </a>
   <span class="nav-badge">MANAGE LEADS</span>
   <div class="nav-right">
-    <button class="pill-btn outline" onclick="loadLeads()">↻ Refresh</button>
+    <button class="pill-btn outline" onclick="refreshAll()">↻ Refresh</button>
     <button class="pill-btn primary" onclick="openCreate()">+ New Lead</button>
     <div class="user-chip">
       <div class="user-avatar" id="userInitials">—</div>
@@ -925,53 +926,41 @@
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Pipeline</div>
-        <div class="aside-item active" onclick="filterStatus('ALL',this)">
+        <div class="aside-item active" onclick="setStatusFilter('',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           All Leads <span class="aside-count" id="cnt-all">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('New',this)">
+        <div class="aside-item" onclick="setStatusFilter('New',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           New <span class="aside-count" id="cnt-new">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Contacted',this)">
+        <div class="aside-item" onclick="setStatusFilter('Contacted',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.29 6.19 2 2 0 0 1 6.28 4h3a2 2 0 0 1 2 1.72 12.9 12.9 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L10.09 11a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.9 12.9 0 0 0 2.81.7A2 2 0 0 1 24 18z"/></svg>
           Contacted <span class="aside-count" id="cnt-contacted">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Discovery Call',this)">
+        <div class="aside-item" onclick="setStatusFilter('Discovery Call',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           Discovery Call <span class="aside-count" id="cnt-discovery">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Qualified',this)">
+        <div class="aside-item" onclick="setStatusFilter('Qualified',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           Qualified <span class="aside-count" id="cnt-qualified">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Proposal Sent',this)">
+        <div class="aside-item" onclick="setStatusFilter('Proposal Sent',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           Proposal Sent <span class="aside-count" id="cnt-proposal">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Negotiation',this)">
+        <div class="aside-item" onclick="setStatusFilter('Negotiation',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Negotiation <span class="aside-count" id="cnt-negotiation">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Won',this)">
+        <div class="aside-item" onclick="setStatusFilter('Won',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
           Won <span class="aside-count" id="cnt-won">—</span>
         </div>
-        <div class="aside-item" onclick="filterStatus('Lost',this)">
+        <div class="aside-item" onclick="setStatusFilter('Lost',this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Lost <span class="aside-count" id="cnt-lost">—</span>
-        </div>
-      </div>
-
-      <div class="aside-section" style="margin-top:12px;">
-        <div class="aside-label">Quick Filters</div>
-        <div class="aside-item" onclick="filterOverdue(this)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Overdue Follow-ups <span class="overdue-tag" style="margin-left:auto;font-size:.58rem;padding:1px 5px;">!</span>
-        </div>
-        <div class="aside-item" onclick="filterHot(this)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c0 6-6 8-6 14a6 6 0 0 0 12 0c0-6-6-8-6-14z"/></svg>
-          Hot Leads <span class="hot-pulse"></span>
         </div>
       </div>
 
@@ -1028,28 +1017,22 @@
       <div class="stat-card"><div class="stat-label">New</div><div class="stat-value" id="s-new" style="color:var(--accent2)">—</div><div class="stat-sub">Awaiting contact</div></div>
       <div class="stat-card"><div class="stat-label">Qualified</div><div class="stat-value" id="s-qual">—</div><div class="stat-sub">High intent</div></div>
       <div class="stat-card"><div class="stat-label">Won</div><div class="stat-value" id="s-won" style="color:#00c864">—</div><div class="stat-sub">Deals closed</div></div>
-      <div class="stat-card"><div class="stat-label">Pipeline Value</div><div class="stat-value" id="s-pipeline" style="color:#c084fc;font-size:1.1rem;">—</div><div class="stat-sub">Active deals</div></div>
+      <div class="stat-card"><div class="stat-label">Pipeline Value</div><div class="stat-value" id="s-pipeline" style="color:#c084fc;font-size:1.1rem;">—</div><div class="stat-sub">Active deals only</div></div>
     </div>
 
     <div class="toolbar">
       <div class="search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="Search by name, email, company, service…" oninput="onSearchInput(this.value)"/>
+        <input type="text" id="searchInput" placeholder="Search name, email, company, service… (scans up to 500 records)" oninput="onSearchInput(this.value)"/>
       </div>
-      <select id="statusFilter" onchange="applyFilters()">
-        <option value="">All statuses</option>
-        <option>New</option><option>Contacted</option><option>Discovery Call</option>
-        <option>Qualified</option><option>Proposal Sent</option><option>Negotiation</option>
-        <option>Won</option><option>Lost</option>
-      </select>
-      <select id="serviceFilter" onchange="applyFilters()">
+      <select id="serviceFilter" onchange="onFilterChange()">
         <option value="">All services</option>
         <option>AI Strategy &amp; Consulting</option>
         <option>Intelligent Automation</option>
         <option>Predictive Analytics</option>
         <option>General Enquiry</option>
       </select>
-      <select id="industryFilter" onchange="applyFilters()">
+      <select id="industryFilter" onchange="onFilterChange()">
         <option value="">All industries</option>
         <option>Information Technology (IT &amp; Software)</option>
         <option>SaaS / Cloud</option>
@@ -1076,6 +1059,13 @@
       </select>
     </div>
 
+    <!-- SEARCH MODE BANNER -->
+    <div class="search-mode-banner" id="searchModeBanner">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Search mode — showing <strong id="searchResultCount">0</strong> results (pagination disabled during search)
+      <button onclick="clearSearch()" style="margin-left:auto;background:transparent;border:1px solid rgba(0,184,255,.3);color:var(--accent2);border-radius:5px;padding:3px 10px;font-size:.72rem;cursor:pointer;font-family:var(--font);">✕ Clear</button>
+    </div>
+
     <!-- BULK ACTION BAR -->
     <div class="bulk-bar" id="bulkBar">
       <span class="bulk-count" id="bulkCount">0</span>
@@ -1087,10 +1077,6 @@
       <button class="bulk-action" onclick="bulkExport()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export Selected
-      </button>
-      <button class="bulk-action" onclick="bulkTriggerN8n()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Trigger Automation
       </button>
       <button class="bulk-deselect" onclick="clearSelection()">✕ Deselect all</button>
     </div>
@@ -1115,30 +1101,21 @@
       </div>
     </div>
 
-    <!-- BULK N8N MODAL -->
-    <div class="overlay" id="bulkAutoOverlay">
-      <div class="modal" style="max-width:420px;">
-        <div class="modal-head"><div class="modal-title">Trigger Automation for Selected</div><button class="modal-close" onclick="closeModal('bulkAutoOverlay')">✕</button></div>
-        <div class="modal-body"><div class="auto-grid" id="bulkAutoGrid"></div></div>
-        <div class="modal-foot"><button class="pill-btn outline" onclick="closeModal('bulkAutoOverlay')">Close</button></div>
-      </div>
-    </div>
-
     <!-- TABLE VIEW -->
     <div id="tableView">
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="width:36px;"><input type="checkbox" class="row-check" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"/></th>
-              <th class="sortable" onclick="sortBy('leadId',this)">Lead ID <span class="sort-arrow">↑</span></th>
-              <th class="sortable" onclick="sortBy('name',this)">Contact <span class="sort-arrow">↑</span></th>
-              <th class="sortable" onclick="sortBy('company',this)">Company <span class="sort-arrow">↑</span></th>
+              <th style="width:36px;"><input type="checkbox" class="row-check" id="selectAll" onchange="toggleSelectAll(this)" title="Select all on this page"/></th>
+              <th>Lead ID</th>
+              <th>Contact</th>
+              <th>Company</th>
               <th>Industry</th>
               <th>Service</th>
-              <th class="sortable" onclick="sortBy('status',this)">Status <span class="sort-arrow">↑</span></th>
-              <th class="sortable" onclick="sortBy('_score',this)">Score <span class="sort-arrow">↑</span></th>
-              <th class="sortable" onclick="sortBy('date',this)">Date <span class="sort-arrow">↑</span></th>
+              <th>Status</th>
+              <th>Score</th>
+              <th>Date</th>
               <th style="width:80px;">Actions</th>
             </tr>
           </thead>
@@ -1149,9 +1126,23 @@
             </div></td></tr>
           </tbody>
         </table>
+        <!-- SERVER-SIDE PAGINATION CONTROLS -->
         <div class="pagination" id="pagination" style="display:none">
-          <span id="pageInfo"></span>
-          <div class="page-btns" id="pageBtns"></div>
+          <div class="page-info-block">
+            <span id="pageInfo" style="font-size:.75rem;"></span>
+            <span class="page-counter" id="pageCounter">Page 1</span>
+          </div>
+          <div class="page-btns">
+            <button class="page-btn" id="btnFirst"  onclick="goFirstPage()"  title="First page">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>First
+            </button>
+            <button class="page-btn" id="btnPrev"   onclick="goPrevPage()"   title="Previous page">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Prev
+            </button>
+            <button class="page-btn" id="btnNext"   onclick="goNextPage()"   title="Next page">
+              Next<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1171,12 +1162,25 @@
         <div id="listBody"></div>
       </div>
       <div class="pagination" id="listPagination" style="display:none">
-        <span id="listPageInfo"></span>
-        <div class="page-btns" id="listPageBtns"></div>
+        <div class="page-info-block">
+          <span id="listPageInfo" style="font-size:.75rem;"></span>
+          <span class="page-counter" id="listPageCounter">Page 1</span>
+        </div>
+        <div class="page-btns">
+          <button class="page-btn" id="listBtnFirst" onclick="goFirstPage()"  title="First page">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>First
+          </button>
+          <button class="page-btn" id="listBtnPrev"  onclick="goPrevPage()"   title="Previous page">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Prev
+          </button>
+          <button class="page-btn" id="listBtnNext"  onclick="goNextPage()"   title="Next page">
+            Next<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   </main>
-</div>
+</div><!-- end .shell -->
 
 <!-- CREATE / EDIT MODAL -->
 <div class="overlay" id="formOverlay">
@@ -1382,7 +1386,7 @@
       </table>
     </div>
     <div class="help-section">
-      <div class="help-section-title">Pipeline Stages</div>
+      <div class="help-section-title">Pipeline Stages &amp; Points</div>
       <div>
         <div class="stage-row"><div class="stage-dot" style="background:#e8f0fe"></div><div class="stage-name">New</div><div class="stage-pts">+5</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:5%;background:#e8f0fe"></div></div><div class="stage-desc">Just submitted</div></div>
         <div class="stage-row"><div class="stage-dot" style="background:#ffb730"></div><div class="stage-name">Contacted</div><div class="stage-pts">+15</div><div class="stage-bar-wrap"><div class="stage-bar-fill" style="width:15%;background:#ffb730"></div></div><div class="stage-desc">First touch made</div></div>
@@ -1396,13 +1400,14 @@
     </div>
     <div class="help-section">
       <div class="help-section-title">Pro Tips</div>
+      <div class="help-tip"><div class="help-tip-icon">🗂️</div><div class="help-tip-text"><strong>Server-side pagination:</strong> Only 15 leads are fetched per page. Firestore counts are instant — zero extra document reads.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🎯</div><div class="help-tip-text"><strong>Maximise scores fast:</strong> Fill in phone, LinkedIn, and deal value — these three fields alone add up to +45 points.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">📅</div><div class="help-tip-text"><strong>Never miss a follow-up:</strong> Always set a Follow-Up date. Use <em>Overdue Follow-ups</em> filter daily.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">⚡</div><div class="help-tip-text"><strong>Bulk actions save time:</strong> Select multiple leads with checkboxes to change status or export at once.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">📅</div><div class="help-tip-text"><strong>Never miss a follow-up:</strong> Always set a Follow-Up date.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage. Each column loads up to 200 leads.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">🔍</div><div class="help-tip-text"><strong>Search scans up to 500 records</strong> matching your current filters. Pagination is suspended during search.</div></div>
     </div>
   </div>
-  <div class="help-footer">evoAI Lead Manager · Firebase Edition v2.0</div>
+  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.0 · Server-Side Pagination</div>
 </div>
 
 </div><!-- end #authShell -->
@@ -1411,22 +1416,51 @@
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
 
 <script>
-/* ════════════════════════════════════════════════════
-   EVOAI LEAD MANAGER — Firebase Firestore Edition
-   All CRUD goes directly to Firestore via the SDK
-   helpers exposed on window.* by the module above.
-════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════
+   EVOAI LEAD MANAGER v3.0 — Server-Side Pagination Edition
+   ════════════════════════════════════════════════════════════════
+   Pagination strategy
+   -------------------
+   • Every page load fires a Firestore query with limit(15).
+   • We cache the first & last DocumentSnapshot of every page we
+     visit so we can navigate forward (startAfter) and backward
+     (endBefore / limitToLast) without re-fetching old pages.
+   • Counts come from getCountFromServer() — 0 document reads.
+   • Filters (status, service, industry) are Firestore where()
+     clauses — resolved server-side before any data is sent.
+   • Search is client-side over a 500-doc window (Firestore has
+     no native full-text search).  Pagination is suspended while
+     a search term is active and resumes when cleared.
+   ════════════════════════════════════════════════════════════════ */
 
-let allLeads      = [];
-let filteredLeads = [];
-let currentFilter = 'ALL';
-let currentView   = 'table';
-let editingLeadId = null;   // the leadId string
-let editingDocId  = null;   // the Firestore doc ID (_docId)
-let searchTimer   = null;
-let currentPage   = 1;
-let listPage      = 1;
+/* ── STATE ── */
 const PAGE_SIZE   = 15;
+let currentView   = 'table';
+let editingLeadId = null;
+let editingDocId  = null;
+let searchTimer   = null;
+
+/* ── FILTER STATE (drives both sidebar counts & Firestore queries) ── */
+let activeFilters = { status: '', service: '', industry: '' };
+
+/* ── SERVER PAGINATION STATE ── */
+let pageNumber     = 1;     // 1-based display counter
+let totalCount     = 0;     // getCountFromServer result for current filters
+let pageFirstSnap  = null;  // DocumentSnapshot of first doc on current page
+let pageLastSnap   = null;  // DocumentSnapshot of last doc on current page
+// Stack of firstSnaps for every page so we can go back arbitrary pages
+let pageStack      = [];    // index 0 = page 1 first snap, etc.
+
+/* ── CURRENT PAGE DATA ── */
+let currentLeads   = [];    // leads on the current page (table/list)
+let searchResults  = [];    // leads returned by a search
+let isSearchMode   = false;
+
+/* ── SELECTION ── */
+let selectedLeads  = new Map(); // leadId → lead object (survives page turns)
+
+/* ── BOARD CACHE ── */
+let boardLeads     = {};    // { [status]: lead[] }
 
 const BOARD_STAGES = [
   { key:'New',           label:'New',           color:'#e8f0fe' },
@@ -1439,118 +1473,281 @@ const BOARD_STAGES = [
   { key:'Lost',          label:'Lost',           color:'#ff4d4d' },
 ];
 
-/* ── LOAD ALL LEADS FROM FIRESTORE ── */
-window.loadLeads = async function() {
-  setTableLoading(true);
-  try {
-    allLeads = await window.dbLoadLeads();
-    // Sort by createdAt desc (date string)
-    allLeads.sort((a,b) => (b.date||'').localeCompare(a.date||''));
-    updateCounts();
-    applyFilters();
-    toast('Leads loaded (' + allLeads.length + ')', 'success');
-  } catch(e) {
-    console.error(e);
-    toast('Failed to load leads: ' + e.message, 'error');
-    setTableLoading(false);
-  }
+/* ════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════ */
+window.initApp = async function() {
+  await refreshAll();
 };
 
-/* ── SEARCH (client-side) ── */
-function onSearchInput(q) {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => applyFilters(), 320);
+window.refreshAll = async function() {
+  resetPagination();
+  await Promise.all([
+    loadPage('first'),
+    refreshCounts(),
+  ]);
+};
+
+/* ════════════════════════════════════════════════════
+   COUNTS  (sidebar + stat cards) — zero document reads
+════════════════════════════════════════════════════ */
+async function refreshCounts() {
+  try {
+    const counts = await window.dbCountAllStatuses();
+    document.getElementById('cnt-all').textContent         = counts['ALL']           || 0;
+    document.getElementById('cnt-new').textContent         = counts['New']           || 0;
+    document.getElementById('cnt-contacted').textContent   = counts['Contacted']     || 0;
+    document.getElementById('cnt-discovery').textContent   = counts['Discovery Call']|| 0;
+    document.getElementById('cnt-qualified').textContent   = counts['Qualified']     || 0;
+    document.getElementById('cnt-proposal').textContent    = counts['Proposal Sent'] || 0;
+    document.getElementById('cnt-negotiation').textContent = counts['Negotiation']   || 0;
+    document.getElementById('cnt-won').textContent         = counts['Won']           || 0;
+    document.getElementById('cnt-lost').textContent        = counts['Lost']          || 0;
+
+    document.getElementById('s-total').textContent = counts['ALL']    || 0;
+    document.getElementById('s-new').textContent   = counts['New']    || 0;
+    document.getElementById('s-qual').textContent  = counts['Qualified'] || 0;
+    document.getElementById('s-won').textContent   = counts['Won']    || 0;
+    // Pipeline value can't be computed from counts alone; set a placeholder
+    document.getElementById('s-pipeline').textContent = '—';
+  } catch(e) {
+    console.warn('refreshCounts failed', e);
+  }
 }
 
-/* ── FILTERS ── */
-function filterStatus(status, el) {
-  currentFilter = status;
-  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('statusFilter').value = '';
-  applyFilters();
+/* ════════════════════════════════════════════════════
+   CORE PAGE LOADER
+   direction: 'first' | 'next' | 'prev'
+════════════════════════════════════════════════════ */
+async function loadPage(direction = 'first') {
+  if (isSearchMode) return;          // search mode handles its own data
+  setLoadingState(true);
+
+  try {
+    let afterSnap  = null;
+    let beforeSnap = null;
+
+    if (direction === 'next') {
+      afterSnap  = pageLastSnap;
+      pageNumber++;
+    } else if (direction === 'prev') {
+      // Go back using the cached first snap of the previous page
+      if (pageStack.length >= 2) {
+        pageStack.pop(); // remove current page entry
+        beforeSnap = pageStack[pageStack.length - 1] || null;
+      }
+      pageNumber = Math.max(1, pageNumber - 1);
+      beforeSnap = pageNumber === 1 ? null : pageStack[pageNumber - 2] || null;
+      afterSnap  = pageNumber === 1 ? null : pageStack[pageNumber - 2] || null;
+      // Simpler: just reload from the stack
+      if (pageNumber === 1) {
+        afterSnap = null; beforeSnap = null;
+      } else {
+        afterSnap = pageStack[pageNumber - 2] || null;
+        beforeSnap = null;
+      }
+    } else {
+      // 'first'
+      pageNumber = 1;
+      pageStack  = [];
+      afterSnap  = null;
+      beforeSnap = null;
+    }
+
+    // Get total count for current filters (cheap — no doc reads)
+    totalCount = await window.dbCountLeads(activeFilters);
+
+    // Fetch page data
+    const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, afterSnap, beforeSnap);
+    currentLeads  = result.leads;
+    pageFirstSnap = result.firstSnap;
+    pageLastSnap  = result.lastSnap;
+
+    // Maintain page stack (stores firstSnap of each page visited forward)
+    if (direction === 'first') {
+      pageStack = [pageFirstSnap];
+    } else if (direction === 'next') {
+      pageStack.push(pageFirstSnap);
+    }
+    // 'prev' already managed pageStack above
+
+    renderCurrentView();
+    updatePaginationControls();
+  } catch(e) {
+    console.error('loadPage failed', e);
+    toast('Failed to load leads: ' + e.message, 'error');
+  } finally {
+    setLoadingState(false);
+  }
 }
 
-function applyFilters() {
-  const statusDrop   = document.getElementById('statusFilter').value;
-  const serviceDrop  = document.getElementById('serviceFilter').value;
-  const industryDrop = document.getElementById('industryFilter').value;
-  const q            = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+/* Pagination nav */
+function resetPagination() {
+  pageNumber = 1; pageStack = [];
+  pageFirstSnap = null; pageLastSnap = null;
+  totalCount = 0;
+}
 
-  if (statusDrop) {
-    currentFilter = 'ALL';
-    document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
-    const allItem = document.querySelector('.aside-item[onclick*="ALL"]');
-    if (allItem) allItem.classList.add('active');
+async function goNextPage() {
+  if (isSearchMode) return;
+  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
+  if (pageNumber >= maxPage) return;
+  await loadPage('next');
+}
+
+async function goPrevPage() {
+  if (isSearchMode || pageNumber <= 1) return;
+  await loadPage('prev');
+}
+
+async function goFirstPage() {
+  if (isSearchMode || pageNumber === 1) return;
+  await loadPage('first');
+}
+
+function updatePaginationControls() {
+  const maxPage    = totalCount > 0 ? Math.ceil(totalCount / PAGE_SIZE) : 1;
+  const start      = (pageNumber - 1) * PAGE_SIZE + 1;
+  const end        = Math.min(pageNumber * PAGE_SIZE, totalCount);
+  const infoText   = totalCount > 0 ? `${start}–${end} of ${totalCount} leads` : 'No leads found';
+  const counterTxt = `Page ${pageNumber} of ${maxPage}`;
+
+  // Table view controls
+  const pag = document.getElementById('pagination');
+  if (totalCount > PAGE_SIZE || pageNumber > 1) {
+    pag.style.display = 'flex';
+    document.getElementById('pageInfo').textContent    = infoText;
+    document.getElementById('pageCounter').textContent = counterTxt;
+    document.getElementById('btnFirst').disabled = pageNumber === 1;
+    document.getElementById('btnPrev').disabled  = pageNumber === 1;
+    document.getElementById('btnNext').disabled  = pageNumber >= maxPage;
+  } else {
+    pag.style.display = 'none';
   }
 
-  const effectiveStatus = statusDrop || (currentFilter !== 'ALL' ? currentFilter : '');
-
-  filteredLeads = allLeads.filter(l => {
-    const matchStatus   = !effectiveStatus  || l.status   === effectiveStatus;
-    const matchService  = !serviceDrop      || l.service  === serviceDrop;
-    const matchIndustry = !industryDrop     || l.industry === industryDrop;
-    const matchQ        = !q               || JSON.stringify(l).toLowerCase().includes(q);
-    return matchStatus && matchService && matchIndustry && matchQ;
-  });
-  currentPage = 1;
-  listPage = 1;
-  renderCurrentView();
+  // List view controls
+  const listPag = document.getElementById('listPagination');
+  if (totalCount > PAGE_SIZE || pageNumber > 1) {
+    listPag.style.display = 'flex';
+    document.getElementById('listPageInfo').textContent    = infoText;
+    document.getElementById('listPageCounter').textContent = counterTxt;
+    document.getElementById('listBtnFirst').disabled = pageNumber === 1;
+    document.getElementById('listBtnPrev').disabled  = pageNumber === 1;
+    document.getElementById('listBtnNext').disabled  = pageNumber >= maxPage;
+  } else {
+    listPag.style.display = 'none';
+  }
 }
 
-/* ── VIEW SWITCHING ── */
+/* ════════════════════════════════════════════════════
+   FILTERS — sidebar status + dropdowns
+════════════════════════════════════════════════════ */
+function setStatusFilter(status, el) {
+  activeFilters.status = status;
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+  clearSearch();
+  resetPagination();
+  loadPage('first').then(refreshCounts);
+}
+
+function onFilterChange() {
+  activeFilters.service  = document.getElementById('serviceFilter').value;
+  activeFilters.industry = document.getElementById('industryFilter').value;
+  clearSearch();
+  resetPagination();
+  loadPage('first').then(refreshCounts);
+}
+
+/* ════════════════════════════════════════════════════
+   SEARCH — client-side over 500-doc window
+════════════════════════════════════════════════════ */
+function onSearchInput(q) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const term = q.trim();
+    if (!term) { clearSearch(); return; }
+    runSearch(term);
+  }, 380);
+}
+
+async function runSearch(term) {
+  isSearchMode = true;
+  setLoadingState(true);
+  try {
+    searchResults = await window.dbSearchLeads(term, activeFilters, 500);
+    document.getElementById('searchModeBanner').classList.add('show');
+    document.getElementById('searchResultCount').textContent = searchResults.length;
+    // Hide server pagination during search
+    document.getElementById('pagination').style.display    = 'none';
+    document.getElementById('listPagination').style.display = 'none';
+    currentLeads = searchResults;
+    renderCurrentView();
+  } catch(e) {
+    toast('Search failed: ' + e.message, 'error');
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+function clearSearch() {
+  const inp = document.getElementById('searchInput');
+  if (inp) inp.value = '';
+  isSearchMode  = false;
+  searchResults = [];
+  document.getElementById('searchModeBanner').classList.remove('show');
+  // Re-show pagination if needed
+  updatePaginationControls();
+}
+
+/* ════════════════════════════════════════════════════
+   VIEW SWITCHING
+════════════════════════════════════════════════════ */
 function setView(view, btn) {
   currentView = view;
   document.querySelectorAll('#viewToggle button').forEach(b => {
     b.style.background = 'transparent'; b.style.color = 'var(--muted)';
   });
   btn.style.background = 'var(--surface)'; btn.style.color = 'var(--accent)';
-  renderCurrentView();
+  if (view === 'board') loadBoardView();
+  else renderCurrentView();
 }
 
 function renderCurrentView() {
   document.getElementById('tableView').style.display = currentView === 'table' ? 'block' : 'none';
   document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
-  if (currentView === 'table')     renderTable();
-  else if (currentView === 'board') renderBoard();
-  else if (currentView === 'list')  renderList();
+  if (currentView === 'table') renderTable(currentLeads);
+  else if (currentView === 'list')  renderList(currentLeads);
+  // board is rendered separately via loadBoardView()
 }
 
-/* ── RENDER TABLE ── */
-function renderTable() {
+/* ════════════════════════════════════════════════════
+   RENDER TABLE
+════════════════════════════════════════════════════ */
+function renderTable(leads) {
   const tbody = document.getElementById('leadsBody');
-  const pagination = document.getElementById('pagination');
-
-  if (!filteredLeads.length) {
+  if (!leads || !leads.length) {
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div></td></tr>`;
-    pagination.style.display = 'none'; return;
+    return;
   }
-
-  const total = filteredLeads.length;
-  const pages = Math.ceil(total / PAGE_SIZE);
-  if (currentPage > pages) currentPage = pages;
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const slice = filteredLeads.slice(start, start + PAGE_SIZE);
-
-  tbody.innerHTML = slice.map(l => {
-    const score = computeScore(l);
+  tbody.innerHTML = leads.map(l => {
+    const score   = computeScore(l);
     const overdue = isOverdue(l);
-    const sel = selectedLeadIds.has(l.leadId);
+    const sel     = selectedLeads.has(l.leadId);
     return `
-    <tr class="${sel?'selected-row':''}">
-      <td style="padding:11px 10px;"><input type="checkbox" class="row-check" data-id="${esc(l.leadId)}" ${sel?'checked':''} onchange="toggleSelect('${esc(l.leadId)}',this)"/></td>
+    <tr class="${sel ? 'selected-row' : ''}">
+      <td style="padding:11px 10px;"><input type="checkbox" class="row-check" data-id="${esc(l.leadId)}" ${sel ? 'checked' : ''} onchange="toggleSelect('${esc(l.leadId)}',this,${JSON.stringify(l).replace(/"/g,'&quot;')})"/></td>
       <td><span class="lead-id">${esc(l.leadId||'—')}</span></td>
       <td>
-        <div class="lead-name">${esc(l.name||'—')}${overdue?` <span class="overdue-tag" style="font-size:.55rem;padding:1px 5px;">⏰</span>`:''}
-        </div>
+        <div class="lead-name">${esc(l.name||'—')}${overdue ? ` <span class="overdue-tag" style="font-size:.55rem;padding:1px 5px;">⏰</span>` : ''}</div>
         <div class="lead-sub">${esc(l.email||'')}</div>
       </td>
       <td>
         <div style="font-weight:600;font-size:.81rem">${esc(l.company||'—')}</div>
-        ${l.jobtitle?`<div class="lead-sub">${esc(l.jobtitle)}</div>`:''}
+        ${l.jobtitle ? `<div class="lead-sub">${esc(l.jobtitle)}</div>` : ''}
       </td>
       <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry||'—')}</td>
       <td style="font-size:.78rem">${esc(l.service||'—')}</td>
@@ -1559,34 +1756,44 @@ function renderTable() {
       <td style="font-size:.73rem;color:var(--muted);font-family:var(--mono)">${esc(String(l.date||'').slice(0,10))}</td>
       <td>
         <div class="row-actions">
-          <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')">
+          <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
-          <button class="icon-btn" title="Edit" onclick="editLead('${esc(l.leadId)}')">
+          <button class="icon-btn" title="Edit" onclick="editLeadById('${esc(l.leadId)}','${esc(l._docId)}')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
         </div>
       </td>
     </tr>`;
   }).join('');
-
-  if (total > PAGE_SIZE) {
-    pagination.style.display = 'flex';
-    document.getElementById('pageInfo').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
-    buildPagination(document.getElementById('pageBtns'), currentPage, pages, p => { currentPage = p; renderTable(); });
-  } else { pagination.style.display = 'none'; }
 }
 
-/* ── DRAG AND DROP STATE ── */
-let dragLeadId=null, dragFromStage=null, dragOverBody=null, dragIndicator=null;
+/* ════════════════════════════════════════════════════
+   BOARD VIEW — per-stage Firestore queries (≤200 each)
+════════════════════════════════════════════════════ */
+async function loadBoardView() {
+  document.getElementById('tableView').style.display = 'none';
+  document.getElementById('listView').style.display  = 'none';
+  document.getElementById('boardView').style.display = 'block';
+  document.getElementById('boardScroll').innerHTML =
+    `<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading board…</div>`;
 
-/* ── RENDER BOARD ── */
+  try {
+    const stageData = await Promise.all(
+      BOARD_STAGES.map(s => window.dbLoadStage(s.key))
+    );
+    BOARD_STAGES.forEach((s,i) => { boardLeads[s.key] = stageData[i]; });
+    renderBoard();
+  } catch(e) {
+    toast('Board load failed: ' + e.message, 'error');
+  }
+}
+
 function renderBoard() {
   const container = document.getElementById('boardScroll');
   container.innerHTML = '';
-
   BOARD_STAGES.forEach(stage => {
-    const stageLeads = filteredLeads.filter(l => l.status === stage.key);
+    const stageLeads = boardLeads[stage.key] || [];
     const col = document.createElement('div');
     col.className = 'board-col';
 
@@ -1606,9 +1813,9 @@ function renderBoard() {
     body.dataset.stage = stage.key;
 
     body.addEventListener('dragover', e => {
-      e.preventDefault(); e.dataTransfer.dropEffect='move';
-      if (dragOverBody && dragOverBody!==body) dragOverBody.classList.remove('drag-over');
-      dragOverBody=body; body.classList.add('drag-over');
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      if (dragOverBody && dragOverBody !== body) dragOverBody.classList.remove('drag-over');
+      dragOverBody = body; body.classList.add('drag-over');
       const afterEl = getDragAfterElement(body, e.clientY);
       if (dragIndicator) { dragIndicator.classList.add('visible'); if(afterEl) body.insertBefore(dragIndicator,afterEl); else body.appendChild(dragIndicator); }
     });
@@ -1619,24 +1826,24 @@ function renderBoard() {
       e.preventDefault(); body.classList.remove('drag-over');
       if(dragIndicator) dragIndicator.classList.remove('visible');
       const newStage = body.dataset.stage;
-      if (!dragLeadId || newStage===dragFromStage) return;
-      await moveLead(dragLeadId, newStage);
+      if (!dragLeadId || newStage === dragFromStage) return;
+      await moveLead(dragLeadId, dragFromStage, newStage);
     });
 
     if (!stageLeads.length) body.innerHTML = `<div class="board-empty">Drop leads here</div>`;
     else stageLeads.forEach(l => body.appendChild(createBoardCard(l)));
-
     col.appendChild(body);
     container.appendChild(col);
   });
 }
+
+let dragLeadId=null, dragFromStage=null, dragOverBody=null, dragIndicator=null;
 
 function createBoardCard(l) {
   const card = document.createElement('div');
   card.className = 'board-card';
   card.draggable = true;
   card.dataset.leadId = l.leadId;
-
   const initials = (l.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   card.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -1658,71 +1865,73 @@ function createBoardCard(l) {
 
   let didDrag = false;
   card.addEventListener('dragstart', e => {
-    didDrag=true; dragLeadId=l.leadId; dragFromStage=l.status;
-    card.classList.add('dragging'); e.dataTransfer.effectAllowed='move';
-    e.dataTransfer.setData('text/plain',l.leadId);
-    dragIndicator=document.createElement('div'); dragIndicator.className='drop-indicator';
-    setTimeout(()=>card.classList.add('drag-ghost'),0);
+    didDrag = true; dragLeadId = l.leadId; dragFromStage = l.status;
+    card.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', l.leadId);
+    dragIndicator = document.createElement('div'); dragIndicator.className = 'drop-indicator';
+    setTimeout(() => card.classList.add('drag-ghost'), 0);
   });
-  card.addEventListener('dragend', ()=>{
+  card.addEventListener('dragend', () => {
     card.classList.remove('dragging','drag-ghost');
-    document.querySelectorAll('.board-col-body').forEach(b=>b.classList.remove('drag-over'));
+    document.querySelectorAll('.board-col-body').forEach(b => b.classList.remove('drag-over'));
     if(dragIndicator&&dragIndicator.parentNode) dragIndicator.parentNode.removeChild(dragIndicator);
-    dragIndicator=null; dragOverBody=null;
-    setTimeout(()=>{didDrag=false;},0);
+    dragIndicator = null; dragOverBody = null;
+    setTimeout(() => { didDrag = false; }, 0);
   });
-  card.addEventListener('click', ()=>{ if(!didDrag) viewLead(l.leadId); });
+  card.addEventListener('click', () => { if(!didDrag) viewLead(l.leadId, l._docId); });
   return card;
 }
 
 function getDragAfterElement(container, y) {
-  const draggables=[...container.querySelectorAll('.board-card:not(.dragging)')];
-  return draggables.reduce((closest,child)=>{
-    const box=child.getBoundingClientRect(), offset=y-box.top-box.height/2;
+  const draggables = [...container.querySelectorAll('.board-card:not(.dragging)')];
+  return draggables.reduce((closest,child) => {
+    const box = child.getBoundingClientRect(), offset = y - box.top - box.height/2;
     if(offset<0&&offset>closest.offset) return{offset,element:child};
     return closest;
   },{offset:Number.NEGATIVE_INFINITY}).element;
 }
 
-async function moveLead(leadId, newStatus) {
-  const lead = allLeads.find(l=>l.leadId===leadId);
+async function moveLead(leadId, fromStage, newStage) {
+  // Find lead in board cache
+  const lead = (boardLeads[fromStage]||[]).find(l => l.leadId === leadId);
   if (!lead) return;
-  const oldStatus = lead.status;
-  lead.status = newStatus;
-  const fl = filteredLeads.find(l=>l.leadId===leadId);
-  if (fl) fl.status = newStatus;
-  renderBoard(); updateCounts();
-  toast(`Moving ${lead.name} → ${newStatus}…`, 'success');
+
+  // Optimistic update in board cache
+  boardLeads[fromStage] = (boardLeads[fromStage]||[]).filter(l => l.leadId !== leadId);
+  const updated = { ...lead, status: newStage };
+  boardLeads[newStage] = [updated, ...(boardLeads[newStage]||[])];
+  renderBoard();
+  toast(`Moving ${lead.name} → ${newStage}…`, 'success');
 
   try {
-    await window.dbUpdateLead(lead._docId, lead);
-    toast(`${lead.name} moved to ${newStatus}`, 'success');
-    // Log activity
-    await window.dbAddActivity(lead._docId, { type:'status', text:`Status changed to ${newStatus}`, user: document.getElementById('sideUserName').textContent||'Team' });
+    await window.dbUpdateLead(lead._docId, updated);
+    await window.dbAddActivity(lead._docId, {
+      type: 'status',
+      text: `Status changed to ${newStage}`,
+      user: document.getElementById('sideUserName').textContent || 'Team'
+    });
+    toast(`${lead.name} moved to ${newStage}`, 'success');
+    refreshCounts();
   } catch(e) {
-    lead.status = oldStatus;
-    if (fl) fl.status = oldStatus;
-    renderBoard(); updateCounts();
+    // Roll back
+    boardLeads[newStage] = (boardLeads[newStage]||[]).filter(l => l.leadId !== leadId);
+    boardLeads[fromStage] = [lead, ...(boardLeads[fromStage]||[])];
+    renderBoard();
     toast('Failed to save — change rolled back', 'error');
   }
 }
 
-/* ── RENDER LIST ── */
-function renderList() {
+/* ════════════════════════════════════════════════════
+   RENDER LIST
+════════════════════════════════════════════════════ */
+function renderList(leads) {
   const listBody = document.getElementById('listBody');
-  const listPag  = document.getElementById('listPagination');
-
-  if (!filteredLeads.length) {
+  if (!leads || !leads.length) {
     listBody.innerHTML = `<div class="empty-state"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No leads found.</p></div>`;
-    listPag.style.display='none'; return;
+    return;
   }
-
-  const total=filteredLeads.length, pages=Math.ceil(total/PAGE_SIZE);
-  if(listPage>pages) listPage=pages;
-  const start=(listPage-1)*PAGE_SIZE, slice=filteredLeads.slice(start,start+PAGE_SIZE);
-
-  listBody.innerHTML = slice.map(l=>`
-    <div class="list-item" onclick="viewLead('${esc(l.leadId)}')">
+  listBody.innerHTML = leads.map(l=>`
+    <div class="list-item" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
       <div class="list-item-contact"><div class="list-item-name">${esc(l.name||'—')}</div><div class="list-item-email">${esc(l.email||'')}</div></div>
       <div class="list-item-company-wrap"><div class="list-item-company">${esc(l.company||'—')}</div>${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}</div>
       <div class="list-item-industry" title="${esc(l.industry||'')}">${esc(l.industry||'—')}</div>
@@ -1730,122 +1939,77 @@ function renderList() {
       <div>${statusBadge(l.status)}</div>
       <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
       <div class="list-item-actions" onclick="event.stopPropagation()">
-        <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
-        <button class="icon-btn" title="Edit" onclick="editLead('${esc(l.leadId)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        <button class="icon-btn" title="View"  onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="icon-btn" title="Edit"  onclick="editLeadById('${esc(l.leadId)}','${esc(l._docId)}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
       </div>
     </div>`).join('');
-
-  if (total>PAGE_SIZE) {
-    listPag.style.display='flex';
-    document.getElementById('listPageInfo').textContent=`Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}`;
-    buildPagination(document.getElementById('listPageBtns'),listPage,pages,p=>{listPage=p;renderList();});
-  } else listPag.style.display='none';
 }
 
-/* ── SMART PAGINATION ── */
-function buildPagination(container, current, total, onPage) {
-  container.innerHTML='';
-  const btn=(label,page,disabled,active,isEllipsis)=>{
-    const b=document.createElement('button');
-    b.className='page-btn'+(active?' active':'')+(isEllipsis?' ellipsis':'');
-    b.textContent=label; b.disabled=disabled||isEllipsis;
-    if(!disabled&&!isEllipsis) b.onclick=()=>onPage(page);
-    return b;
-  };
-  container.appendChild(btn('‹',current-1,current===1,false,false));
-  const pages=[];
-  if(total<=15){for(let p=1;p<=total;p++) pages.push(p);}
-  else{
-    let ws=Math.max(1,current-7),we=ws+14;
-    if(we>total){we=total;ws=Math.max(1,we-14);}
-    if(ws>1){pages.push(1);if(ws>2)pages.push('…');}
-    for(let p=ws;p<=we;p++)pages.push(p);
-    if(we<total){if(we<total-1)pages.push('…');pages.push(total);}
-  }
-  pages.forEach(p=>{
-    if(p==='…') container.appendChild(btn('…',null,true,false,true));
-    else container.appendChild(btn(p,p,false,p===current,false));
-  });
-  container.appendChild(btn('›',current+1,current===total,false,false));
-}
-
-/* ── COUNTS ── */
-function updateCounts() {
-  const count=s=>allLeads.filter(l=>s==='ALL'||l.status===s).length;
-  document.getElementById('cnt-all').textContent         = count('ALL');
-  document.getElementById('cnt-new').textContent         = count('New');
-  document.getElementById('cnt-contacted').textContent   = count('Contacted');
-  document.getElementById('cnt-discovery').textContent   = count('Discovery Call');
-  document.getElementById('cnt-qualified').textContent   = count('Qualified');
-  document.getElementById('cnt-proposal').textContent    = count('Proposal Sent');
-  document.getElementById('cnt-negotiation').textContent = count('Negotiation');
-  document.getElementById('cnt-won').textContent         = count('Won');
-  document.getElementById('cnt-lost').textContent        = count('Lost');
-  document.getElementById('s-total').textContent = count('ALL');
-  document.getElementById('s-new').textContent   = count('New');
-  document.getElementById('s-qual').textContent  = count('Qualified');
-  document.getElementById('s-won').textContent   = count('Won');
-  const active=['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation'];
-  const pipeTotal=allLeads.filter(l=>active.includes(l.status)&&l.dealvalue)
-    .reduce((s,l)=>s+Number(String(l.dealvalue).replace(/[^0-9.]/g,'')||0),0);
-  document.getElementById('s-pipeline').textContent=pipeTotal>0
-    ?'$'+(pipeTotal>=1000?(pipeTotal/1000).toFixed(1)+'k':pipeTotal.toLocaleString()):'—';
-}
-
-/* ── CREATE ── */
+/* ════════════════════════════════════════════════════
+   CREATE / EDIT
+════════════════════════════════════════════════════ */
 function openCreate() {
   editingLeadId = null; editingDocId = null;
   document.getElementById('formModalTitle').textContent = 'New Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
   ['name','email','phone','linkedin','company','jobtitle','industry',
-   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f=>{
-    const el=document.getElementById('f-'+f);
-    if(el) el.value=f==='status'?'New':'';
+   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f => {
+    const el = document.getElementById('f-'+f);
+    if(el) el.value = f === 'status' ? 'New' : '';
   });
   document.getElementById('formOverlay').classList.add('open');
 }
 
-/* ── EDIT ── */
-function editLead(leadId) {
-  const lead=allLeads.find(l=>l.leadId===leadId)||filteredLeads.find(l=>l.leadId===leadId);
-  if(!lead){toast('Lead not found','error');return;}
+async function editLeadById(leadId, docId) {
+  // Try current page cache first, otherwise fetch from Firestore
+  let lead = currentLeads.find(l => l.leadId === leadId)
+          || searchResults.find(l => l.leadId === leadId);
+  if (!lead) {
+    lead = await window.dbGetLead(docId);
+  }
+  if (!lead) { toast('Lead not found', 'error'); return; }
+
   editingLeadId = leadId;
-  editingDocId  = lead._docId;
-  document.getElementById('formModalTitle').textContent='Edit Lead';
-  document.getElementById('formSubmitBtn').textContent='Save Changes';
+  editingDocId  = docId;
+  document.getElementById('formModalTitle').textContent = 'Edit Lead';
+  document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
+
   ['name','email','phone','linkedin','company','jobtitle',
-   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f=>{
-    const el=document.getElementById('f-'+f);
-    if(el) el.value=lead[f]||'';
+   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f => {
+    const el = document.getElementById('f-'+f);
+    if(el) el.value = lead[f] || '';
   });
-  const industryEl=document.getElementById('f-industry');
-  const iv=(lead.industry||'').trim();
-  industryEl.value='';
-  const matched=Array.from(industryEl.options).find(opt=>opt.value.trim()===iv||opt.text.trim()===iv);
-  if(matched) industryEl.value=matched.value;
+  const industryEl = document.getElementById('f-industry');
+  const iv = (lead.industry||'').trim();
+  industryEl.value = '';
+  const matched = Array.from(industryEl.options).find(opt => opt.value.trim()===iv||opt.text.trim()===iv);
+  if(matched) industryEl.value = matched.value;
+
   closeModal('viewOverlay');
   document.getElementById('formOverlay').classList.add('open');
 }
 
-/* ── SUBMIT (Create or Update) ── */
 async function submitForm() {
   const name  = document.getElementById('f-name').value.trim();
   const email = document.getElementById('f-email').value.trim();
   const phone = document.getElementById('f-phone').value.trim();
-  if(!name)  {toast('Name is required','error');return;}
-  if(!email) {toast('Email is required','error');return;}
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('Enter a valid email address','error');return;}
-  const cleanPhone=phone.replace(/\D/g,'');
-  if(phone&&(cleanPhone.length<10||cleanPhone.length>15)){toast('Enter a valid phone number','error');return;}
+  if(!name)  { toast('Name is required','error'); return; }
+  if(!email) { toast('Email is required','error'); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Enter a valid email address','error'); return; }
+  const cleanPhone = phone.replace(/\D/g,'');
+  if(phone && (cleanPhone.length<10||cleanPhone.length>15)) { toast('Enter a valid phone number','error'); return; }
 
-  const btn=document.getElementById('formSubmitBtn');
-  btn.disabled=true; btn.innerHTML='<div class="spinner"></div>';
+  const btn = document.getElementById('formSubmitBtn');
+  btn.disabled = true; btn.innerHTML = '<div class="spinner"></div>';
 
   const lead = {
     leadId:    editingLeadId||'',
     _docId:    editingDocId||'',
-    name, email,
-    phone,
+    name, email, phone,
     linkedin:  document.getElementById('f-linkedin').value.trim(),
     company:   document.getElementById('f-company').value.trim(),
     jobtitle:  document.getElementById('f-jobtitle').value.trim(),
@@ -1863,36 +2027,35 @@ async function submitForm() {
   try {
     if (editingLeadId) {
       await window.dbUpdateLead(editingDocId, lead);
-      // Update local copy
-      const idx=allLeads.findIndex(l=>l.leadId===editingLeadId);
-      if(idx!==-1) allLeads[idx]={...allLeads[idx],...lead};
-      const fi=filteredLeads.findIndex(l=>l.leadId===editingLeadId);
-      if(fi!==-1) filteredLeads[fi]={...filteredLeads[fi],...lead};
-      toast('Lead updated!','success');
-      // Log activity
-      await window.dbAddActivity(editingDocId,{type:'note',text:'Lead details updated',user:document.getElementById('sideUserName').textContent||'Team'});
+      // Update in current page cache if present
+      const idx = currentLeads.findIndex(l => l.leadId === editingLeadId);
+      if(idx !== -1) currentLeads[idx] = { ...currentLeads[idx], ...lead };
+      toast('Lead updated!', 'success');
+      await window.dbAddActivity(editingDocId, {
+        type: 'note', text: 'Lead details updated',
+        user: document.getElementById('sideUserName').textContent||'Team'
+      });
+      renderCurrentView();
     } else {
       const newId = await window.dbAddLead(lead);
-      lead.leadId = newId; lead._docId = newId;
-      lead.date = new Date().toISOString().slice(0,10);
-      allLeads.unshift(lead);
       toast('Lead created — ' + newId, 'success');
+      // Refresh to show new lead (it'll be at top of createdAt desc)
+      await refreshAll();
     }
-    updateCounts();
-    applyFilters();
     closeModal('formOverlay');
   } catch(e) {
     console.error(e);
     toast('Error: ' + e.message, 'error');
   } finally {
-    btn.disabled=false;
-    btn.textContent=editingLeadId?'Save Changes':'Create Lead';
+    btn.disabled = false;
+    btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
   }
 }
 
-/* ── VIEW LEAD ── */
-let _viewingLeadId = null;
-let _viewingDocId  = null;
+/* ════════════════════════════════════════════════════
+   VIEW LEAD
+════════════════════════════════════════════════════ */
+let _viewingDocId = null;
 
 const N8N_WEBHOOKS = {
   send_intro_email:   'https://your-n8n-instance/webhook/send-intro-email',
@@ -1904,7 +2067,6 @@ const N8N_WEBHOOKS = {
   notify_slack:       'https://your-n8n-instance/webhook/notify-slack',
   send_nurture_seq:   'https://your-n8n-instance/webhook/nurture-sequence',
 };
-
 const AUTO_ACTIONS = [
   {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
   {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
@@ -1918,60 +2080,83 @@ const OUTREACH_ACTIONS = [
   {id:'notify_slack',  label:'Notify Slack',  icon:'🔔', badge:'Slack'},
 ];
 
-async function triggerN8n(actionId, lead, btnEl) {
-  const url = N8N_WEBHOOKS[actionId];
-  btnEl.classList.add('running');
-  btnEl.innerHTML=`<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
-  try {
-    await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,
-        triggeredAt:new Date().toISOString()})});
-    btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent='✓ Triggered';
-    toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
-    if(_viewingDocId) {
-      await window.dbAddActivity(_viewingDocId,{type:'auto',text:`Automation triggered: ${actionId.replace(/_/g,' ')}`,user:document.getElementById('sideUserName').textContent||'Team'});
-      await loadActivities(_viewingDocId);
+async function viewLead(leadId, docId) {
+  // Prefer from current page cache to avoid extra reads
+  let lead = currentLeads.find(l => l.leadId === leadId)
+          || searchResults.find(l => l.leadId === leadId);
+
+  // Check board cache
+  if (!lead) {
+    for (const stage of BOARD_STAGES) {
+      const found = (boardLeads[stage.key]||[]).find(l => l.leadId === leadId);
+      if (found) { lead = found; break; }
     }
-  } catch(e) {
-    btnEl.classList.remove('running'); btnEl.textContent='⚠ Failed';
-    toast('n8n webhook failed — check URL config','error');
   }
+
+  // Fallback: fetch from Firestore (1 doc read)
+  if (!lead && docId) {
+    lead = await window.dbGetLead(docId);
+  }
+  if (!lead) { toast('Lead not found', 'error'); return; }
+  _viewingDocId = lead._docId || docId;
+
+  document.getElementById('viewLeadId').textContent   = lead.leadId;
+  document.getElementById('viewLeadName').textContent = lead.name || 'Lead Details';
+  document.getElementById('viewEditBtn').onclick = () => editLeadById(lead.leadId, _viewingDocId);
+
+  const score = computeScore(lead);
+  document.getElementById('viewScoreBadge').innerHTML   = scoreBadge(score);
+  document.getElementById('viewOverdueBadge').innerHTML = isOverdue(lead)
+    ? `<span class="overdue-tag">⏰ Follow-up overdue</span>` : '';
+
+  const qb = document.getElementById('viewQuickBar');
+  const dealVal = lead.dealvalue ? `$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
+  qb.innerHTML = [
+    ['💼 Service', lead.service||'—'],
+    ['📊 Status',  lead.status||'—'],
+    ['💰 Deal Value', dealVal],
+    ['📅 Follow-up',  lead.followup||'—'],
+  ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
+
+  const section = (title, rows) => {
+    const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
+    if(!filled.length) return '';
+    return `<div class="view-section"><div class="view-section-title">${title}</div>
+      ${filled.map(([k,v,link]) => `<div class="view-row"><span class="view-key">${k}</span><span class="view-val">${
+        k==='Status' ? statusBadge(v) : link ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>` : esc(String(v||'—'))
+      }</span></div>`).join('')}</div>`;
+  };
+  document.getElementById('viewBody').innerHTML =
+    section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
+    section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
+    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
+    section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
+
+  document.getElementById('timelineBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
+  await loadActivities(_viewingDocId);
+
+  const leadPayload = JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
+  document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
+    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)"><span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span></button>`
+  ).join('');
+  document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
+    `<button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)"><span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span></button>`
+  ).join('');
+
+  const na = document.getElementById('viewNextAction');
+  if (lead.followup) {
+    na.innerHTML = `<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${new Date(lead.followup).toLocaleDateString()}</span>`;
+  } else {
+    na.innerHTML = `<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
+  }
+
+  switchViewTab('details', document.querySelector('.view-tab'));
+  document.getElementById('viewOverlay').classList.add('open');
 }
 
-function computeScore(lead) {
-  let s=0;
-  if(lead.email)    s+=10;
-  if(lead.phone)    s+=15;
-  if(lead.company)  s+=10;
-  if(lead.linkedin) s+=10;
-  const stageScore={'New':5,'Contacted':15,'Discovery Call':25,'Qualified':40,'Proposal Sent':55,'Negotiation':70,'Won':100,'Lost':0};
-  s+=stageScore[lead.status]||5;
-  if(lead.service)   s+=10;
-  if(lead.dealvalue) s+=Math.min(20,Math.floor(Number(String(lead.dealvalue).replace(/[^0-9.]/g,''))/5000));
-  return Math.min(100,s);
-}
-
-function scoreBadge(score) {
-  if(score>=60) return `<span class="score-badge score-hot"><span class="score-dot"></span> HOT ${score}</span>`;
-  if(score>=35) return `<span class="score-badge score-warm"><span class="score-dot"></span> WARM ${score}</span>`;
-  return `<span class="score-badge score-cold"><span class="score-dot"></span> COLD ${score}</span>`;
-}
-
-function isOverdue(lead) {
-  if(!lead.followup) return false;
-  return new Date(lead.followup)<new Date();
-}
-
-function switchViewTab(tab, btnEl) {
-  ['details','timeline','automations'].forEach(t=>{
-    document.getElementById('vtab-'+t).style.display=t===tab?'':'none';
-  });
-  document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('active'));
-  if(btnEl) btnEl.classList.add('active');
-}
-
-/* ── ACTIVITIES (Firestore subcollection) ── */
+/* ════════════════════════════════════════════════════
+   ACTIVITIES
+════════════════════════════════════════════════════ */
 async function loadActivities(docId) {
   const acts = await window.dbLoadActivities(docId);
   renderTimeline(acts);
@@ -1979,13 +2164,13 @@ async function loadActivities(docId) {
 
 function renderTimeline(acts) {
   const body = document.getElementById('timelineBody');
-  if(!acts||!acts.length){
-    body.innerHTML=`<div style="padding:28px;text-align:center;color:var(--muted);font-size:.8rem;opacity:.6;">No activity yet. Add a note or trigger an automation.</div>`;
+  if(!acts||!acts.length) {
+    body.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);font-size:.8rem;opacity:.6;">No activity yet.</div>`;
     return;
   }
-  const iconMap={note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto'};
-  const emojiMap={note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡'};
-  body.innerHTML=acts.map(a=>`
+  const iconMap  = {note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto'};
+  const emojiMap = {note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡'};
+  body.innerHTML = acts.map(a => `
     <div class="timeline-entry">
       <div class="tl-icon ${iconMap[a.type]||'tl-icon-note'}">${emojiMap[a.type]||'📝'}</div>
       <div class="tl-body">
@@ -1998,12 +2183,11 @@ function renderTimeline(acts) {
 async function addNote() {
   const text = document.getElementById('noteInput').value.trim();
   const type = document.getElementById('noteType').value;
-  if(!text){toast('Note cannot be empty','warn');return;}
-  if(!_viewingDocId){toast('No lead selected','error');return;}
-
+  if(!text) { toast('Note cannot be empty','warn'); return; }
+  if(!_viewingDocId) { toast('No lead selected','error'); return; }
   try {
-    await window.dbAddActivity(_viewingDocId,{type,text,user:document.getElementById('sideUserName').textContent||'Team'});
-    document.getElementById('noteInput').value='';
+    await window.dbAddActivity(_viewingDocId, {type, text, user: document.getElementById('sideUserName').textContent||'Team'});
+    document.getElementById('noteInput').value = '';
     await loadActivities(_viewingDocId);
     toast('Activity saved','success');
   } catch(e) {
@@ -2011,242 +2195,175 @@ async function addNote() {
   }
 }
 
-async function viewLead(leadId) {
-  const lead=allLeads.find(l=>l.leadId===leadId)||filteredLeads.find(l=>l.leadId===leadId);
-  if(!lead){toast('Lead not found','error');return;}
-  _viewingLeadId=leadId;
-  _viewingDocId=lead._docId;
-
-  document.getElementById('viewLeadId').textContent=lead.leadId;
-  document.getElementById('viewLeadName').textContent=lead.name||'Lead Details';
-  document.getElementById('viewEditBtn').onclick=()=>editLead(leadId);
-
-  const score=computeScore(lead);
-  document.getElementById('viewScoreBadge').innerHTML=scoreBadge(score);
-  document.getElementById('viewOverdueBadge').innerHTML=isOverdue(lead)
-    ?`<span class="overdue-tag">⏰ Follow-up overdue</span>`:'';
-
-  const qb=document.getElementById('viewQuickBar');
-  const dealVal=lead.dealvalue?`$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}`:'—';
-  qb.innerHTML=[
-    ['💼 Service',lead.service||'—'],
-    ['📊 Status',lead.status||'—'],
-    ['💰 Deal Value',dealVal],
-    ['📅 Follow-up',lead.followup||'—'],
-  ].map(([k,v])=>`<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('')+`<div style="width:14px;"></div>`;
-
-  const section=(title,rows)=>{
-    const filled=rows.filter(([,v])=>v&&String(v).trim()&&String(v)!=='—');
-    if(!filled.length) return '';
-    return `<div class="view-section"><div class="view-section-title">${title}</div>
-      ${filled.map(([k,v,link])=>`<div class="view-row"><span class="view-key">${k}</span><span class="view-val">${
-        k==='Status'?statusBadge(v):link?`<a href="${esc(v)}" target="_blank">${esc(v)}</a>`:esc(String(v||'—'))
-      }</span></div>`).join('')}</div>`;
-  };
-  document.getElementById('viewBody').innerHTML=
-    section('Contact Information',[['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]])+
-    section('Company',[['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]])+
-    section('Lead Details',[['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]])+
-    section('Notes',[['Message',lead.message],['Comments',lead.comments]]);
-
-  // Load activities from Firestore
-  document.getElementById('timelineBody').innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
-  await loadActivities(lead._docId);
-
-  // Automations
-  const leadPayload=JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
-  document.getElementById('autoGrid').innerHTML=AUTO_ACTIONS.map(a=>`
-    <button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`).join('');
-  document.getElementById('outreachGrid').innerHTML=OUTREACH_ACTIONS.map(a=>`
-    <button class="auto-btn" onclick="triggerN8n('${a.id}',${leadPayload},this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`).join('');
-
-  const na=document.getElementById('viewNextAction');
-  if(lead.followup){
-    const fd=new Date(lead.followup);
-    na.innerHTML=`<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${fd.toLocaleDateString()}</span>`;
-  } else {
-    na.innerHTML=`<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
+/* ════════════════════════════════════════════════════
+   n8n
+════════════════════════════════════════════════════ */
+async function triggerN8n(actionId, lead, btnEl) {
+  const url = N8N_WEBHOOKS[actionId];
+  btnEl.classList.add('running');
+  btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
+  try {
+    await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,
+        triggeredAt:new Date().toISOString()})});
+    btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
+    toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
+    if(_viewingDocId) {
+      await window.dbAddActivity(_viewingDocId,{type:'auto',text:`Automation triggered: ${actionId.replace(/_/g,' ')}`,user:document.getElementById('sideUserName').textContent||'Team'});
+      await loadActivities(_viewingDocId);
+    }
+  } catch(e) {
+    btnEl.classList.remove('running'); btnEl.textContent = '⚠ Failed';
+    toast('n8n webhook failed — check URL config','error');
   }
-
-  switchViewTab('details',document.querySelector('.view-tab'));
-  document.getElementById('viewOverlay').classList.add('open');
 }
 
-/* ── EXPORT CSV ── */
+/* ════════════════════════════════════════════════════
+   EXPORT CSV — current page or search results
+════════════════════════════════════════════════════ */
 function exportCSV() {
-  const leads=filteredLeads.length?filteredLeads:allLeads;
-  if(!leads.length){toast('No leads to export','warn');return;}
-  const cols=['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
-  const header=cols.join(',');
-  const rows=leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','));
-  const csv=[header,...rows].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download='leads-export.csv'; a.click();
+  const leads = isSearchMode ? searchResults : currentLeads;
+  if(!leads.length) { toast('No leads on this page to export','warn'); return; }
+  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'leads-export.csv'; a.click();
   URL.revokeObjectURL(url);
-  toast('Exported '+leads.length+' leads as CSV','success');
+  toast(`Exported ${leads.length} leads as CSV`,'success');
 }
 
-/* ── HELPERS ── */
-function closeModal(id){document.getElementById(id).classList.remove('open');}
-document.querySelectorAll('.overlay').forEach(o=>{
-  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
-});
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open'));
-});
-
-/* ── SELECTION & BULK ACTIONS ── */
-let selectedLeadIds=new Set();
-
-function toggleSelect(leadId,cb){
-  if(cb.checked) selectedLeadIds.add(leadId); else selectedLeadIds.delete(leadId);
+/* ════════════════════════════════════════════════════
+   SELECTION & BULK ACTIONS
+════════════════════════════════════════════════════ */
+function toggleSelect(leadId, cb, leadObj) {
+  if(cb.checked) selectedLeads.set(leadId, leadObj);
+  else selectedLeads.delete(leadId);
   updateBulkBar();
-  const row=cb.closest('tr');
-  if(row) row.classList.toggle('selected-row',cb.checked);
+  const row = cb.closest('tr');
+  if(row) row.classList.toggle('selected-row', cb.checked);
 }
-function toggleSelectAll(masterCb){
-  const page=filteredLeads.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
-  page.forEach(l=>{if(masterCb.checked)selectedLeadIds.add(l.leadId);else selectedLeadIds.delete(l.leadId);});
-  updateBulkBar(); renderTable();
+function toggleSelectAll(masterCb) {
+  currentLeads.forEach(l => {
+    if(masterCb.checked) selectedLeads.set(l.leadId, l); else selectedLeads.delete(l.leadId);
+  });
+  updateBulkBar(); renderCurrentView();
 }
-function clearSelection(){selectedLeadIds.clear();updateBulkBar();renderTable();const sa=document.getElementById('selectAll');if(sa)sa.checked=false;}
-function updateBulkBar(){
-  const bar=document.getElementById('bulkBar'),cnt=document.getElementById('bulkCount');
-  const n=selectedLeadIds.size;
-  bar.classList.toggle('show',n>0); cnt.textContent=n;
+function clearSelection() {
+  selectedLeads.clear(); updateBulkBar(); renderCurrentView();
+  const sa = document.getElementById('selectAll'); if(sa) sa.checked = false;
 }
-function bulkChangeStatus(){if(!selectedLeadIds.size)return;document.getElementById('bulkStatusOverlay').classList.add('open');}
+function updateBulkBar() {
+  const n = selectedLeads.size;
+  document.getElementById('bulkBar').classList.toggle('show', n>0);
+  document.getElementById('bulkCount').textContent = n;
+}
+function bulkChangeStatus() {
+  if(!selectedLeads.size) return;
+  document.getElementById('bulkStatusOverlay').classList.add('open');
+}
 
 async function applyBulkStatus() {
-  const newStatus=document.getElementById('bulkStatusSelect').value;
-  const ids=[...selectedLeadIds];
+  const newStatus = document.getElementById('bulkStatusSelect').value;
+  const entries   = [...selectedLeads.values()];
   closeModal('bulkStatusOverlay');
-  toast(`Updating ${ids.length} leads to "${newStatus}"…`,'success');
-  const user=document.getElementById('sideUserName').textContent||'Team';
-  for(const leadId of ids){
-    const lead=allLeads.find(l=>l.leadId===leadId);
-    if(!lead) continue;
-    lead.status=newStatus;
-    const fl=filteredLeads.find(l=>l.leadId===leadId);
-    if(fl) fl.status=newStatus;
+  toast(`Updating ${entries.length} leads to "${newStatus}"…`,'success');
+  const user = document.getElementById('sideUserName').textContent||'Team';
+  for(const lead of entries) {
     try {
-      await window.dbUpdateLead(lead._docId,lead);
+      const updated = { ...lead, status: newStatus };
+      await window.dbUpdateLead(lead._docId, updated);
       await window.dbAddActivity(lead._docId,{type:'status',text:`Status changed to ${newStatus}`,user});
-    } catch(e){console.error('bulk update',e);}
+    } catch(e) { console.error('bulk update', e); }
   }
-  clearSelection(); updateCounts(); renderCurrentView();
-  toast(`${ids.length} leads updated to "${newStatus}"`,'success');
+  clearSelection();
+  await refreshAll();
+  toast(`${entries.length} leads updated to "${newStatus}"`,'success');
 }
 
-function bulkExport(){
-  const selected=allLeads.filter(l=>selectedLeadIds.has(l.leadId));
-  if(!selected.length){toast('No leads selected','warn');return;}
-  const cols=['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
-  const csv=[cols.join(','),...selected.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=`leads-selected-${selected.length}.csv`; a.click();
+function bulkExport() {
+  const leads = [...selectedLeads.values()];
+  if(!leads.length) { toast('No leads selected','warn'); return; }
+  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `leads-selected-${leads.length}.csv`; a.click();
   URL.revokeObjectURL(url);
-  toast(`Exported ${selected.length} selected leads`,'success');
+  toast(`Exported ${leads.length} selected leads`,'success');
 }
 
-function bulkTriggerN8n(){
-  if(!selectedLeadIds.size)return;
-  const grid=document.getElementById('bulkAutoGrid');
-  grid.innerHTML=AUTO_ACTIONS.concat(OUTREACH_ACTIONS).map(a=>`
-    <button class="auto-btn" onclick="runBulkAuto('${a.id}',this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`).join('');
-  document.getElementById('bulkAutoOverlay').classList.add('open');
+/* ════════════════════════════════════════════════════
+   SCORE / HELPERS
+════════════════════════════════════════════════════ */
+function computeScore(lead) {
+  let s = 0;
+  if(lead.email)    s+=10;
+  if(lead.phone)    s+=15;
+  if(lead.company)  s+=10;
+  if(lead.linkedin) s+=10;
+  const stageScore = {'New':5,'Contacted':15,'Discovery Call':25,'Qualified':40,'Proposal Sent':55,'Negotiation':70,'Won':100,'Lost':0};
+  s += stageScore[lead.status]||5;
+  if(lead.service)   s+=10;
+  if(lead.dealvalue) s += Math.min(20, Math.floor(Number(String(lead.dealvalue).replace(/[^0-9.]/g,''))/5000));
+  return Math.min(100,s);
 }
-
-async function runBulkAuto(actionId,btnEl){
-  const ids=[...selectedLeadIds];
-  btnEl.classList.add('running');
-  btnEl.innerHTML=`<div class="spinner" style="width:13px;height:13px;"></div> Sending ${ids.length}…`;
-  try {
-    const leads=ids.map(id=>{const l=allLeads.find(x=>x.leadId===id);return l?{leadId:l.leadId,name:l.name,email:l.email,phone:l.phone,company:l.company,status:l.status,service:l.service}:{leadId:id};});
-    await fetch(N8N_WEBHOOKS[actionId],{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leads,triggeredAt:new Date().toISOString()})});
-    btnEl.classList.remove('running'); btnEl.classList.add('done');
-    btnEl.textContent=`✓ Sent to ${ids.length} leads`;
-    toast(`Bulk automation "${actionId}" triggered for ${ids.length} leads`,'success');
-  } catch(e){btnEl.classList.remove('running');btnEl.textContent='⚠ Failed';toast('n8n bulk webhook failed','error');}
+function scoreBadge(score) {
+  if(score>=60) return `<span class="score-badge score-hot"><span class="score-dot"></span> HOT ${score}</span>`;
+  if(score>=35) return `<span class="score-badge score-warm"><span class="score-dot"></span> WARM ${score}</span>`;
+  return `<span class="score-badge score-cold"><span class="score-dot"></span> COLD ${score}</span>`;
 }
-
-/* ── SORTING ── */
-let sortField=null,sortDir='asc';
-function sortBy(field,thEl){
-  if(sortField===field) sortDir=sortDir==='asc'?'desc':'asc';
-  else{sortField=field;sortDir='asc';}
-  document.querySelectorAll('th.sortable').forEach(t=>t.classList.remove('asc','desc'));
-  thEl.classList.add(sortDir);
-  filteredLeads.sort((a,b)=>{
-    let av=field==='_score'?computeScore(a):(a[field]||'');
-    let bv=field==='_score'?computeScore(b):(b[field]||'');
-    if(typeof av==='string') av=av.toLowerCase();
-    if(typeof bv==='string') bv=bv.toLowerCase();
-    if(av<bv) return sortDir==='asc'?-1:1;
-    if(av>bv) return sortDir==='asc'?1:-1;
-    return 0;
-  });
-  currentPage=1; renderTable();
+function isOverdue(lead) {
+  if(!lead.followup) return false;
+  return new Date(lead.followup) < new Date();
 }
-
-/* ── QUICK FILTERS ── */
-function filterOverdue(el){
-  currentFilter='__overdue__';
-  document.querySelectorAll('.aside-item').forEach(i=>i.classList.remove('active'));
-  el.classList.add('active');
-  filteredLeads=allLeads.filter(l=>isOverdue(l));
-  currentPage=1;listPage=1;renderCurrentView();
-  toast(`${filteredLeads.length} overdue follow-up(s)`,filteredLeads.length?'warn':'success');
-}
-function filterHot(el){
-  currentFilter='__hot__';
-  document.querySelectorAll('.aside-item').forEach(i=>i.classList.remove('active'));
-  el.classList.add('active');
-  filteredLeads=allLeads.filter(l=>computeScore(l)>=60);
-  currentPage=1;listPage=1;renderCurrentView();
-  toast(`${filteredLeads.length} hot lead(s)`,'success');
-}
-
-function statusBadge(s){
+function statusBadge(s) {
   const map={'New':'new','Contacted':'contacted','Discovery Call':'discovery','Qualified':'qualified','Proposal Sent':'proposal','Negotiation':'negotiation','Won':'won','Lost':'lost'};
   return `<span class="badge badge-${map[s]||'new'}">${esc(s||'New')}</span>`;
 }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-function setTableLoading(on){
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function switchViewTab(tab, btnEl) {
+  ['details','timeline','automations'].forEach(t => {
+    document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none';
+  });
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+  if(btnEl) btnEl.classList.add('active');
+}
+function setLoadingState(on) {
   if(!on) return;
-  if(currentView==='table'){
-    document.getElementById('leadsBody').innerHTML=`<tr><td colspan="10"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div></td></tr>`;
-  } else if(currentView==='board'){
-    document.getElementById('boardScroll').innerHTML=`<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading…</div>`;
-  } else if(currentView==='list'){
-    document.getElementById('listBody').innerHTML=`<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading leads…</p></div>`;
+  if(currentView==='table') {
+    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div></td></tr>`;
+  } else if(currentView==='list') {
+    document.getElementById('listBody').innerHTML = `<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div>`;
   }
 }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open'));
+});
 
 let toastTimer;
-function toast(msg,type='success'){
-  const el=document.getElementById('toast');
-  document.getElementById('toastMsg').textContent=msg;
-  el.className='show '+type;
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  el.className = 'show '+type;
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
-
-function toggleHelpPanel(){
-  const panel=document.getElementById('helpPanel'),overlay=document.getElementById('helpOverlay');
-  const isOpen=panel.classList.contains('open');
-  panel.classList.toggle('open',!isOpen); overlay.classList.toggle('open',!isOpen);
+function toggleHelpPanel() {
+  const panel   = document.getElementById('helpPanel');
+  const overlay = document.getElementById('helpOverlay');
+  const isOpen  = panel.classList.contains('open');
+  panel.classList.toggle('open',!isOpen);
+  overlay.classList.toggle('open',!isOpen);
 }
 </script>
 </body>
