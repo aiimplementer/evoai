@@ -69,7 +69,7 @@
     };
     return {
       _docId:    docSnap.id,
-      _snap:     docSnap,            // ← keep raw snapshot for cursors
+      _snap:     docSnap,
       leadId:    d.leadId    || docSnap.id,
       name:      d.fullName  || d.name      || '',
       email:     d.email     || '',
@@ -115,94 +115,67 @@
     return docData;
   };
 
-  /* ════════════════════════════════════════════════
-     SERVER-SIDE PAGINATION  — core helpers
-     ════════════════════════════════════════════════
-     Strategy
-     ---------
-     • Primary sort:  createdAt DESC  (always)
-     • Filters:       status / service / industry sent as Firestore where() clauses
-     • Search:        still client-side (Firestore has no native full-text search);
-                      when a search term is active we expand the window to 500 docs
-                      and filter in-memory — acceptable for CRM scale.
-     • Page cursors:  we cache the first and last snapshot of every page we've
-                      visited so we can go forward (startAfter last) or backward
-                      (endBefore first / limitToLast).
-     • Counts:        getCountFromServer() — zero document reads.
-  ════════════════════════════════════════════════ */
-
   const PAGE_SIZE_DEFAULT = 15;
 
-  /**
-   * Build a Firestore query from the current filter state.
-   * @param {object} filters  { status, service, industry }
-   * @param {number} pageSize
-   * @param {object|null} afterSnap   snapshot to startAfter  (forward nav)
-   * @param {object|null} beforeSnap  snapshot to endBefore   (backward nav)
-   */
   window.buildLeadsQuery = (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
     const ref = collection(db, 'leads');
     const constraints = [ orderBy('createdAt', 'desc') ];
-
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
-
     if (beforeSnap) {
-      // Going backward
       constraints.push(endBefore(beforeSnap));
       constraints.push(limitToLast(pageSize));
     } else if (afterSnap) {
-      // Going forward
       constraints.push(startAfter(afterSnap));
       constraints.push(limit(pageSize));
     } else {
-      // First page
       constraints.push(limit(pageSize));
     }
-
     return query(ref, ...constraints);
   };
 
-  /**
-   * Count documents matching filters (no document reads).
-   */
   window.dbCountLeads = async (filters = {}) => {
     const ref = collection(db, 'leads');
     const constraints = [];
     if (filters.status)   constraints.push(where('status',   '==', filters.status));
     if (filters.service)  constraints.push(where('service',  '==', filters.service));
     if (filters.industry) constraints.push(where('industry', '==', filters.industry));
-
     const countQuery = constraints.length ? query(ref, ...constraints) : ref;
     const snap = await getCountFromServer(countQuery);
     return snap.data().count;
   };
 
-  /**
-   * Count all status groups in a single batch (for sidebar counts).
-   * Uses getCountFromServer — 9 count queries, 0 document reads.
-   */
   window.dbCountAllStatuses = async () => {
     const ref = collection(db, 'leads');
     const statuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost'];
-
     const [totalSnap, ...statusSnaps] = await Promise.all([
       getCountFromServer(ref),
       ...statuses.map(s => getCountFromServer(query(ref, where('status','==',s))))
     ]);
-
     const result = { ALL: totalSnap.data().count };
     statuses.forEach((s,i) => { result[s] = statusSnaps[i].data().count; });
     return result;
   };
 
-  /**
-   * Load one page of leads.
-   * Returns { leads: [], firstSnap, lastSnap }
-   */
-  window.dbLoadPage = async (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
+  window.dbLoadPage = async (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null, lastPage = false) => {
     try {
+      if (lastPage) {
+        const ref = collection(db, 'leads');
+        const constraints = [ orderBy('createdAt', 'desc') ];
+        if (filters.status)   constraints.push(where('status',   '==', filters.status));
+        if (filters.service)  constraints.push(where('service',  '==', filters.service));
+        if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+        constraints.push(limitToLast(pageSize));
+        const snap = await getDocs(query(ref, ...constraints));
+        const leads = snap.docs.map(d => window.docToLead(d));
+        return {
+          leads,
+          firstSnap: snap.docs[0] || null,
+          lastSnap:  snap.docs[snap.docs.length - 1] || null,
+          empty:     snap.empty,
+        };
+      }
       const q = window.buildLeadsQuery(filters, pageSize, afterSnap, beforeSnap);
       const snap = await getDocs(q);
       const leads = snap.docs.map(d => window.docToLead(d));
@@ -218,10 +191,6 @@
     }
   };
 
-  /**
-   * Load ALL leads for a stage (board view) — capped at 200 per stage.
-   * Board view doesn't paginate; columns scroll internally.
-   */
   window.dbLoadStage = async (status) => {
     const q = query(
       collection(db, 'leads'),
@@ -233,18 +202,14 @@
     return snap.docs.map(d => window.docToLead(d));
   };
 
-  /**
-   * Load leads matching a search term — expanded window, client-filtered.
-   * Uses a large limit (500) and returns all matching docs.
-   */
   window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
     const ref = collection(db, 'leads');
     const constraints = [ orderBy('createdAt', 'desc'), limit(maxDocs) ];
     if (filters.status)   constraints.push(where('status',   '==', filters.status));
     if (filters.service)  constraints.push(where('service',  '==', filters.service));
     if (filters.industry) constraints.push(where('industry', '==', filters.industry));
-
     const snap = await getDocs(query(ref, ...constraints));
+    if (!searchTerm) return snap.docs.map(d => window.docToLead(d));
     const term = searchTerm.toLowerCase();
     return snap.docs
       .map(d => window.docToLead(d))
@@ -252,7 +217,6 @@
   };
 
   /* ─── CRUD ─── */
-
   window.dbAddLead = async (lead) => {
     const id  = window.generateLeadId();
     lead.leadId = id;
@@ -272,7 +236,6 @@
   };
 
   /* ─── Activities ─── */
-
   window.dbAddActivity = async (leadDocId, activity) => {
     const activitiesRef = collection(db, 'leads', leadDocId, 'activities');
     await addDoc(activitiesRef, {
@@ -301,26 +264,21 @@
   onAuthStateChanged(auth, user => {
     if (authChecked) return;
     authChecked = true;
-
     if (!user) {
       window.location.replace("evoai-login.html");
       return;
     }
-
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
-
     const name     = user.displayName || user.email.split('@')[0];
     const email    = user.email;
     const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
-
     document.getElementById('userInitials').textContent     = initials;
     document.getElementById('userName').textContent         = name;
     document.getElementById('userEmail').textContent        = email;
     document.getElementById('sideUserInitials').textContent = initials;
     document.getElementById('sideUserName').textContent     = name;
     document.getElementById('sideUserEmail').textContent    = email;
-
     window.initApp();
   });
 
@@ -454,11 +412,17 @@
   }
   .aside-item:hover { background: var(--surface2); color: var(--text); }
   .aside-item.active { background: rgba(0,229,160,.08); border-color: rgba(0,229,160,.2); color: var(--accent); }
+  .aside-item.active-danger { background: rgba(255,77,109,.08); border-color: rgba(255,77,109,.2); color: var(--danger); }
   .aside-item svg { flex-shrink: 0; }
   .aside-count {
     margin-left: auto; font-family: var(--mono); font-size: .65rem;
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--muted); padding: 1px 7px; border-radius: 20px;
+  }
+  .aside-count-danger {
+    margin-left: auto; font-family: var(--mono); font-size: .65rem;
+    background: rgba(255,77,109,.12); border: 1px solid rgba(255,77,109,.3);
+    color: var(--danger); padding: 1px 7px; border-radius: 20px;
   }
 
   .aside-user-footer {
@@ -499,13 +463,13 @@
   .search-wrap { position: relative; flex: 1; min-width: 200px; }
   .search-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
-  input[type="text"], input[type="email"], input[type="tel"], input[type="url"], select, textarea {
+  input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], select, textarea {
     background: var(--surface); border: 1px solid var(--border);
     color: var(--text); font-family: var(--font); font-size: .82rem;
     border-radius: 7px; outline: none; transition: border-color .18s;
   }
   input[type="text"]:focus, input[type="email"]:focus, input[type="tel"]:focus,
-  input[type="url"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type="url"]:focus, input[type="number"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
   .search-wrap input { width: 100%; padding: 9px 12px 9px 34px; }
   select { padding: 9px 12px; cursor: pointer; }
   select option { background: var(--surface2); }
@@ -519,6 +483,16 @@
   }
   .search-mode-banner.show { display: flex; }
   .search-mode-banner strong { color: var(--text); }
+
+  /* ── OVERDUE MODE BANNER ── */
+  .overdue-mode-banner {
+    display: none; align-items: center; gap: 8px;
+    background: rgba(255,77,109,.07); border: 1px solid rgba(255,77,109,.22);
+    border-radius: 8px; padding: 7px 13px; margin-bottom: 10px;
+    font-size: .76rem; color: var(--danger);
+  }
+  .overdue-mode-banner.show { display: flex; }
+  .overdue-mode-banner strong { color: var(--text); }
 
   /* ── TABLE ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -570,9 +544,9 @@
     font-size: .76rem; color: var(--muted); flex-wrap: wrap; gap: 8px;
   }
   .page-info-block { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-  .page-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .page-btns { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
   .page-btn {
-    min-width: 32px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
+    min-width: 32px; height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border);
     background: transparent; color: var(--muted); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: .78rem; font-family: var(--mono); transition: all .14s; gap: 5px;
@@ -585,6 +559,23 @@
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--muted); padding: 4px 10px; border-radius: 6px;
   }
+  /* Jump to page */
+  .jump-wrap {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .72rem; color: var(--muted); font-family: var(--mono);
+  }
+  .jump-wrap input {
+    width: 52px; height: 30px; padding: 0 6px;
+    text-align: center; font-family: var(--mono); font-size: .76rem;
+  }
+  .jump-wrap input::-webkit-inner-spin-button,
+  .jump-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .jump-wrap button {
+    height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer; font-family: var(--mono);
+    font-size: .72rem; transition: all .14s;
+  }
+  .jump-wrap button:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
 
   /* ── MODAL ── */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
@@ -644,13 +635,12 @@
 
   /* ── TOAST ── */
   #toast {
-    position: fixed; bottom: 22px; left: 22px; right: auto; z-index: 999;
+    position: fixed; bottom: 22px; right: 22px; z-index: 999;
     background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
     padding: 11px 17px; font-size: .81rem; display: flex; align-items: center; gap: 10px;
     box-shadow: 0 8px 32px rgba(0,0,0,.5);
     transform: translateY(80px); opacity: 0; transition: all .25s; pointer-events: none;
-    min-width: 600px;
-    max-width: 800px;
+    max-width: 360px;
   }
   #toast.show { transform: translateY(0); opacity: 1; }
   #toast.success .toast-dot { background: var(--accent); }
@@ -859,6 +849,8 @@
     .list-item-actions   { grid-column: 2; grid-row: 1 / 3; align-self: center; }
     .list-item-company-wrap, .list-item-industry, .list-item-phone, .list-item-date { display: none; }
     .list-item > div:nth-child(5) { grid-column: 1; grid-row: 2; }
+    .pagination { flex-direction: column; align-items: flex-start; }
+    .jump-wrap { display: none; }
   }
 </style>
 </head>
@@ -963,6 +955,12 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Lost <span class="aside-count" id="cnt-lost">—</span>
         </div>
+
+        <!-- OVERDUE FILTER -->
+        <div class="aside-item" id="overdueFilterItem" onclick="toggleOverdueFilter(this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Overdue Follow-ups <span class="aside-count-danger" id="cnt-overdue">—</span>
+        </div>
       </div>
 
       <div class="aside-section" style="margin-top:12px;">
@@ -1018,7 +1016,11 @@
       <div class="stat-card"><div class="stat-label">New</div><div class="stat-value" id="s-new" style="color:var(--accent2)">—</div><div class="stat-sub">Awaiting contact</div></div>
       <div class="stat-card"><div class="stat-label">Qualified</div><div class="stat-value" id="s-qual">—</div><div class="stat-sub">High intent</div></div>
       <div class="stat-card"><div class="stat-label">Won</div><div class="stat-value" id="s-won" style="color:#00c864">—</div><div class="stat-sub">Deals closed</div></div>
-      <div class="stat-card"><div class="stat-label">Pipeline Value</div><div class="stat-value" id="s-pipeline" style="color:#c084fc;font-size:1.1rem;">—</div><div class="stat-sub">Active deals only</div></div>
+      <div class="stat-card">
+        <div class="stat-label">Pipeline Value</div>
+        <div class="stat-value" id="s-pipeline" style="color:#c084fc;font-size:1.1rem;">—</div>
+        <div class="stat-sub" id="s-pipeline-sub">Active deals only</div>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -1065,6 +1067,13 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       Search mode — showing <strong id="searchResultCount">0</strong> results (pagination disabled during search)
       <button onclick="clearSearch()" style="margin-left:auto;background:transparent;border:1px solid rgba(0,184,255,.3);color:var(--accent2);border-radius:5px;padding:3px 10px;font-size:.72rem;cursor:pointer;font-family:var(--font);">✕ Clear</button>
+    </div>
+
+    <!-- OVERDUE MODE BANNER -->
+    <div class="overdue-mode-banner" id="overdueModeBanner">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Overdue filter — showing <strong id="overdueResultCount">0</strong> leads with past follow-up dates
+      <button onclick="clearOverdueFilter()" style="margin-left:auto;background:transparent;border:1px solid rgba(255,77,109,.3);color:var(--danger);border-radius:5px;padding:3px 10px;font-size:.72rem;cursor:pointer;font-family:var(--font);">✕ Clear</button>
     </div>
 
     <!-- BULK ACTION BAR -->
@@ -1127,22 +1136,31 @@
             </div></td></tr>
           </tbody>
         </table>
-        <!-- SERVER-SIDE PAGINATION CONTROLS -->
+        <!-- PAGINATION CONTROLS -->
         <div class="pagination" id="pagination" style="display:none">
           <div class="page-info-block">
             <span id="pageInfo" style="font-size:.75rem;"></span>
             <span class="page-counter" id="pageCounter">Page 1</span>
           </div>
           <div class="page-btns">
-            <button class="page-btn" id="btnFirst"  onclick="goFirstPage()"  title="First page">
+            <button class="page-btn" id="btnFirst" onclick="goFirstPage()" title="First page">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>First
             </button>
-            <button class="page-btn" id="btnPrev"   onclick="goPrevPage()"   title="Previous page">
+            <button class="page-btn" id="btnPrev" onclick="goPrevPage()" title="Previous page">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Prev
             </button>
-            <button class="page-btn" id="btnNext"   onclick="goNextPage()"   title="Next page">
+            <button class="page-btn" id="btnNext" onclick="goNextPage()" title="Next page">
               Next<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
+            <button class="page-btn" id="btnLast" onclick="goLastPage()" title="Last page">
+              Last<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 17 11 12 6 7"/><polyline points="13 17 18 12 13 7"/></svg>
+            </button>
+          </div>
+          <div class="jump-wrap">
+            Go to
+            <input type="number" id="jumpInput" min="1" placeholder="pg#"
+              onkeydown="if(event.key==='Enter')goJumpPage()" title="Jump to page number"/>
+            <button onclick="goJumpPage()">Go</button>
           </div>
         </div>
       </div>
@@ -1168,15 +1186,24 @@
           <span class="page-counter" id="listPageCounter">Page 1</span>
         </div>
         <div class="page-btns">
-          <button class="page-btn" id="listBtnFirst" onclick="goFirstPage()"  title="First page">
+          <button class="page-btn" id="listBtnFirst" onclick="goFirstPage()" title="First page">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>First
           </button>
-          <button class="page-btn" id="listBtnPrev"  onclick="goPrevPage()"   title="Previous page">
+          <button class="page-btn" id="listBtnPrev" onclick="goPrevPage()" title="Previous page">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Prev
           </button>
-          <button class="page-btn" id="listBtnNext"  onclick="goNextPage()"   title="Next page">
+          <button class="page-btn" id="listBtnNext" onclick="goNextPage()" title="Next page">
             Next<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
+          <button class="page-btn" id="listBtnLast" onclick="goLastPage()" title="Last page">
+            Last<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 17 11 12 6 7"/><polyline points="13 17 18 12 13 7"/></svg>
+          </button>
+        </div>
+        <div class="jump-wrap">
+          Go to
+          <input type="number" id="listJumpInput" min="1" placeholder="pg#"
+            onkeydown="if(event.key==='Enter')goJumpPage()" title="Jump to page number"/>
+          <button onclick="goJumpPage()">Go</button>
         </div>
       </div>
     </div>
@@ -1401,14 +1428,14 @@
     </div>
     <div class="help-section">
       <div class="help-section-title">Pro Tips</div>
-      <div class="help-tip"><div class="help-tip-icon">🗂️</div><div class="help-tip-text"><strong>Server-side pagination:</strong> Only 15 leads are fetched per page. Firestore counts are instant — zero extra document reads.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">🗂️</div><div class="help-tip-text"><strong>Server-side pagination:</strong> Only 15 leads are fetched per page. Use "Last" to jump to the final page, or type a page number in the "Go to" box.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">⏰</div><div class="help-tip-text"><strong>Overdue filter:</strong> Click "Overdue Follow-ups" in the sidebar to instantly see all leads with past follow-up dates (scans up to 500 records).</div></div>
+      <div class="help-tip"><div class="help-tip-icon">💰</div><div class="help-tip-text"><strong>Pipeline Value:</strong> Computed once on load from the first 500 active leads (excludes Won/Lost). Hover the stat card for details.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🎯</div><div class="help-tip-text"><strong>Maximise scores fast:</strong> Fill in phone, LinkedIn, and deal value — these three fields alone add up to +45 points.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">📅</div><div class="help-tip-text"><strong>Never miss a follow-up:</strong> Always set a Follow-Up date.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage. Each column loads up to 200 leads.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">🔍</div><div class="help-tip-text"><strong>Search scans up to 500 records</strong> matching your current filters. Pagination is suspended during search.</div></div>
     </div>
   </div>
-  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.0 · Server-Side Pagination</div>
+  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.1 · Server-Side Pagination</div>
 </div>
 
 </div><!-- end #authShell -->
@@ -1418,50 +1445,42 @@
 
 <script>
 /* ════════════════════════════════════════════════════════════════
-   EVOAI LEAD MANAGER v3.0 — Server-Side Pagination Edition
-   ════════════════════════════════════════════════════════════════
-   Pagination strategy
-   -------------------
-   • Every page load fires a Firestore query with limit(15).
-   • We cache the first & last DocumentSnapshot of every page we
-     visit so we can navigate forward (startAfter) and backward
-     (endBefore / limitToLast) without re-fetching old pages.
-   • Counts come from getCountFromServer() — 0 document reads.
-   • Filters (status, service, industry) are Firestore where()
-     clauses — resolved server-side before any data is sent.
-   • Search is client-side over a 500-doc window (Firestore has
-     no native full-text search).  Pagination is suspended while
-     a search term is active and resumes when cleared.
-   ════════════════════════════════════════════════════════════════ */
+   EVOAI LEAD MANAGER v3.1
+   New in this version:
+   - Last page button (uses limitToLast Firestore query)
+   - Jump-to-page input (chains forward from page 1)
+   - Overdue Follow-ups sidebar filter (client-side, 500-doc window)
+   - Pipeline Value stat card (computed once on first load)
+════════════════════════════════════════════════════════════════ */
 
-/* ── STATE ── */
 const PAGE_SIZE   = 15;
 let currentView   = 'table';
 let editingLeadId = null;
 let editingDocId  = null;
 let searchTimer   = null;
+let pipelineValueLoaded = false; // compute only once
 
-/* ── FILTER STATE (drives both sidebar counts & Firestore queries) ── */
+/* ── FILTER STATE ── */
 let activeFilters = { status: '', service: '', industry: '' };
 
 /* ── SERVER PAGINATION STATE ── */
-let pageNumber     = 1;     // 1-based display counter
-let totalCount     = 0;     // getCountFromServer result for current filters
-let pageFirstSnap  = null;  // DocumentSnapshot of first doc on current page
-let pageLastSnap   = null;  // DocumentSnapshot of last doc on current page
-// Stack of firstSnaps for every page so we can go back arbitrary pages
-let pageStack      = [];    // index 0 = page 1 first snap, etc.
+let pageNumber     = 1;
+let totalCount     = 0;
+let pageFirstSnap  = null;
+let pageLastSnap   = null;
+let pageStack      = [];
 
-/* ── CURRENT PAGE DATA ── */
-let currentLeads   = [];    // leads on the current page (table/list)
-let searchResults  = [];    // leads returned by a search
+/* ── CURRENT DATA ── */
+let currentLeads   = [];
+let searchResults  = [];
 let isSearchMode   = false;
+let isOverdueMode  = false;
 
 /* ── SELECTION ── */
-let selectedLeads  = new Map(); // leadId → lead object (survives page turns)
+let selectedLeads  = new Map();
 
 /* ── BOARD CACHE ── */
-let boardLeads     = {};    // { [status]: lead[] }
+let boardLeads     = {};
 
 const BOARD_STAGES = [
   { key:'New',           label:'New',           color:'#e8f0fe' },
@@ -1490,7 +1509,7 @@ window.refreshAll = async function() {
 };
 
 /* ════════════════════════════════════════════════════
-   COUNTS  (sidebar + stat cards) — zero document reads
+   COUNTS — zero document reads + pipeline value once
 ════════════════════════════════════════════════════ */
 async function refreshCounts() {
   try {
@@ -1505,48 +1524,79 @@ async function refreshCounts() {
     document.getElementById('cnt-won').textContent         = counts['Won']           || 0;
     document.getElementById('cnt-lost').textContent        = counts['Lost']          || 0;
 
-    document.getElementById('s-total').textContent = counts['ALL']    || 0;
-    document.getElementById('s-new').textContent   = counts['New']    || 0;
+    document.getElementById('s-total').textContent = counts['ALL']       || 0;
+    document.getElementById('s-new').textContent   = counts['New']       || 0;
     document.getElementById('s-qual').textContent  = counts['Qualified'] || 0;
-    document.getElementById('s-won').textContent   = counts['Won']    || 0;
-    // Pipeline value can't be computed from counts alone; set a placeholder
-    document.getElementById('s-pipeline').textContent = '—';
+    document.getElementById('s-won').textContent   = counts['Won']       || 0;
   } catch(e) {
     console.warn('refreshCounts failed', e);
+  }
+
+  // Pipeline value — compute once only on first load
+  if (!pipelineValueLoaded) {
+    pipelineValueLoaded = true;
+    try {
+      const pipelineStatuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation'];
+      const activeLeads = await window.dbSearchLeads('', {}, 500);
+      const total = activeLeads
+        .filter(l => pipelineStatuses.includes(l.status))
+        .reduce((sum, l) => {
+          return sum + (Number(String(l.dealvalue || '').replace(/[^0-9.]/g, '')) || 0);
+        }, 0);
+
+      let formatted;
+      if (total >= 1_000_000)      formatted = '$' + (total / 1_000_000).toFixed(1) + 'M';
+      else if (total >= 1_000)     formatted = '$' + (total / 1_000).toFixed(0) + 'k';
+      else if (total > 0)          formatted = '$' + total.toLocaleString();
+      else                         formatted = '—';
+
+      document.getElementById('s-pipeline').textContent = formatted;
+      document.getElementById('s-pipeline').title = 'Sampled from first 500 active leads (excl. Won / Lost)';
+      document.getElementById('s-pipeline-sub').textContent = 'Active deals · est. 500 leads';
+
+      // Overdue count for sidebar badge
+      const today = new Date().toISOString().slice(0, 10);
+      const overdueCount = activeLeads.filter(l =>
+        l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost'
+      ).length;
+      document.getElementById('cnt-overdue').textContent = overdueCount;
+    } catch(e) {
+      console.warn('Pipeline value computation failed', e);
+      document.getElementById('s-pipeline').textContent = '—';
+    }
   }
 }
 
 /* ════════════════════════════════════════════════════
    CORE PAGE LOADER
-   direction: 'first' | 'next' | 'prev'
+   direction: 'first' | 'next' | 'prev' | 'last'
 ════════════════════════════════════════════════════ */
 async function loadPage(direction = 'first') {
-  if (isSearchMode) return;          // search mode handles its own data
+  if (isSearchMode || isOverdueMode) return;
   setLoadingState(true);
 
   try {
     let afterSnap  = null;
     let beforeSnap = null;
+    let useLastPage = false;
 
     if (direction === 'next') {
       afterSnap  = pageLastSnap;
       pageNumber++;
     } else if (direction === 'prev') {
-      // Go back using the cached first snap of the previous page
-      if (pageStack.length >= 2) {
-        pageStack.pop(); // remove current page entry
-        beforeSnap = pageStack[pageStack.length - 1] || null;
-      }
       pageNumber = Math.max(1, pageNumber - 1);
-      beforeSnap = pageNumber === 1 ? null : pageStack[pageNumber - 2] || null;
-      afterSnap  = pageNumber === 1 ? null : pageStack[pageNumber - 2] || null;
-      // Simpler: just reload from the stack
       if (pageNumber === 1) {
         afterSnap = null; beforeSnap = null;
       } else {
         afterSnap = pageStack[pageNumber - 2] || null;
         beforeSnap = null;
       }
+      pageStack = pageStack.slice(0, pageNumber);
+    } else if (direction === 'last') {
+      useLastPage = true;
+      totalCount = await window.dbCountLeads(activeFilters);
+      pageNumber = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+      pageStack = [];
     } else {
       // 'first'
       pageNumber = 1;
@@ -1555,22 +1605,24 @@ async function loadPage(direction = 'first') {
       beforeSnap = null;
     }
 
-    // Get total count for current filters (cheap — no doc reads)
-    totalCount = await window.dbCountLeads(activeFilters);
+    // Get total count
+    if (direction !== 'last') {
+      totalCount = await window.dbCountLeads(activeFilters);
+    }
 
-    // Fetch page data
-    const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, afterSnap, beforeSnap);
+    const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, afterSnap, beforeSnap, useLastPage);
     currentLeads  = result.leads;
     pageFirstSnap = result.firstSnap;
     pageLastSnap  = result.lastSnap;
 
-    // Maintain page stack (stores firstSnap of each page visited forward)
     if (direction === 'first') {
       pageStack = [pageFirstSnap];
     } else if (direction === 'next') {
       pageStack.push(pageFirstSnap);
+    } else if (direction === 'last') {
+      pageStack = new Array(pageNumber).fill(null);
+      pageStack[pageNumber - 1] = pageFirstSnap;
     }
-    // 'prev' already managed pageStack above
 
     renderCurrentView();
     updatePaginationControls();
@@ -1582,28 +1634,78 @@ async function loadPage(direction = 'first') {
   }
 }
 
-/* Pagination nav */
 function resetPagination() {
   pageNumber = 1; pageStack = [];
   pageFirstSnap = null; pageLastSnap = null;
   totalCount = 0;
 }
 
+/* ── Pagination nav buttons ── */
 async function goNextPage() {
-  if (isSearchMode) return;
+  if (isSearchMode || isOverdueMode) return;
   const maxPage = Math.ceil(totalCount / PAGE_SIZE);
   if (pageNumber >= maxPage) return;
   await loadPage('next');
 }
 
 async function goPrevPage() {
-  if (isSearchMode || pageNumber <= 1) return;
+  if (isSearchMode || isOverdueMode || pageNumber <= 1) return;
   await loadPage('prev');
 }
 
 async function goFirstPage() {
-  if (isSearchMode || pageNumber === 1) return;
+  if (isSearchMode || isOverdueMode || pageNumber === 1) return;
   await loadPage('first');
+}
+
+async function goLastPage() {
+  if (isSearchMode || isOverdueMode) return;
+  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
+  if (pageNumber >= maxPage) return;
+  await loadPage('last');
+}
+
+/* ── Jump to page ── */
+async function goJumpPage() {
+  if (isSearchMode || isOverdueMode) return;
+
+  // Read from whichever input is visible
+  const tableInput = document.getElementById('jumpInput');
+  const listInput  = document.getElementById('listJumpInput');
+  const raw = (tableInput && tableInput.value) || (listInput && listInput.value) || '';
+  if (tableInput) tableInput.value = '';
+  if (listInput)  listInput.value  = '';
+
+  const maxPage = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const target  = Math.max(1, Math.min(maxPage, parseInt(raw) || 1));
+
+  if (target === pageNumber) return;
+  if (target === 1)        { await loadPage('first'); return; }
+  if (target === maxPage)  { await loadPage('last');  return; }
+
+  // For mid-range: reset to first, step forward page by page
+  // Each step is a cheap Firestore cursor query (only fetches 1 doc per step to get the cursor,
+  // then fetches 15 for the actual target page).
+  toast(`Jumping to page ${target} of ${maxPage}…`, 'success');
+  await loadPage('first');
+  for (let i = 1; i < target; i++) {
+    // Lightweight forward-step: just advance the cursor, don't re-render until the final page
+    try {
+      const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, pageLastSnap, null, false);
+      pageFirstSnap = result.firstSnap;
+      pageLastSnap  = result.lastSnap;
+      pageNumber++;
+      pageStack.push(pageFirstSnap);
+      if (i === target - 1) {
+        currentLeads = result.leads;
+        renderCurrentView();
+        updatePaginationControls();
+      }
+    } catch(e) {
+      toast('Jump failed at page ' + (i + 1), 'error');
+      break;
+    }
+  }
 }
 
 function updatePaginationControls() {
@@ -1612,40 +1714,103 @@ function updatePaginationControls() {
   const end        = Math.min(pageNumber * PAGE_SIZE, totalCount);
   const infoText   = totalCount > 0 ? `${start}–${end} of ${totalCount} leads` : 'No leads found';
   const counterTxt = `Page ${pageNumber} of ${maxPage}`;
+  const showPag    = totalCount > PAGE_SIZE || pageNumber > 1;
 
-  // Table view controls
+  // Table view
   const pag = document.getElementById('pagination');
-  if (totalCount > PAGE_SIZE || pageNumber > 1) {
-    pag.style.display = 'flex';
+  pag.style.display = showPag ? 'flex' : 'none';
+  if (showPag) {
     document.getElementById('pageInfo').textContent    = infoText;
     document.getElementById('pageCounter').textContent = counterTxt;
     document.getElementById('btnFirst').disabled = pageNumber === 1;
     document.getElementById('btnPrev').disabled  = pageNumber === 1;
     document.getElementById('btnNext').disabled  = pageNumber >= maxPage;
-  } else {
-    pag.style.display = 'none';
+    document.getElementById('btnLast').disabled  = pageNumber >= maxPage;
+    const ji = document.getElementById('jumpInput');
+    if (ji) ji.max = maxPage;
   }
 
-  // List view controls
+  // List view
   const listPag = document.getElementById('listPagination');
-  if (totalCount > PAGE_SIZE || pageNumber > 1) {
-    listPag.style.display = 'flex';
+  listPag.style.display = showPag ? 'flex' : 'none';
+  if (showPag) {
     document.getElementById('listPageInfo').textContent    = infoText;
     document.getElementById('listPageCounter').textContent = counterTxt;
     document.getElementById('listBtnFirst').disabled = pageNumber === 1;
     document.getElementById('listBtnPrev').disabled  = pageNumber === 1;
     document.getElementById('listBtnNext').disabled  = pageNumber >= maxPage;
-  } else {
-    listPag.style.display = 'none';
+    document.getElementById('listBtnLast').disabled  = pageNumber >= maxPage;
+    const lji = document.getElementById('listJumpInput');
+    if (lji) lji.max = maxPage;
   }
+}
+
+/* ════════════════════════════════════════════════════
+   OVERDUE FILTER
+════════════════════════════════════════════════════ */
+function toggleOverdueFilter(el) {
+  if (isOverdueMode) {
+    clearOverdueFilter();
+    return;
+  }
+  // Deselect all sidebar items, activate overdue
+  document.querySelectorAll('.aside-item').forEach(i => {
+    i.classList.remove('active');
+    i.classList.remove('active-danger');
+  });
+  el.classList.add('active-danger');
+  isOverdueMode = true;
+  runOverdueFilter();
+}
+
+async function runOverdueFilter() {
+  isSearchMode = false;
+  document.getElementById('searchModeBanner').classList.remove('show');
+  setLoadingState(true);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const all = await window.dbSearchLeads('', activeFilters, 500);
+    const overdue = all.filter(l =>
+      l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost'
+    );
+    searchResults = overdue;
+    currentLeads  = overdue;
+    document.getElementById('cnt-overdue').textContent = overdue.length;
+    document.getElementById('overdueModeBanner').classList.add('show');
+    document.getElementById('overdueResultCount').textContent = overdue.length;
+    // Hide server pagination during overdue mode
+    document.getElementById('pagination').style.display     = 'none';
+    document.getElementById('listPagination').style.display = 'none';
+    renderCurrentView();
+  } catch(e) {
+    toast('Failed to load overdue leads: ' + e.message, 'error');
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+function clearOverdueFilter() {
+  isOverdueMode = false;
+  searchResults = [];
+  document.getElementById('overdueModeBanner').classList.remove('show');
+  document.getElementById('overdueFilterItem').classList.remove('active-danger');
+  // Reactivate "All Leads"
+  const allItem = document.querySelector('.aside-item');
+  if (allItem) allItem.classList.add('active');
+  updatePaginationControls();
+  loadPage('first');
 }
 
 /* ════════════════════════════════════════════════════
    FILTERS — sidebar status + dropdowns
 ════════════════════════════════════════════════════ */
 function setStatusFilter(status, el) {
+  if (isOverdueMode) clearOverdueFilter();
   activeFilters.status = status;
-  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.aside-item').forEach(i => {
+    i.classList.remove('active');
+    i.classList.remove('active-danger');
+  });
   if (el) el.classList.add('active');
   clearSearch();
   resetPagination();
@@ -1668,6 +1833,7 @@ function onSearchInput(q) {
   searchTimer = setTimeout(() => {
     const term = q.trim();
     if (!term) { clearSearch(); return; }
+    if (isOverdueMode) clearOverdueFilter();
     runSearch(term);
   }, 380);
 }
@@ -1679,9 +1845,8 @@ async function runSearch(term) {
     searchResults = await window.dbSearchLeads(term, activeFilters, 500);
     document.getElementById('searchModeBanner').classList.add('show');
     document.getElementById('searchResultCount').textContent = searchResults.length;
-    // Hide server pagination during search
-    document.getElementById('pagination').style.display    = 'none';
-    document.getElementById('listPagination').style.display = 'none';
+    document.getElementById('pagination').style.display      = 'none';
+    document.getElementById('listPagination').style.display  = 'none';
     currentLeads = searchResults;
     renderCurrentView();
   } catch(e) {
@@ -1697,7 +1862,6 @@ function clearSearch() {
   isSearchMode  = false;
   searchResults = [];
   document.getElementById('searchModeBanner').classList.remove('show');
-  // Re-show pagination if needed
   updatePaginationControls();
 }
 
@@ -1720,7 +1884,6 @@ function renderCurrentView() {
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
   if (currentView === 'table') renderTable(currentLeads);
   else if (currentView === 'list')  renderList(currentLeads);
-  // board is rendered separately via loadBoardView()
 }
 
 /* ════════════════════════════════════════════════════
@@ -1770,7 +1933,7 @@ function renderTable(leads) {
 }
 
 /* ════════════════════════════════════════════════════
-   BOARD VIEW — per-stage Firestore queries (≤200 each)
+   BOARD VIEW
 ════════════════════════════════════════════════════ */
 async function loadBoardView() {
   document.getElementById('tableView').style.display = 'none';
@@ -1778,7 +1941,6 @@ async function loadBoardView() {
   document.getElementById('boardView').style.display = 'block';
   document.getElementById('boardScroll').innerHTML =
     `<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading board…</div>`;
-
   try {
     const stageData = await Promise.all(
       BOARD_STAGES.map(s => window.dbLoadStage(s.key))
@@ -1786,7 +1948,6 @@ async function loadBoardView() {
     BOARD_STAGES.forEach((s,i) => { boardLeads[s.key] = stageData[i]; });
     renderBoard();
   } catch(e) {
-    alert(e.message);
     toast('Board load failed: ' + e.message, 'error');
   }
 }
@@ -1798,7 +1959,6 @@ function renderBoard() {
     const stageLeads = boardLeads[stage.key] || [];
     const col = document.createElement('div');
     col.className = 'board-col';
-
     const stageValue = stageLeads.reduce((s,l) => s + Number(String(l.dealvalue||'').replace(/[^0-9.]/g,'')||0), 0);
     const head = document.createElement('div');
     head.className = 'board-col-head';
@@ -1894,17 +2054,13 @@ function getDragAfterElement(container, y) {
 }
 
 async function moveLead(leadId, fromStage, newStage) {
-  // Find lead in board cache
   const lead = (boardLeads[fromStage]||[]).find(l => l.leadId === leadId);
   if (!lead) return;
-
-  // Optimistic update in board cache
   boardLeads[fromStage] = (boardLeads[fromStage]||[]).filter(l => l.leadId !== leadId);
   const updated = { ...lead, status: newStage };
   boardLeads[newStage] = [updated, ...(boardLeads[newStage]||[])];
   renderBoard();
   toast(`Moving ${lead.name} → ${newStage}…`, 'success');
-
   try {
     await window.dbUpdateLead(lead._docId, updated);
     await window.dbAddActivity(lead._docId, {
@@ -1915,7 +2071,6 @@ async function moveLead(leadId, fromStage, newStage) {
     toast(`${lead.name} moved to ${newStage}`, 'success');
     refreshCounts();
   } catch(e) {
-    // Roll back
     boardLeads[newStage] = (boardLeads[newStage]||[]).filter(l => l.leadId !== leadId);
     boardLeads[fromStage] = [lead, ...(boardLeads[fromStage]||[])];
     renderBoard();
@@ -1967,7 +2122,6 @@ function openCreate() {
 }
 
 async function editLeadById(leadId, docId) {
-  // Try current page cache first, otherwise fetch from Firestore
   let lead = currentLeads.find(l => l.leadId === leadId)
           || searchResults.find(l => l.leadId === leadId);
   if (!lead) {
@@ -2029,7 +2183,6 @@ async function submitForm() {
   try {
     if (editingLeadId) {
       await window.dbUpdateLead(editingDocId, lead);
-      // Update in current page cache if present
       const idx = currentLeads.findIndex(l => l.leadId === editingLeadId);
       if(idx !== -1) currentLeads[idx] = { ...currentLeads[idx], ...lead };
       toast('Lead updated!', 'success');
@@ -2041,7 +2194,6 @@ async function submitForm() {
     } else {
       const newId = await window.dbAddLead(lead);
       toast('Lead created — ' + newId, 'success');
-      // Refresh to show new lead (it'll be at top of createdAt desc)
       await refreshAll();
     }
     closeModal('formOverlay');
@@ -2083,22 +2235,15 @@ const OUTREACH_ACTIONS = [
 ];
 
 async function viewLead(leadId, docId) {
-  // Prefer from current page cache to avoid extra reads
   let lead = currentLeads.find(l => l.leadId === leadId)
           || searchResults.find(l => l.leadId === leadId);
-
-  // Check board cache
   if (!lead) {
     for (const stage of BOARD_STAGES) {
       const found = (boardLeads[stage.key]||[]).find(l => l.leadId === leadId);
       if (found) { lead = found; break; }
     }
   }
-
-  // Fallback: fetch from Firestore (1 doc read)
-  if (!lead && docId) {
-    lead = await window.dbGetLead(docId);
-  }
+  if (!lead && docId) lead = await window.dbGetLead(docId);
   if (!lead) { toast('Lead not found', 'error'); return; }
   _viewingDocId = lead._docId || docId;
 
@@ -2222,10 +2367,10 @@ async function triggerN8n(actionId, lead, btnEl) {
 }
 
 /* ════════════════════════════════════════════════════
-   EXPORT CSV — current page or search results
+   EXPORT CSV
 ════════════════════════════════════════════════════ */
 function exportCSV() {
-  const leads = isSearchMode ? searchResults : currentLeads;
+  const leads = (isSearchMode || isOverdueMode) ? searchResults : currentLeads;
   if(!leads.length) { toast('No leads on this page to export','warn'); return; }
   const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
   const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
