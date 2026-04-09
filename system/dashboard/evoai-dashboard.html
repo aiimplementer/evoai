@@ -2284,7 +2284,7 @@ let _viewingDocId = null;
 const N8N_WEBHOOKS = {
   send_intro_email:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
   send_proposal:      'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
-  enrich_linkedin:    'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook-test/enrich_linkedin',
+  enrich_linkedin:    'https://your-n8n-instance/webhook/enrich-linkedin',
   add_to_crm:         'https://your-n8n-instance/webhook/add-to-crm',
   schedule_followup:  'https://your-n8n-instance/webhook/schedule-followup',
   send_whatsapp:      'https://your-n8n-instance/webhook/send-whatsapp',
@@ -2430,13 +2430,13 @@ function handleAutoBtn(btnEl) {
 
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
-   
+ 
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,linkedinurl:lead.linkedin,
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,
         triggeredAt:new Date().toISOString()})});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
