@@ -2435,7 +2435,7 @@ async function triggerN8n(actionId, lead, btnEl) {
  // ── PLACEHOLDER: block unconnected actions ──
   const activeActions = ['send_intro_email', 'send_proposal'];
   if (!activeActions.includes(actionId)) {
-    toast('This automation to be configured', 'warn');
+    toast('The automation to be configured!', 'warn');
     return;
   }
  
