@@ -1237,9 +1237,23 @@
     </div>
 
     <!-- BOARD VIEW -->
-    <div id="boardView">
-      <div class="board-scroll" id="boardScroll"></div>
-    </div>
+	<div id="boardView">
+	  <div style="display:flex;align-items:center;gap:8px;
+		background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.22);
+		border-radius:8px;padding:7px 13px;margin-bottom:12px;
+		font-size:.76rem;color:var(--warn);">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
+		  stroke="currentColor" stroke-width="2">
+		  <circle cx="12" cy="12" r="10"/>
+		  <line x1="12" y1="8" x2="12" y2="12"/>
+		  <line x1="12" y1="16" x2="12.01" y2="16"/>
+		</svg>
+		<span>Search and filters apply to <strong style="color:var(--text);">
+		  Table &amp; List views only</strong> — 
+		  Board always shows the full pipeline (up to 200 leads per stage).</span>
+	  </div>
+	  <div class="board-scroll" id="boardScroll"></div>
+	</div>
 
     <!-- LIST VIEW -->
     <div id="listView">
