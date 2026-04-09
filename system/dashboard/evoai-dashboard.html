@@ -2287,7 +2287,7 @@ const N8N_WEBHOOKS = {
   enrich_linkedin:    'https://your-n8n-instance/webhook/enrich-linkedin',
   add_to_crm:         'https://your-n8n-instance/webhook/add-to-crm',
   schedule_followup:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
-  send_whatsapp:      'https://your-n8n-instance/webhook/send-whatsapp',
+  send_whatsapp:      'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
   notify_slack:       'https://your-n8n-instance/webhook/notify-slack',
   send_nurture:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
 };
@@ -2433,7 +2433,7 @@ async function triggerN8n(actionId, lead, btnEl) {
  
  
  // ── PLACEHOLDER: block unconnected actions ──
-  const activeActions = ['send_intro_email', 'send_proposal', 'schedule_followup', 'send_nurture'];
+  const activeActions = ['send_intro_email', 'send_proposal', 'schedule_followup', 'send_nurture', 'send-whatsapp'];
   if (!activeActions.includes(actionId)) {
     toast('The automation to be configured!', 'warn');
     return;
