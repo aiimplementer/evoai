@@ -2447,7 +2447,7 @@ async function triggerN8n(actionId, lead, btnEl) {
         phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,followup_date:lead.followup,
         triggeredAt:new Date().toISOString()})});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
-    toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
+    toast(`Automation: ${actionId.replace(/_/g,' ')} completed successfully`,'success');
     if(_viewingDocId) {
       await window.dbAddActivity(_viewingDocId,{type:'auto',text:`Automation triggered: ${actionId.replace(/_/g,' ')}`,user:document.getElementById('sideUserName').textContent||'Team'});
       await loadActivities(_viewingDocId);
