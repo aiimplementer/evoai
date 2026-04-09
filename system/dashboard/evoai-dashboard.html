@@ -388,25 +388,13 @@
   }
 
   /* ── SIDEBAR ── */
-  aside {
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-    display: flex; flex-direction: column;
-    height: 100%; overflow: hidden;
-    position: relative;
-    transition: width .25s cubic-bezier(.4,0,.2,1);
-    width: 230px;
-    min-width: 0;
-  }
-  aside.collapsed { width: 52px; }
-  aside.collapsed .aside-label,
-  aside.collapsed .aside-count,
-  aside.collapsed .aside-count-danger,
-  aside.collapsed .aside-user-text,
-  aside.collapsed .aside-item span:not(svg):not(.aside-count):not(.aside-count-danger) { display: none; }
-  aside.collapsed .aside-item { justify-content: center; padding: 8px; }
-  aside.collapsed .aside-user-footer { justify-content: center; padding: 14px 8px; }
-
+	aside {
+	  border-right: 1px solid var(--border);
+	  background: var(--surface);
+	  display: flex; flex-direction: column;
+	  height: 100%; overflow: hidden;
+	  position: relative;   /* ← ADD THIS */
+	}
   .aside-scroll { flex: 1; overflow-y: auto; padding: 24px 0 8px; }
   .aside-scroll::-webkit-scrollbar { width: 4px; }
   .aside-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -452,24 +440,6 @@
     font-size: .65rem; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-
-  .sidebar-toggle {
-    position: absolute; top: 50%; right: -13px;
-    transform: translateY(-50%);
-    width: 26px; height: 26px; border-radius: 50%;
-    background: var(--surface2); border: 1px solid var(--border);
-    color: var(--muted); display: flex; align-items: center; justify-content: center;
-    cursor: pointer; z-index: 10; transition: all .18s; flex-shrink: 0;
-  }
-  .sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
-  .sidebar-toggle svg { transition: transform .25s; }
-  aside.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
-
-  .shell {
-    grid-template-columns: 230px 1fr;
-    transition: grid-template-columns .25s cubic-bezier(.4,0,.2,1);
-  }
-  .shell.sidebar-collapsed { grid-template-columns: 52px 1fr; }
 
   /* ── MAIN ── */
   main { padding: 30px 34px; overflow-y: auto; height: 100%; }
@@ -590,6 +560,7 @@
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--muted); padding: 4px 10px; border-radius: 6px;
   }
+  /* Jump to page */
   .jump-wrap {
     display: flex; align-items: center; gap: 6px;
     font-size: .72rem; color: var(--muted); font-family: var(--mono);
@@ -882,6 +853,72 @@
     .pagination { flex-direction: column; align-items: flex-start; }
     .jump-wrap { display: none; }
   }
+  
+  /* ── COLLAPSIBLE SIDEBAR ── */
+	aside {
+	  transition: width .25s cubic-bezier(.4,0,.2,1);
+	  width: 230px;
+	  min-width: 0;
+	  overflow: hidden;
+	}
+	aside.collapsed {
+	  width: 52px;
+	}
+	aside.collapsed .aside-label,
+	aside.collapsed .aside-count,
+	aside.collapsed .aside-count-danger,
+	aside.collapsed .aside-user-text,
+	aside.collapsed .aside-item span:not(svg):not(.aside-count):not(.aside-count-danger) {
+	  display: none;
+	}
+	aside.collapsed .aside-item {
+	  justify-content: center;
+	  padding: 8px;
+	}
+	aside.collapsed .aside-user-footer {
+	  justify-content: center;
+	  padding: 14px 8px;
+	}
+
+	.sidebar-toggle {
+	  position: absolute;
+	  top: 50%;
+	  right: -13px;
+	  transform: translateY(-50%);
+	  width: 26px;
+	  height: 26px;
+	  border-radius: 50%;
+	  background: var(--surface2);
+	  border: 1px solid var(--border);
+	  color: var(--muted);
+	  display: flex;
+	  align-items: center;
+	  justify-content: center;
+	  cursor: pointer;
+	  z-index: 10;
+	  transition: all .18s;
+	  flex-shrink: 0;
+	}
+	.sidebar-toggle:hover {
+	  border-color: var(--accent);
+	  color: var(--accent);
+	  background: rgba(0,229,160,.08);
+	}
+	.sidebar-toggle svg {
+	  transition: transform .25s;
+	}
+	aside.collapsed .sidebar-toggle svg {
+	  transform: rotate(180deg);
+	}
+
+	/* make shell columns dynamic */
+	.shell {
+	  grid-template-columns: 230px 1fr;
+	  transition: grid-template-columns .25s cubic-bezier(.4,0,.2,1);
+	}
+	.shell.sidebar-collapsed {
+	  grid-template-columns: 52px 1fr;
+	}
 </style>
 </head>
 <body>
@@ -946,9 +983,9 @@
 <div class="shell">
   <!-- SIDEBAR -->
   <aside id="sidebar">
-    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Pipeline</div>
@@ -988,6 +1025,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Lost <span class="aside-count" id="cnt-lost">—</span>
         </div>
+
         <!-- OVERDUE FILTER -->
         <div class="aside-item" id="overdueFilterItem" onclick="toggleOverdueFilter(this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1025,7 +1063,6 @@
         <div class="page-sub">Track, manage and convert your pipeline leads.</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <!-- VIEW TOGGLE -->
         <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;gap:2px;" id="viewToggle">
           <button onclick="setView('table',this)" id="btn-view-table" style="background:var(--surface);border:none;border-radius:5px;padding:6px 12px;color:var(--accent);font-family:var(--font);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>Table
@@ -1037,22 +1074,13 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>List
           </button>
         </div>
-
-        <!-- ── EXPORT PAGE BUTTON ── -->
         <button onclick="exportCSV()" class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export Page
-        </button>
-
-        <!-- ── EXPORT ALL BUTTON ── -->
-        <button onclick="exportAll()" class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;border-color:rgba(255,183,48,.4);color:var(--warn);">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export All
+          Export
         </button>
       </div>
     </div>
 
-    <!-- STATS -->
     <div class="stats-row" style="grid-template-columns:repeat(5,1fr);">
       <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value" id="s-total">—</div><div class="stat-sub">All time</div></div>
       <div class="stat-card"><div class="stat-label">New</div><div class="stat-value" id="s-new" style="color:var(--accent2)">—</div><div class="stat-sub">Awaiting contact</div></div>
@@ -1065,7 +1093,6 @@
       </div>
     </div>
 
-    <!-- TOOLBAR -->
     <div class="toolbar">
       <div class="search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1209,21 +1236,24 @@
       </div>
     </div>
 
-    <!-- BOARD VIEW — info banner always visible when board is active -->
-    <div id="boardView">
-      <div style="display:flex;align-items:center;gap:8px;
-        background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.22);
-        border-radius:8px;padding:7px 13px;margin-bottom:12px;
-        font-size:.76rem;color:var(--warn);">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <span>Search and filters apply to <strong style="color:var(--text);">Table &amp; List views only</strong> — Board always shows the full pipeline (up to 200 leads per stage).</span>
-      </div>
-      <div class="board-scroll" id="boardScroll"></div>
-    </div>
+    <!-- BOARD VIEW -->
+	<div id="boardView">
+	  <div style="display:flex;align-items:center;gap:8px;
+		background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.22);
+		border-radius:8px;padding:7px 13px;margin-bottom:12px;
+		font-size:.76rem;color:var(--warn);">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
+		  stroke="currentColor" stroke-width="2">
+		  <circle cx="12" cy="12" r="10"/>
+		  <line x1="12" y1="8" x2="12" y2="12"/>
+		  <line x1="12" y1="16" x2="12.01" y2="16"/>
+		</svg>
+		<span>Search and filters apply to <strong style="color:var(--text);">
+		  Table &amp; List views only</strong> — 
+		  Board always shows the full pipeline (up to 200 leads per stage).</span>
+	  </div>
+	  <div class="board-scroll" id="boardScroll"></div>
+	</div>
 
     <!-- LIST VIEW -->
     <div id="listView">
@@ -1420,46 +1450,6 @@
   </div>
 </div>
 
-<!-- ── EXPORT ALL CONFIRMATION MODAL ── -->
-<div class="overlay" id="exportAllOverlay">
-  <div class="modal" style="max-width:420px;">
-    <div class="modal-head">
-      <div class="modal-title" style="display:flex;align-items:center;gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-        Caution — High Read Operation
-      </div>
-      <button class="modal-close" onclick="closeModal('exportAllOverlay')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div style="background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.25);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        <div style="font-size:.78rem;color:var(--warn);font-weight:700;margin-bottom:6px;">⚠ This will read ALL leads from Firestore</div>
-        <div style="font-size:.76rem;color:var(--muted);line-height:1.6;">
-          Exporting all leads fetches every document in the collection.
-          With a large database this can result in <strong style="color:var(--text);">thousands of Firestore reads</strong>,
-          which may affect your billing quota.
-        </div>
-      </div>
-      <div style="font-size:.76rem;color:var(--muted);line-height:1.8;">
-        Current total leads: <strong style="color:var(--text);font-family:var(--mono);" id="exportAllCount">—</strong><br/>
-        Estimated reads: <strong style="color:var(--warn);font-family:var(--mono);" id="exportAllReads">—</strong><br/>
-        Active filters will be applied to the export.
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="pill-btn outline" onclick="closeModal('exportAllOverlay')">Cancel</button>
-      <button class="pill-btn primary" id="exportAllBtn"
-        style="background:var(--warn);color:#080c10;"
-        onclick="confirmExportAll()">
-        Yes, Export All
-      </button>
-    </div>
-  </div>
-</div>
-
 <!-- HELP OVERLAY BACKDROP -->
 <div class="help-overlay" id="helpOverlay" onclick="toggleHelpPanel()"></div>
 
@@ -1527,11 +1517,9 @@
       <div class="help-tip"><div class="help-tip-icon">💰</div><div class="help-tip-text"><strong>Pipeline Value:</strong> Computed once on load from the first 500 active leads (excludes Won/Lost). Hover the stat card for details.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🎯</div><div class="help-tip-text"><strong>Maximise scores fast:</strong> Fill in phone, LinkedIn, and deal value — these three fields alone add up to +45 points.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage. Each column loads up to 200 leads.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">🔍</div><div class="help-tip-text"><strong>Search scope:</strong> Search works on <strong>Table &amp; List views only</strong>. Board view always shows the full pipeline regardless of search.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">📤</div><div class="help-tip-text"><strong>Export All:</strong> Use with caution — it reads every lead document from Firestore and may affect your billing quota on large datasets.</div></div>
     </div>
   </div>
-  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.2 · Server-Side Pagination</div>
+  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.1 · Server-Side Pagination</div>
 </div>
 
 </div><!-- end #authShell -->
@@ -1541,13 +1529,12 @@
 
 <script>
 /* ════════════════════════════════════════════════════════════════
-   EVOAI LEAD MANAGER v3.2
-   Changes in this version:
-   - clearSearch() now calls loadPage('first') to refresh table/list
-   - Export Page button (current view only)
-   - Export All button with Firestore read caution modal
-   - Board view info banner (search/filter scope notice)
-   - Help panel updated with search scope + export tips
+   EVOAI LEAD MANAGER v3.1
+   New in this version:
+   - Last page button (uses limitToLast Firestore query)
+   - Jump-to-page input (chains forward from page 1)
+   - Overdue Follow-ups sidebar filter (client-side, 500-doc window)
+   - Pipeline Value stat card (computed once on first load)
 ════════════════════════════════════════════════════════════════ */
 
 const PAGE_SIZE   = 15;
@@ -1555,29 +1542,29 @@ let currentView   = 'table';
 let editingLeadId = null;
 let editingDocId  = null;
 let searchTimer   = null;
-let pipelineValueLoaded = false;
+let pipelineValueLoaded = false; // compute only once
 
 /* ── FILTER STATE ── */
 let activeFilters = { status: '', service: '', industry: '' };
 
 /* ── SERVER PAGINATION STATE ── */
-let pageNumber    = 1;
-let totalCount    = 0;
-let pageFirstSnap = null;
-let pageLastSnap  = null;
-let pageStack     = [];
+let pageNumber     = 1;
+let totalCount     = 0;
+let pageFirstSnap  = null;
+let pageLastSnap   = null;
+let pageStack      = [];
 
 /* ── CURRENT DATA ── */
-let currentLeads  = [];
-let searchResults = [];
-let isSearchMode  = false;
-let isOverdueMode = false;
+let currentLeads   = [];
+let searchResults  = [];
+let isSearchMode   = false;
+let isOverdueMode  = false;
 
 /* ── SELECTION ── */
-let selectedLeads = new Map();
+let selectedLeads  = new Map();
 
 /* ── BOARD CACHE ── */
-let boardLeads    = {};
+let boardLeads     = {};
 
 const BOARD_STAGES = [
   { key:'New',           label:'New',           color:'#e8f0fe' },
@@ -1606,7 +1593,7 @@ window.refreshAll = async function() {
 };
 
 /* ════════════════════════════════════════════════════
-   COUNTS
+   COUNTS — zero document reads + pipeline value once
 ════════════════════════════════════════════════════ */
 async function refreshCounts() {
   try {
@@ -1620,6 +1607,7 @@ async function refreshCounts() {
     document.getElementById('cnt-negotiation').textContent = counts['Negotiation']   || 0;
     document.getElementById('cnt-won').textContent         = counts['Won']           || 0;
     document.getElementById('cnt-lost').textContent        = counts['Lost']          || 0;
+
     document.getElementById('s-total').textContent = counts['ALL']       || 0;
     document.getElementById('s-new').textContent   = counts['New']       || 0;
     document.getElementById('s-qual').textContent  = counts['Qualified'] || 0;
@@ -1628,6 +1616,7 @@ async function refreshCounts() {
     console.warn('refreshCounts failed', e);
   }
 
+  // Pipeline value — compute once only on first load
   if (!pipelineValueLoaded) {
     pipelineValueLoaded = true;
     try {
@@ -1635,18 +1624,21 @@ async function refreshCounts() {
       const activeLeads = await window.dbSearchLeads('', {}, 500);
       const total = activeLeads
         .filter(l => pipelineStatuses.includes(l.status))
-        .reduce((sum, l) => sum + (Number(String(l.dealvalue || '').replace(/[^0-9.]/g, '')) || 0), 0);
+        .reduce((sum, l) => {
+          return sum + (Number(String(l.dealvalue || '').replace(/[^0-9.]/g, '')) || 0);
+        }, 0);
 
       let formatted;
-      if (total >= 1_000_000)  formatted = '$' + (total / 1_000_000).toFixed(1) + 'M';
-      else if (total >= 1_000) formatted = '$' + (total / 1_000).toFixed(0) + 'k';
-      else if (total > 0)      formatted = '$' + total.toLocaleString();
-      else                     formatted = '—';
+      if (total >= 1_000_000)      formatted = '$' + (total / 1_000_000).toFixed(1) + 'M';
+      else if (total >= 1_000)     formatted = '$' + (total / 1_000).toFixed(0) + 'k';
+      else if (total > 0)          formatted = '$' + total.toLocaleString();
+      else                         formatted = '—';
 
       document.getElementById('s-pipeline').textContent = formatted;
       document.getElementById('s-pipeline').title = 'Sampled from first 500 active leads (excl. Won / Lost)';
       document.getElementById('s-pipeline-sub').textContent = 'Active deals · est. 500 leads';
 
+      // Overdue count for sidebar badge
       const today = new Date().toISOString().slice(0, 10);
       const overdueCount = activeLeads.filter(l =>
         l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost'
@@ -1661,18 +1653,19 @@ async function refreshCounts() {
 
 /* ════════════════════════════════════════════════════
    CORE PAGE LOADER
+   direction: 'first' | 'next' | 'prev' | 'last'
 ════════════════════════════════════════════════════ */
 async function loadPage(direction = 'first') {
   if (isSearchMode || isOverdueMode) return;
   setLoadingState(true);
 
   try {
-    let afterSnap   = null;
-    let beforeSnap  = null;
+    let afterSnap  = null;
+    let beforeSnap = null;
     let useLastPage = false;
 
     if (direction === 'next') {
-      afterSnap = pageLastSnap;
+      afterSnap  = pageLastSnap;
       pageNumber++;
     } else if (direction === 'prev') {
       pageNumber = Math.max(1, pageNumber - 1);
@@ -1685,14 +1678,18 @@ async function loadPage(direction = 'first') {
       pageStack = pageStack.slice(0, pageNumber);
     } else if (direction === 'last') {
       useLastPage = true;
-      totalCount  = await window.dbCountLeads(activeFilters);
-      pageNumber  = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-      pageStack   = [];
+      totalCount = await window.dbCountLeads(activeFilters);
+      pageNumber = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+      pageStack = [];
     } else {
-      pageNumber = 1; pageStack = [];
-      afterSnap = null; beforeSnap = null;
+      // 'first'
+      pageNumber = 1;
+      pageStack  = [];
+      afterSnap  = null;
+      beforeSnap = null;
     }
 
+    // Get total count
     if (direction !== 'last') {
       totalCount = await window.dbCountLeads(activeFilters);
     }
@@ -1727,27 +1724,36 @@ function resetPagination() {
   totalCount = 0;
 }
 
+/* ── Pagination nav buttons ── */
 async function goNextPage() {
   if (isSearchMode || isOverdueMode) return;
-  if (pageNumber >= Math.ceil(totalCount / PAGE_SIZE)) return;
+  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
+  if (pageNumber >= maxPage) return;
   await loadPage('next');
 }
+
 async function goPrevPage() {
   if (isSearchMode || isOverdueMode || pageNumber <= 1) return;
   await loadPage('prev');
 }
+
 async function goFirstPage() {
   if (isSearchMode || isOverdueMode || pageNumber === 1) return;
   await loadPage('first');
 }
+
 async function goLastPage() {
   if (isSearchMode || isOverdueMode) return;
-  if (pageNumber >= Math.ceil(totalCount / PAGE_SIZE)) return;
+  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
+  if (pageNumber >= maxPage) return;
   await loadPage('last');
 }
 
+/* ── Jump to page ── */
 async function goJumpPage() {
   if (isSearchMode || isOverdueMode) return;
+
+  // Read from whichever input is visible
   const tableInput = document.getElementById('jumpInput');
   const listInput  = document.getElementById('listJumpInput');
   const raw = (tableInput && tableInput.value) || (listInput && listInput.value) || '';
@@ -1756,13 +1762,18 @@ async function goJumpPage() {
 
   const maxPage = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const target  = Math.max(1, Math.min(maxPage, parseInt(raw) || 1));
-  if (target === pageNumber) return;
-  if (target === 1)       { await loadPage('first'); return; }
-  if (target === maxPage) { await loadPage('last');  return; }
 
+  if (target === pageNumber) return;
+  if (target === 1)        { await loadPage('first'); return; }
+  if (target === maxPage)  { await loadPage('last');  return; }
+
+  // For mid-range: reset to first, step forward page by page
+  // Each step is a cheap Firestore cursor query (only fetches 1 doc per step to get the cursor,
+  // then fetches 15 for the actual target page).
   toast(`Jumping to page ${target} of ${maxPage}…`, 'success');
   await loadPage('first');
   for (let i = 1; i < target; i++) {
+    // Lightweight forward-step: just advance the cursor, don't re-render until the final page
     try {
       const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, pageLastSnap, null, false);
       pageFirstSnap = result.firstSnap;
@@ -1789,6 +1800,7 @@ function updatePaginationControls() {
   const counterTxt = `Page ${pageNumber} of ${maxPage}`;
   const showPag    = totalCount > PAGE_SIZE || pageNumber > 1;
 
+  // Table view
   const pag = document.getElementById('pagination');
   pag.style.display = showPag ? 'flex' : 'none';
   if (showPag) {
@@ -1802,6 +1814,7 @@ function updatePaginationControls() {
     if (ji) ji.max = maxPage;
   }
 
+  // List view
   const listPag = document.getElementById('listPagination');
   listPag.style.display = showPag ? 'flex' : 'none';
   if (showPag) {
@@ -1820,9 +1833,14 @@ function updatePaginationControls() {
    OVERDUE FILTER
 ════════════════════════════════════════════════════ */
 function toggleOverdueFilter(el) {
-  if (isOverdueMode) { clearOverdueFilter(); return; }
+  if (isOverdueMode) {
+    clearOverdueFilter();
+    return;
+  }
+  // Deselect all sidebar items, activate overdue
   document.querySelectorAll('.aside-item').forEach(i => {
-    i.classList.remove('active'); i.classList.remove('active-danger');
+    i.classList.remove('active');
+    i.classList.remove('active-danger');
   });
   el.classList.add('active-danger');
   isOverdueMode = true;
@@ -1844,6 +1862,7 @@ async function runOverdueFilter() {
     document.getElementById('cnt-overdue').textContent = overdue.length;
     document.getElementById('overdueModeBanner').classList.add('show');
     document.getElementById('overdueResultCount').textContent = overdue.length;
+    // Hide server pagination during overdue mode
     document.getElementById('pagination').style.display     = 'none';
     document.getElementById('listPagination').style.display = 'none';
     renderCurrentView();
@@ -1859,6 +1878,7 @@ function clearOverdueFilter() {
   searchResults = [];
   document.getElementById('overdueModeBanner').classList.remove('show');
   document.getElementById('overdueFilterItem').classList.remove('active-danger');
+  // Reactivate "All Leads"
   const allItem = document.querySelector('.aside-item');
   if (allItem) allItem.classList.add('active');
   updatePaginationControls();
@@ -1866,13 +1886,14 @@ function clearOverdueFilter() {
 }
 
 /* ════════════════════════════════════════════════════
-   FILTERS
+   FILTERS — sidebar status + dropdowns
 ════════════════════════════════════════════════════ */
 function setStatusFilter(status, el) {
   if (isOverdueMode) clearOverdueFilter();
   activeFilters.status = status;
   document.querySelectorAll('.aside-item').forEach(i => {
-    i.classList.remove('active'); i.classList.remove('active-danger');
+    i.classList.remove('active');
+    i.classList.remove('active-danger');
   });
   if (el) el.classList.add('active');
   clearSearch();
@@ -1889,7 +1910,7 @@ function onFilterChange() {
 }
 
 /* ════════════════════════════════════════════════════
-   SEARCH
+   SEARCH — client-side over 500-doc window
 ════════════════════════════════════════════════════ */
 function onSearchInput(q) {
   clearTimeout(searchTimer);
@@ -1919,7 +1940,6 @@ async function runSearch(term) {
   }
 }
 
-/* ── FIX: clearSearch now reloads the table/list ── */
 function clearSearch() {
   const inp = document.getElementById('searchInput');
   if (inp) inp.value = '';
@@ -1927,7 +1947,7 @@ function clearSearch() {
   searchResults = [];
   document.getElementById('searchModeBanner').classList.remove('show');
   updatePaginationControls();
-  loadPage('first'); // ← reload fresh data after clearing search
+  loadPage('first');  
 }
 
 /* ════════════════════════════════════════════════════
@@ -1948,7 +1968,7 @@ function renderCurrentView() {
   document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
   if (currentView === 'table') renderTable(currentLeads);
-  else if (currentView === 'list') renderList(currentLeads);
+  else if (currentView === 'list')  renderList(currentLeads);
 }
 
 /* ════════════════════════════════════════════════════
@@ -2007,7 +2027,9 @@ async function loadBoardView() {
   document.getElementById('boardScroll').innerHTML =
     `<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading board…</div>`;
   try {
-    const stageData = await Promise.all(BOARD_STAGES.map(s => window.dbLoadStage(s.key)));
+    const stageData = await Promise.all(
+      BOARD_STAGES.map(s => window.dbLoadStage(s.key))
+    );
     BOARD_STAGES.forEach((s,i) => { boardLeads[s.key] = stageData[i]; });
     renderBoard();
   } catch(e) {
@@ -2187,7 +2209,9 @@ function openCreate() {
 async function editLeadById(leadId, docId) {
   let lead = currentLeads.find(l => l.leadId === leadId)
           || searchResults.find(l => l.leadId === leadId);
-  if (!lead) { lead = await window.dbGetLead(docId); }
+  if (!lead) {
+    lead = await window.dbGetLead(docId);
+  }
   if (!lead) { toast('Lead not found', 'error'); return; }
 
   editingLeadId = leadId;
@@ -2283,10 +2307,10 @@ const N8N_WEBHOOKS = {
   send_nurture:       'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
 };
 const AUTO_ACTIONS = [
-  {id:'send_intro_email', label:'Send Intro Email',   icon:'📧', badge:'Email'},
-  {id:'send_proposal',    label:'Send Proposal',      icon:'📄', badge:'Email'},
-  {id:'schedule_followup',label:'Schedule Follow-Up', icon:'📅', badge:'Email'},
-  {id:'send_nurture',     label:'Remind Me in 3 Days',icon:'🔄', badge:'Email'},
+  {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
+  {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
+  {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Email'},
+  {id:'send_nurture', label:'Remind Me in 3 Days',  icon:'🔄', badge:'Email'},
 ];
 const OUTREACH_ACTIONS = [
   {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
@@ -2341,17 +2365,21 @@ async function viewLead(leadId, docId) {
   document.getElementById('timelineBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
   await loadActivities(_viewingDocId);
 
-  window._viewingLead = lead;
-  document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
-    `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`
-  ).join('');
-  document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
-    `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
-      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-    </button>`
-  ).join('');
+  const leadPayload = JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
+  // Store the current lead globally so buttons can access it safely
+	window._viewingLead = lead;
+
+	document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
+	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+	  </button>`
+	).join('');
+
+	document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
+	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+	  </button>`
+	).join('');
 
   const na = document.getElementById('viewNextAction');
   if (lead.followup) {
@@ -2409,23 +2437,28 @@ async function addNote() {
    n8n
 ════════════════════════════════════════════════════ */
 function handleAutoBtn(btnEl) {
-  triggerN8n(btnEl.dataset.action, window._viewingLead, btnEl);
+  const actionId = btnEl.dataset.action;
+  triggerN8n(actionId, window._viewingLead, btnEl);
 }
 
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
-  const activeActions = ['send_intro_email','send_proposal','schedule_followup','send_nurture','send_whatsapp'];
+ 
+ 
+ // ── PLACEHOLDER: block unconnected actions ──
+  const activeActions = ['send_intro_email', 'send_proposal', 'schedule_followup', 'send_nurture', 'send_whatsapp'];
   if (!activeActions.includes(actionId)) {
     toast('The automation to be configured!', 'warn');
     return;
   }
+ 
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,
-        actId:actionId,followup_date:lead.followup,triggeredAt:new Date().toISOString()})});
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,followup_date:lead.followup,
+        triggeredAt:new Date().toISOString()})});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`Automation: ${actionId.replace(/_/g,' ')} completed successfully`,'success');
     if(_viewingDocId) {
@@ -2439,7 +2472,7 @@ async function triggerN8n(actionId, lead, btnEl) {
 }
 
 /* ════════════════════════════════════════════════════
-   EXPORT PAGE (current view, current page only)
+   EXPORT CSV
 ════════════════════════════════════════════════════ */
 function exportCSV() {
   const leads = (isSearchMode || isOverdueMode) ? searchResults : currentLeads;
@@ -2452,52 +2485,6 @@ function exportCSV() {
   a.href = url; a.download = 'leads-export.csv'; a.click();
   URL.revokeObjectURL(url);
   toast(`Exported ${leads.length} leads as CSV`,'success');
-}
-
-/* ════════════════════════════════════════════════════
-   EXPORT ALL — opens caution modal first
-════════════════════════════════════════════════════ */
-function exportAll() {
-  const count = totalCount || 0;
-  document.getElementById('exportAllCount').textContent = count > 0 ? count.toLocaleString() : 'Unknown (refresh first)';
-  document.getElementById('exportAllReads').textContent = count > 0 ? `~${count.toLocaleString()} reads` : 'Unknown';
-  document.getElementById('exportAllOverlay').classList.add('open');
-}
-
-async function confirmExportAll() {
-  const btn = document.getElementById('exportAllBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:13px;height:13px;display:inline-block;margin-right:6px;"></div> Fetching…';
-
-  try {
-    const allLeads = await window.dbSearchLeads('', activeFilters, 99999);
-    if (!allLeads.length) {
-      toast('No leads found to export', 'warn');
-      closeModal('exportAllOverlay');
-      return;
-    }
-    const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
-    const csv = [
-      cols.join(','),
-      ...allLeads.map(l => cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `leads-full-export-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    toast(`Exported all ${allLeads.length} leads as CSV`, 'success');
-    closeModal('exportAllOverlay');
-  } catch(e) {
-    toast('Export failed: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = 'Yes, Export All';
-  }
 }
 
 /* ════════════════════════════════════════════════════
@@ -2639,6 +2626,7 @@ function toggleSidebar() {
   localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
 }
 
+// Restore state on load
 (function() {
   if (localStorage.getItem('sidebarCollapsed') === 'true') {
     const sidebar = document.getElementById('sidebar');
