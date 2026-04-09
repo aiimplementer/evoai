@@ -2288,8 +2288,8 @@ const N8N_WEBHOOKS = {
   add_to_crm:         'https://your-n8n-instance/webhook/add-to-crm',
   schedule_followup:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
   send_whatsapp:      'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
-  notify_slack:       'https://your-n8n-instance/webhook/notify-slack',
-  send_nurture:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
+  notify_telegram:    'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
+  send_nurture:       'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
 };
 const AUTO_ACTIONS = [
   {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
@@ -2301,7 +2301,7 @@ const AUTO_ACTIONS = [
 ];
 const OUTREACH_ACTIONS = [
   {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
-  {id:'notify_slack',  label:'Notify Slack',  icon:'🔔', badge:'Slack'},
+  {id:'notify_telegram',  label:'Notify Telegram',  icon:'🔔', badge:'Telegram'},
 ];
 
 async function viewLead(leadId, docId) {
