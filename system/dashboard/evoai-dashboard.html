@@ -2431,6 +2431,14 @@ function handleAutoBtn(btnEl) {
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
  
+ 
+ // ── PLACEHOLDER: block unconnected actions ──
+  const activeActions = ['send_intro_email', 'send_proposal'];
+  if (!activeActions.includes(actionId)) {
+    toast('This automation to be configured', 'warn');
+    return;
+  }
+ 
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
