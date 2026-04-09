@@ -2286,18 +2286,18 @@ const N8N_WEBHOOKS = {
   send_proposal:      'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
   enrich_linkedin:    'https://your-n8n-instance/webhook/enrich-linkedin',
   add_to_crm:         'https://your-n8n-instance/webhook/add-to-crm',
-  schedule_followup:  'https://your-n8n-instance/webhook/schedule-followup',
+  schedule_followup:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
   send_whatsapp:      'https://your-n8n-instance/webhook/send-whatsapp',
   notify_slack:       'https://your-n8n-instance/webhook/notify-slack',
-  send_nurture_seq:   'https://your-n8n-instance/webhook/nurture-sequence',
+  send_nurture:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/32fec80e-635e-412f-b4a5-68690db1edb9',
 };
 const AUTO_ACTIONS = [
   {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
   {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
+  {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Email'},
+  {id:'send_nurture', label:'Remind Me in 3 Days',  icon:'🔄', badge:'Email'},
   {id:'enrich_linkedin',  label:'Enrich via LinkedIn', icon:'🔍', badge:'Enrich'},
-  {id:'add_to_crm',       label:'Sync to CRM',         icon:'🔗', badge:'Sync'},
-  {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Cal'},
-  {id:'send_nurture_seq', label:'Start Nurture Seq.',  icon:'🔄', badge:'Email'},
+  {id:'add_to_crm',       label:'Sync to CRM',         icon:'🔗', badge:'Sync'},  
 ];
 const OUTREACH_ACTIONS = [
   {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
@@ -2433,7 +2433,7 @@ async function triggerN8n(actionId, lead, btnEl) {
  
  
  // ── PLACEHOLDER: block unconnected actions ──
-  const activeActions = ['send_intro_email', 'send_proposal'];
+  const activeActions = ['send_intro_email', 'send_proposal', 'schedule_followup', 'send_nurture'];
   if (!activeActions.includes(actionId)) {
     toast('The automation to be configured!', 'warn');
     return;
@@ -2444,7 +2444,7 @@ async function triggerN8n(actionId, lead, btnEl) {
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,
+        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,followup_date:lead.followup,
         triggeredAt:new Date().toISOString()})});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`n8n: ${actionId.replace(/_/g,' ')} triggered`,'success');
