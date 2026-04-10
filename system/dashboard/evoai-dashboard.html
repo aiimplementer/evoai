@@ -842,6 +842,40 @@
   /* ── NEXT ACTION CHIP ── */
   .next-action-chip { display: inline-flex; align-items: center; gap: 5px; background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.2); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: .72rem; font-weight: 600; }
 
+  /* ── REPORT TAB ── */
+  .report-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .report-btn {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 12px 14px; cursor: pointer;
+    font-family: var(--font); font-size: .78rem; font-weight: 600;
+    color: var(--muted); transition: all .16s; text-align: left;
+  }
+  .report-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+  .report-btn.loading { border-color: var(--warn); color: var(--warn); pointer-events: none; }
+  .report-btn.active  { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
+  .report-btn-icon { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: .9rem; flex-shrink: 0; background: rgba(0,229,160,.1); border: 1px solid rgba(0,229,160,.2); }
+  .report-btn-label { flex: 1; }
+  .report-btn-sub { font-size: .64rem; color: var(--muted); font-weight: 400; margin-top: 2px; font-family: var(--mono); }
+  .report-frame-wrap {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; overflow: hidden; min-height: 200px;
+  }
+  .report-frame-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 20px; color: var(--muted); gap: 10px; font-size: .8rem;
+  }
+  .report-frame-placeholder svg { opacity: .3; }
+  .report-frame {
+    width: 100%; border: none; min-height: 420px; display: block;
+    background: #fff; border-radius: 9px;
+  }
+  .report-error {
+    padding: 18px; font-size: .78rem; color: var(--danger);
+    background: rgba(255,77,109,.06); border-radius: 9px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
   /* ── HELP PANEL ── */
   #helpPanel { position: fixed; top: 0; right: -480px; bottom: 0; z-index: 500; width: 460px; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -20px 0 60px rgba(0,0,0,.5); display: flex; flex-direction: column; transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
   #helpPanel.open { right: 0; }
@@ -1449,6 +1483,7 @@
         <button class="view-tab active" onclick="switchViewTab('details',this)">Details</button>
         <button class="view-tab"        onclick="switchViewTab('timeline',this)">Timeline</button>
         <button class="view-tab"        onclick="switchViewTab('automations',this)">Automations</button>
+        <button class="view-tab"        onclick="switchViewTab('report',this)">📊 View Report</button>
       </div>
 
       <div id="vtab-details"><div id="viewBody"></div></div>
@@ -1482,6 +1517,35 @@
             Quick Outreach
           </div>
           <div class="auto-grid" id="outreachGrid"></div>
+        </div>
+      </div>
+
+      <div id="vtab-report" style="display:none;">
+        <div class="auto-title" style="margin-bottom:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+          Reports
+        </div>
+        <div class="report-btn-grid">
+          <button class="report-btn" id="reportBtnDaily" onclick="fetchReport('daily', this)">
+            <div class="report-btn-icon">📅</div>
+            <div class="report-btn-label">
+              View Daily Report
+              <div class="report-btn-sub">Today's leads &amp; activity</div>
+            </div>
+          </button>
+          <button class="report-btn" id="reportBtnPipeline" onclick="fetchReport('pipeline', this)">
+            <div class="report-btn-icon">📊</div>
+            <div class="report-btn-label">
+              View Status Pipeline
+              <div class="report-btn-sub">Pipeline stage breakdown</div>
+            </div>
+          </button>
+        </div>
+        <div class="report-frame-wrap" id="reportFrameWrap">
+          <div class="report-frame-placeholder" id="reportPlaceholder">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            Select a report above to load it
+          </div>
         </div>
       </div>
     </div>
@@ -2466,6 +2530,10 @@ async function viewLead(leadId, docId) {
   }
 
   switchViewTab('details', document.querySelector('.view-tab'));
+  // Reset report tab state for new lead
+  ['reportBtnDaily','reportBtnPipeline'].forEach(id => { const b = document.getElementById(id); if(b) b.classList.remove('active','loading'); });
+  const rpWrap = document.getElementById('reportFrameWrap');
+  if(rpWrap) rpWrap.innerHTML = `<div class="report-frame-placeholder" id="reportPlaceholder"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>Select a report above to load it</div>`;
   document.getElementById('viewOverlay').classList.add('open');
 }
 
@@ -2568,8 +2636,85 @@ async function triggerN8n(actionId, lead, btnEl) {
 }
 
 /* ════════════════════════════════════════════════════
-   EXPORT CSV — includes assignment fields
+   REPORTS — n8n webhooks returning HTML
 ════════════════════════════════════════════════════ */
+const N8N_REPORT_WEBHOOKS = {
+  daily:    'https://your-n8n-instance/webhook/daily-report',
+  pipeline: 'https://your-n8n-instance/webhook/pipeline-report',
+};
+
+async function fetchReport(reportType, btnEl) {
+  const url = N8N_REPORT_WEBHOOKS[reportType];
+  const wrap = document.getElementById('reportFrameWrap');
+
+  // Reset active state on both buttons
+  ['reportBtnDaily','reportBtnPipeline'].forEach(id => {
+    const b = document.getElementById(id);
+    if(b) b.classList.remove('active','loading');
+  });
+  btnEl.classList.add('loading');
+
+  // Show loading indicator
+  wrap.innerHTML = `<div class="report-frame-placeholder"><div class="spinner" style="margin:0 auto 10px"></div><span>Loading report…</span></div>`;
+
+  try {
+    const lead = window._viewingLead || {};
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reportType,
+        leadId:          lead.leadId          || '',
+        name:            lead.name            || '',
+        email:           lead.email           || '',
+        company:         lead.company         || '',
+        status:          lead.status          || '',
+        service:         lead.service         || '',
+        assignedTo:      lead.assignedTo      || '',
+        assignedToEmail: lead.assignedToEmail || '',
+        requestedAt:     new Date().toISOString(),
+      }),
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const html = await resp.text();
+
+    // Render the returned HTML in a sandboxed iframe
+    wrap.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.className = 'report-frame';
+    iframe.sandbox = 'allow-same-origin allow-scripts';
+    iframe.title = reportType === 'daily' ? 'Daily Report' : 'Status Pipeline Report';
+    wrap.appendChild(iframe);
+
+    // Write HTML into the iframe
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    // Auto-size iframe to content height
+    iframe.onload = () => {
+      try {
+        const h = iframe.contentDocument.body.scrollHeight;
+        if (h > 0) iframe.style.minHeight = Math.max(200, h + 20) + 'px';
+      } catch(e) {}
+    };
+
+    btnEl.classList.remove('loading');
+    btnEl.classList.add('active');
+    toast(`${reportType === 'daily' ? 'Daily Report' : 'Status Pipeline'} loaded`, 'success');
+
+  } catch(e) {
+    wrap.innerHTML = `<div class="report-error">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Failed to load report: ${esc(e.message)} — check the webhook URL in N8N_REPORT_WEBHOOKS.
+    </div>`;
+    btnEl.classList.remove('loading');
+    toast('Report webhook failed — check URL config', 'error');
+  }
+}
 function exportCSV() {
   const leads = (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults : currentLeads;
   if(!leads.length) { toast('No leads on this page to export','warn'); return; }
@@ -2700,7 +2845,7 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function switchViewTab(tab, btnEl) {
-  ['details','timeline','automations'].forEach(t => { document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none'; });
+  ['details','timeline','automations','report'].forEach(t => { document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none'; });
   document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
   if(btnEl) btnEl.classList.add('active');
 }
