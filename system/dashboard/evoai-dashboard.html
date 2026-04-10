@@ -1526,14 +1526,14 @@
           Reports
         </div>
         <div class="report-btn-grid">
-          <button class="report-btn" id="reportBtnDaily" onclick="fetchReport('daily', this)">
+          <button class="report-btn" id="reportBtnDaily" onclick="fetchReport('full_pipeline', this)">
             <div class="report-btn-icon">📅</div>
             <div class="report-btn-label">
-              View Daily Report
-              <div class="report-btn-sub">Today's leads &amp; activity</div>
+              View Full Activity
+              <div class="report-btn-sub">Pipeline breakdown</div>
             </div>
           </button>
-          <button class="report-btn" id="reportBtnPipeline" onclick="fetchReport('pipeline', this)">
+          <button class="report-btn" id="reportBtnPipeline" onclick="fetchReport('stage_pipeline', this)">
             <div class="report-btn-icon">📊</div>
             <div class="report-btn-label">
               View Status Pipeline
@@ -2639,8 +2639,8 @@ async function triggerN8n(actionId, lead, btnEl) {
    REPORTS — n8n webhooks returning HTML
 ════════════════════════════════════════════════════ */
 const N8N_REPORT_WEBHOOKS = {
-  daily:    'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/view-report',
-  pipeline: 'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/view-report',
+  full_pipeline:    'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/view-report',
+  stage_pipeline:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/view-report',
 };
 
 async function fetchReport(reportType, btnEl) {
