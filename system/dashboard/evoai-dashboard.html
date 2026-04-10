@@ -876,6 +876,102 @@
     display: flex; align-items: center; gap: 8px;
   }
 
+  /* ── DASHBOARD REPORT BAR ── */
+  .dash-report-bar {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 16px; margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .dash-report-label {
+    font-size: .65rem; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    padding-right: 10px; border-right: 1px solid var(--border);
+    margin-right: 4px;
+  }
+  .dash-report-btns { display: flex; gap: 7px; flex-wrap: wrap; }
+  .dash-rep-btn {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; padding: 7px 14px; cursor: pointer;
+    font-family: var(--font); font-size: .76rem; font-weight: 600;
+    color: var(--muted); transition: all .16s;
+  }
+  .dash-rep-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+  .dash-rep-btn.loading { border-color: var(--warn); color: var(--warn); pointer-events: none; }
+  .dash-rep-btn.active  { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
+  .dash-rep-btn .rep-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dash-rep-btn:nth-child(1) .rep-dot { background: var(--accent2); }
+  .dash-rep-btn:nth-child(2) .rep-dot { background: #c084fc; }
+  .dash-rep-btn:nth-child(3) .rep-dot { background: var(--accent); }
+
+  /* ── DASHBOARD REPORT MODAL ── */
+  #dashReportModal {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(4,8,14,.88); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center;
+  }
+  #dashReportModal.open { display: flex; }
+  .dash-report-dialog {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; width: 92vw; max-width: 900px;
+    max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 40px 100px rgba(0,0,0,.7); animation: slideUp .22s ease;
+  }
+  .dash-report-dialog-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .dash-report-dialog-title {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .dash-report-dialog-title .rep-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: rgba(0,229,160,.1); border: 1px solid rgba(0,229,160,.2);
+    display: flex; align-items: center; justify-content: center; font-size: .95rem;
+  }
+  .dash-report-dialog-title h3 { font-size: .95rem; font-weight: 700; }
+  .dash-report-dialog-title p  { font-size: .68rem; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+  .dash-report-dialog-body {
+    flex: 1; overflow-y: auto; padding: 0;
+  }
+  .dash-report-loading {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; padding: 60px 20px;
+    color: var(--muted);
+  }
+  .dash-report-loading p { font-size: .8rem; font-family: var(--mono); letter-spacing: .06em; }
+  .dash-report-content-wrap {
+    padding: 0; min-height: 300px;
+  }
+  .dash-report-html-frame {
+    width: 100%; min-height: 400px; border: none; display: block;
+    background: #fff; border-bottom-left-radius: 14px; border-bottom-right-radius: 14px;
+  }
+  .dash-report-error {
+    padding: 24px; font-size: .82rem; color: var(--danger);
+    background: rgba(255,77,109,.06); border-radius: 9px; margin: 16px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .dash-report-dialog-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 22px; border-top: 1px solid var(--border); flex-shrink: 0;
+    gap: 8px; flex-wrap: wrap;
+  }
+  .dash-report-dialog-foot .rep-tabs {
+    display: flex; gap: 5px;
+  }
+  .dash-rep-tab {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-family: var(--font);
+    font-size: .73rem; font-weight: 600; cursor: pointer; transition: all .14s;
+  }
+  .dash-rep-tab:hover { border-color: var(--accent); color: var(--accent); }
+  .dash-rep-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
+
   /* ── HELP PANEL ── */
   #helpPanel { position: fixed; top: 0; right: -480px; bottom: 0; z-index: 500; width: 460px; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -20px 0 60px rgba(0,0,0,.5); display: flex; flex-direction: column; transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
   #helpPanel.open { right: 0; }
@@ -1123,6 +1219,31 @@
 
   <!-- MAIN -->
   <main>
+    <!-- DASHBOARD REPORT BAR -->
+    <div class="dash-report-bar" id="dashReportBar">
+      <div class="dash-report-label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Dashboard Reports
+      </div>
+      <div class="dash-report-btns">
+        <button class="dash-rep-btn" id="dashRepBtnDaily" onclick="openDashReport('daily', this)">
+          <span class="rep-dot"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Daily Report
+        </button>
+        <button class="dash-rep-btn" id="dashRepBtnWeekly" onclick="openDashReport('weekly', this)">
+          <span class="rep-dot"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Weekly Report
+        </button>
+        <button class="dash-rep-btn" id="dashRepBtnSummary" onclick="openDashReport('summary', this)">
+          <span class="rep-dot"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Summary Report
+        </button>
+      </div>
+    </div>
+
     <div class="page-header">
       <div>
         <div class="page-title">Lead Management</div>
@@ -1637,6 +1758,37 @@
     </div>
   </div>
   <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.2 · Assignment Fields</div>
+</div>
+
+
+<!-- DASHBOARD REPORT MODAL -->
+<div id="dashReportModal">
+  <div class="dash-report-dialog">
+    <div class="dash-report-dialog-head">
+      <div class="dash-report-dialog-title">
+        <div class="rep-icon" id="dashRepModalIcon">📅</div>
+        <div>
+          <h3 id="dashRepModalTitle">Daily Report</h3>
+          <p id="dashRepModalSub">Loading report from n8n…</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeDashReport()">✕</button>
+    </div>
+    <div class="dash-report-dialog-body" id="dashRepModalBody">
+      <div class="dash-report-loading" id="dashRepLoading">
+        <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+        <p>Fetching report…</p>
+      </div>
+    </div>
+    <div class="dash-report-dialog-foot">
+      <div class="rep-tabs" id="dashRepTabs">
+        <button class="dash-rep-tab active" id="dashRepTabDaily"   onclick="openDashReport('daily',   document.getElementById('dashRepBtnDaily'))">Daily</button>
+        <button class="dash-rep-tab"        id="dashRepTabWeekly"  onclick="openDashReport('weekly',  document.getElementById('dashRepBtnWeekly'))">Weekly</button>
+        <button class="dash-rep-tab"        id="dashRepTabSummary" onclick="openDashReport('summary', document.getElementById('dashRepBtnSummary'))">Summary</button>
+      </div>
+      <button class="pill-btn outline" onclick="closeDashReport()">Close</button>
+    </div>
+  </div>
 </div>
 
 </div><!-- end #authShell -->
@@ -2810,8 +2962,146 @@ function bulkExport() {
   toast(`Exported ${leads.length} selected leads`, 'success');
 }
 
+
 /* ════════════════════════════════════════════════════
-   SCORE / HELPERS
+   DASHBOARD REPORT (n8n hook)
+════════════════════════════════════════════════════ */
+
+// ── Configure your n8n webhook URLs here ──
+const DASH_REPORT_HOOKS = {
+  daily:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/daily_report',
+  weekly:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/weekly_report',
+  summary: 'https://YOUR_N8N_HOST/webhook/summary-report',
+};
+
+const DASH_REPORT_META = {
+  daily:   { icon: '📅', title: 'Daily Report',   sub: 'Today\'s lead activity & conversions' },
+  weekly:  { icon: '📊', title: 'Weekly Report',  sub: 'This week\'s pipeline performance' },
+  summary: { icon: '🧩', title: 'Summary Report', sub: 'Full pipeline overview & insights' },
+};
+
+let _dashRepCurrentType = null;
+
+async function openDashReport(type, btnEl) {
+  _dashRepCurrentType = type;
+
+  // Update bar button states
+  ['daily','weekly','summary'].forEach(t => {
+    const b = document.getElementById('dashRepBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (b) b.classList.remove('active','loading');
+  });
+  if (btnEl) { btnEl.classList.add('loading'); }
+
+  // Update tab states in modal footer
+  ['Daily','Weekly','Summary'].forEach(t => {
+    const tab = document.getElementById('dashRepTab' + t);
+    if (tab) tab.classList.toggle('active', t.toLowerCase() === type);
+  });
+
+  // Set modal header meta
+  const meta = DASH_REPORT_META[type] || {};
+  document.getElementById('dashRepModalIcon').textContent  = meta.icon  || '📋';
+  document.getElementById('dashRepModalTitle').textContent = meta.title || 'Report';
+  document.getElementById('dashRepModalSub').textContent   = meta.sub   || '';
+
+  // Show modal with loading state
+  const body = document.getElementById('dashRepModalBody');
+  body.innerHTML = `
+    <div class="dash-report-loading" id="dashRepLoading">
+      <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+      <p>Fetching ${meta.title || 'report'}…</p>
+    </div>`;
+  document.getElementById('dashReportModal').classList.add('open');
+
+  try {
+    const url = DASH_REPORT_HOOKS[type];
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportType: type, requestedAt: new Date().toISOString() }),
+    });
+
+    if (!resp.ok) throw new Error(`n8n returned HTTP ${resp.status}`);
+
+    const contentType = resp.headers.get('content-type') || '';
+    let htmlContent = '';
+
+    if (contentType.includes('application/json')) {
+      const json = await resp.json();
+      // Support { html: "..." } or { content: "..." } or plain string
+      htmlContent = json.html || json.content || json.data || JSON.stringify(json, null, 2);
+    } else {
+      htmlContent = await resp.text();
+    }
+
+    // Render HTML in a sandboxed iframe
+    body.innerHTML = `<div class="dash-report-content-wrap">
+      <iframe class="dash-report-html-frame" id="dashRepFrame" sandbox="allow-same-origin allow-scripts"></iframe>
+    </div>`;
+
+    const frame = document.getElementById('dashRepFrame');
+    frame.onload = () => {
+      try {
+        const doc = frame.contentDocument || frame.contentWindow.document;
+        doc.open(); doc.write(htmlContent); doc.close();
+        // Auto-adjust height
+        setTimeout(() => {
+          const h = doc.body ? doc.body.scrollHeight : 400;
+          frame.style.minHeight = Math.max(400, h + 20) + 'px';
+        }, 200);
+      } catch(e) { /* cross-origin fallback already written */ }
+    };
+    // Trigger load
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    doc.open(); doc.write(htmlContent); doc.close();
+    setTimeout(() => {
+      try {
+        const h = doc.body ? doc.body.scrollHeight : 400;
+        frame.style.minHeight = Math.max(400, h + 20) + 'px';
+      } catch(e) {}
+    }, 300);
+
+    // Mark button as active
+    if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('active'); }
+
+  } catch(err) {
+    console.error('Dashboard report error:', err);
+    body.innerHTML = `
+      <div class="dash-report-error">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>Failed to load report</strong><br>
+          <span style="font-size:.74rem;opacity:.8;">${err.message || 'Could not reach the n8n webhook. Please check your hook URL and try again.'}</span>
+        </div>
+      </div>`;
+    if (btnEl) { btnEl.classList.remove('loading','active'); }
+    toast('Report fetch failed — check n8n hook URL', 'warn');
+  }
+}
+
+function closeDashReport() {
+  document.getElementById('dashReportModal').classList.remove('open');
+  // Reset bar button states
+  ['daily','weekly','summary'].forEach(t => {
+    const b = document.getElementById('dashRepBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (b) b.classList.remove('active','loading');
+  });
+  _dashRepCurrentType = null;
+}
+
+// Close on backdrop click
+document.getElementById('dashReportModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDashReport();
+});
+
+// Close on Escape key (add to existing keydown handler)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('dashReportModal').classList.contains('open')) {
+    closeDashReport();
+  }
+});
+
+
 ════════════════════════════════════════════════════ */
 function computeScore(lead) {
   let s = 0;
