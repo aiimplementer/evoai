@@ -67,49 +67,64 @@
       if (v?.toDate) return v.toDate().toISOString().slice(0,10);
       return String(v);
     };
+    const toISO = (v) => {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      if (v?.toDate) return v.toDate().toISOString();
+      return String(v);
+    };
     return {
-      _docId:    docSnap.id,
-      _snap:     docSnap,
-      leadId:    d.leadId    || docSnap.id,
-      name:      d.fullName  || d.name      || '',
-      email:     d.email     || '',
-      phone:     d.phone     || '',
-      linkedin:  d.linkedin  || '',
-      company:   d.companyName || d.company || '',
-      jobtitle:  d.jobTitle  || d.jobtitle  || '',
-      industry:  d.industry  || '',
-      service:   d.service   || '',
-      status:    d.status    || 'New',
-      source:    d.source    || '',
-      page:      d.page      || '',
-      message:   d.message   || '',
-      comments:  d.comments  || '',
-      dealvalue: d.dealValue != null ? String(d.dealValue) : '',
-      followup:  toDate(d.followupDate),
-      date:      toDate(d.createdAt),
+      _docId:          docSnap.id,
+      _snap:           docSnap,
+      leadId:          d.leadId          || docSnap.id,
+      name:            d.fullName        || d.name      || '',
+      email:           d.email           || '',
+      phone:           d.phone           || '',
+      linkedin:        d.linkedin        || '',
+      company:         d.companyName     || d.company   || '',
+      jobtitle:        d.jobTitle        || d.jobtitle  || '',
+      industry:        d.industry        || '',
+      service:         d.service         || '',
+      status:          d.status          || 'New',
+      source:          d.source          || '',
+      page:            d.page            || '',
+      message:         d.message         || '',
+      comments:        d.comments        || '',
+      dealvalue:       d.dealValue != null ? String(d.dealValue) : '',
+      followup:        toDate(d.followupDate),
+      date:            toDate(d.createdAt),
+      // ── Assignment fields ──
+      assignedTo:      d.assignedTo      || '',
+      assignedToEmail: d.assignedToEmail || '',
+      assignedAt:      toISO(d.assignedAt),
     };
   };
 
   /* ─── Map internal lead → Firestore doc fields ─── */
   window.leadToDoc = (lead, isNew = false) => {
     const docData = {
-      leadId:              lead.leadId    || lead._docId || '',
-      fullName:            lead.name      || '',
-      email:               lead.email     || '',
-      phone:               lead.phone     || '',
-      linkedin:            lead.linkedin  || '',
-      companyName:         lead.company   || '',
-      jobTitle:            lead.jobtitle  || '',
-      industry:            lead.industry  || '',
-      service:             lead.service   || '',
-      status:              lead.status    || 'New',
-      source:              lead.source    || '',
-      page:                lead.page      || '',
-      message:             lead.message   || '',
-      comments:            lead.comments  || '',
+      leadId:              lead.leadId          || lead._docId || '',
+      fullName:            lead.name            || '',
+      email:               lead.email           || '',
+      phone:               lead.phone           || '',
+      linkedin:            lead.linkedin        || '',
+      companyName:         lead.company         || '',
+      jobTitle:            lead.jobtitle        || '',
+      industry:            lead.industry        || '',
+      service:             lead.service         || '',
+      status:              lead.status          || 'New',
+      source:              lead.source          || '',
+      page:                lead.page            || '',
+      message:             lead.message         || '',
+      comments:            lead.comments        || '',
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
-      followupDate:        lead.followup  || '',
+      followupDate:        lead.followup        || '',
       lastUpdateTimestamp: serverTimestamp(),
+      // ── Assignment fields ──
+      assignedTo:          lead.assignedTo      || '',
+      assignedToEmail:     lead.assignedToEmail || '',
+      // assignedAt: only write when actually assigning
+      ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
     };
     if (isNew) docData.createdAt = serverTimestamp();
     return docData;
@@ -123,6 +138,7 @@
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
+    if (filters.assignedTo) constraints.push(where('assignedTo','==', filters.assignedTo));
     if (beforeSnap) {
       constraints.push(endBefore(beforeSnap));
       constraints.push(limitToLast(pageSize));
@@ -138,9 +154,10 @@
   window.dbCountLeads = async (filters = {}) => {
     const ref = collection(db, 'leads');
     const constraints = [];
-    if (filters.status)   constraints.push(where('status',   '==', filters.status));
-    if (filters.service)  constraints.push(where('service',  '==', filters.service));
-    if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+    if (filters.status)   constraints.push(where('status',      '==', filters.status));
+    if (filters.service)  constraints.push(where('service',     '==', filters.service));
+    if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
+    if (filters.assignedTo) constraints.push(where('assignedTo','==', filters.assignedTo));
     const countQuery = constraints.length ? query(ref, ...constraints) : ref;
     const snap = await getCountFromServer(countQuery);
     return snap.data().count;
@@ -163,28 +180,19 @@
       if (lastPage) {
         const ref = collection(db, 'leads');
         const constraints = [ orderBy('createdAt', 'desc') ];
-        if (filters.status)   constraints.push(where('status',   '==', filters.status));
-        if (filters.service)  constraints.push(where('service',  '==', filters.service));
-        if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+        if (filters.status)   constraints.push(where('status',      '==', filters.status));
+        if (filters.service)  constraints.push(where('service',     '==', filters.service));
+        if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
+        if (filters.assignedTo) constraints.push(where('assignedTo','==', filters.assignedTo));
         constraints.push(limitToLast(pageSize));
         const snap = await getDocs(query(ref, ...constraints));
         const leads = snap.docs.map(d => window.docToLead(d));
-        return {
-          leads,
-          firstSnap: snap.docs[0] || null,
-          lastSnap:  snap.docs[snap.docs.length - 1] || null,
-          empty:     snap.empty,
-        };
+        return { leads, firstSnap: snap.docs[0]||null, lastSnap: snap.docs[snap.docs.length-1]||null, empty: snap.empty };
       }
       const q = window.buildLeadsQuery(filters, pageSize, afterSnap, beforeSnap);
       const snap = await getDocs(q);
       const leads = snap.docs.map(d => window.docToLead(d));
-      return {
-        leads,
-        firstSnap: snap.docs[0]             || null,
-        lastSnap:  snap.docs[snap.docs.length - 1] || null,
-        empty:     snap.empty,
-      };
+      return { leads, firstSnap: snap.docs[0]||null, lastSnap: snap.docs[snap.docs.length-1]||null, empty: snap.empty };
     } catch(e) {
       console.error('dbLoadPage', e);
       throw e;
@@ -205,9 +213,10 @@
   window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
     const ref = collection(db, 'leads');
     const constraints = [ orderBy('createdAt', 'desc'), limit(maxDocs) ];
-    if (filters.status)   constraints.push(where('status',   '==', filters.status));
-    if (filters.service)  constraints.push(where('service',  '==', filters.service));
-    if (filters.industry) constraints.push(where('industry', '==', filters.industry));
+    if (filters.status)   constraints.push(where('status',      '==', filters.status));
+    if (filters.service)  constraints.push(where('service',     '==', filters.service));
+    if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
+    if (filters.assignedTo) constraints.push(where('assignedTo','==', filters.assignedTo));
     const snap = await getDocs(query(ref, ...constraints));
     if (!searchTerm) return snap.docs.map(d => window.docToLead(d));
     const term = searchTerm.toLowerCase();
@@ -220,6 +229,8 @@
   window.dbAddLead = async (lead) => {
     const id  = window.generateLeadId();
     lead.leadId = id;
+    // If assignedTo is set on create, stamp assignedAt
+    if (lead.assignedTo) lead._setAssignedAt = true;
     const data = window.leadToDoc(lead, true);
     await setDoc(doc(db, 'leads', id), data);
     return id;
@@ -279,6 +290,9 @@
     document.getElementById('sideUserInitials').textContent = initials;
     document.getElementById('sideUserName').textContent     = name;
     document.getElementById('sideUserEmail').textContent    = email;
+    // Pre-fill "Assign to Me" with the logged-in user
+    window._currentUserName  = name;
+    window._currentUserEmail = email;
     window.initApp();
   });
 
@@ -388,13 +402,13 @@
   }
 
   /* ── SIDEBAR ── */
-	aside {
-	  border-right: 1px solid var(--border);
-	  background: var(--surface);
-	  display: flex; flex-direction: column;
-	  height: 100%; overflow: hidden;
-	  position: relative;   /* ← ADD THIS */
-	}
+  aside {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-direction: column;
+    height: 100%; overflow: hidden;
+    position: relative;
+  }
   .aside-scroll { flex: 1; overflow-y: auto; padding: 24px 0 8px; }
   .aside-scroll::-webkit-scrollbar { width: 4px; }
   .aside-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -497,7 +511,7 @@
 
   /* ── TABLE ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; min-width: 900px;}
+  table { width: 100%; border-collapse: collapse; min-width: 960px;}
   thead tr { background: var(--surface2); }
   th {
     text-align: left; padding: 11px 14px;
@@ -512,6 +526,27 @@
   .lead-id { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
   .lead-name { font-weight: 600; }
   .lead-sub { font-size: .73rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── ASSIGNEE CHIP ── */
+  .assignee-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(0,184,255,.08); border: 1px solid rgba(0,184,255,.22);
+    border-radius: 20px; padding: 2px 8px 2px 4px;
+    font-size: .65rem; font-weight: 600; color: var(--accent2);
+    max-width: 140px; overflow: hidden; white-space: nowrap;
+  }
+  .assignee-chip .assignee-avatar {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: linear-gradient(135deg,var(--accent),var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: .52rem; font-weight: 700; color: #080c10; flex-shrink: 0;
+    font-family: var(--mono);
+  }
+  .assignee-chip-text { overflow: hidden; text-overflow: ellipsis; }
+  .unassigned-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .65rem; color: var(--muted); opacity: .6;
+  }
 
   /* ── BADGES ── */
   .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .67rem; font-weight: 600; letter-spacing: .05em; white-space: nowrap; }
@@ -560,7 +595,6 @@
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--muted); padding: 4px 10px; border-radius: 6px;
   }
-  /* Jump to page */
   .jump-wrap {
     display: flex; align-items: center; gap: 6px;
     font-size: .72rem; color: var(--muted); font-family: var(--mono);
@@ -617,6 +651,16 @@
   .field input[type="tel"],  .field input[type="url"] { padding: 8px 11px; }
   .field select { padding: 8px 11px; }
 
+  /* ── ASSIGN-TO-ME BUTTON ── */
+  .assign-me-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(0,184,255,.08); border: 1px solid rgba(0,184,255,.25);
+    color: var(--accent2); border-radius: 5px; padding: 4px 10px;
+    font-size: .7rem; font-weight: 600; cursor: pointer; font-family: var(--font);
+    transition: all .15s; margin-top: 5px;
+  }
+  .assign-me-btn:hover { background: rgba(0,184,255,.15); border-color: var(--accent2); }
+
   /* ── VIEW MODAL ── */
   .view-section { margin-bottom: 18px; }
   .view-section-title {
@@ -629,6 +673,28 @@
   .view-val { color: var(--text); font-weight: 600; text-align: right; word-break: break-word; max-width: 65%; }
   .view-val a { color: var(--accent2); text-decoration: none; }
   .view-val a:hover { text-decoration: underline; }
+
+  /* ── ASSIGNMENT CARD in view modal ── */
+  .assignment-card {
+    background: rgba(0,184,255,.06); border: 1px solid rgba(0,184,255,.2);
+    border-radius: 9px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .assignment-card .big-avatar {
+    width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
+    background: linear-gradient(135deg,var(--accent),var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: .78rem; font-weight: 700; color: #080c10; font-family: var(--mono);
+  }
+  .assignment-card .assign-info { flex: 1; min-width: 0; }
+  .assignment-card .assign-name  { font-size: .84rem; font-weight: 700; color: var(--text); }
+  .assignment-card .assign-email { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+  .assignment-card .assign-date  { font-size: .67rem; color: var(--muted); font-family: var(--mono); margin-top: 3px; }
+  .unassigned-card {
+    background: var(--surface2); border: 1px dashed var(--border);
+    border-radius: 9px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px; color: var(--muted); font-size: .78rem;
+  }
 
   /* ── SPINNER / TOAST ── */
   .spinner { width: 17px; height: 17px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
@@ -668,10 +734,6 @@
   .score-warm { background: rgba(255,183,48,.12); color: #ffb730; border: 1px solid rgba(255,183,48,.3); }
   .score-cold { background: rgba(100,180,255,.1); color: #64b4ff; border: 1px solid rgba(100,180,255,.25); }
   .score-dot  { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-
-  /* ── HOT LEADS BADGE (sidebar) ── */
-  .hot-pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-left: auto; box-shadow: 0 0 0 0 rgba(255,77,109,.5); animation: pulse 1.6s infinite; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,109,.5); } 70% { box-shadow: 0 0 0 6px rgba(255,77,109,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,109,0); } }
 
   /* ── OVERDUE TAG ── */
   .overdue-tag { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,77,109,.1); border: 1px solid rgba(255,77,109,.25); color: var(--danger); border-radius: 5px; padding: 2px 7px; font-size: .63rem; font-weight: 700; font-family: var(--mono); }
@@ -723,7 +785,7 @@
   /* ── LIST VIEW ── */
   #listView { display: none; }
   .list-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .list-header, .list-item { display: grid; grid-template-columns: 190px 180px 1fr 130px auto 100px auto; align-items: center; gap: 14px; padding: 10px 16px; }
+  .list-header, .list-item { display: grid; grid-template-columns: 190px 180px 1fr 120px 130px auto 100px auto; align-items: center; gap: 14px; padding: 10px 16px; }
   .list-header { background: var(--surface2); border-bottom: 1px solid var(--border); }
   .list-header span { font-size: .64rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
   .list-item { border-bottom: 1px solid rgba(30,45,66,.6); cursor: pointer; transition: background .12s; }
@@ -752,6 +814,7 @@
   .tl-icon-email  { background: rgba(255,183,48,.12); color: #ffb730; border: 1px solid rgba(255,183,48,.3); }
   .tl-icon-call   { background: rgba(192,132,252,.12); color: #c084fc; border: 1px solid rgba(192,132,252,.25); }
   .tl-icon-auto   { background: rgba(255,77,109,.1); color: #ff4d6d; border: 1px solid rgba(255,77,109,.25); }
+  .tl-icon-assign { background: rgba(0,184,255,.1); color: var(--accent2); border: 1px solid rgba(0,184,255,.25); }
   .tl-body { flex: 1; min-width: 0; }
   .tl-title { font-size: .79rem; font-weight: 600; color: var(--text); }
   .tl-meta  { font-size: .68rem; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
@@ -831,9 +894,37 @@
   .help-tip-text strong { color: var(--text); }
   .help-footer { flex-shrink: 0; padding: 12px 22px; border-top: 1px solid var(--border); background: var(--surface2); font-size: .68rem; color: var(--muted); text-align: center; font-family: var(--mono); letter-spacing: .04em; }
 
+  /* ── COLLAPSIBLE SIDEBAR ── */
+  aside {
+    transition: width .25s cubic-bezier(.4,0,.2,1);
+    width: 230px; min-width: 0; overflow: hidden;
+  }
+  aside.collapsed { width: 52px; }
+  aside.collapsed .aside-label,
+  aside.collapsed .aside-count,
+  aside.collapsed .aside-count-danger,
+  aside.collapsed .aside-user-text,
+  aside.collapsed .aside-item span:not(svg):not(.aside-count):not(.aside-count-danger) { display: none; }
+  aside.collapsed .aside-item { justify-content: center; padding: 8px; }
+  aside.collapsed .aside-user-footer { justify-content: center; padding: 14px 8px; }
+
+  .sidebar-toggle {
+    position: absolute; top: 50%; right: -13px; transform: translateY(-50%);
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 10; transition: all .18s; flex-shrink: 0;
+  }
+  .sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
+  .sidebar-toggle svg { transition: transform .25s; }
+  aside.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
+  .shell { grid-template-columns: 230px 1fr; transition: grid-template-columns .25s cubic-bezier(.4,0,.2,1); }
+  .shell.sidebar-collapsed { grid-template-columns: 52px 1fr; }
+
   /* ── RESPONSIVE ── */
-  @media (max-width: 1100px) {
-    .list-header, .list-item { grid-template-columns: 180px 160px 120px auto 90px auto; }
+  @media (max-width: 1200px) {
+    .list-header, .list-item { grid-template-columns: 190px 180px 120px 130px auto 100px auto; }
     .list-header span:nth-child(3), .list-item .list-item-industry { display: none; }
   }
   @media (max-width: 960px) {
@@ -848,77 +939,12 @@
     .list-item { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
     .list-item-contact   { grid-column: 1; grid-row: 1; }
     .list-item-actions   { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-    .list-item-company-wrap, .list-item-industry, .list-item-phone, .list-item-date { display: none; }
+    .list-item-company-wrap, .list-item-industry, .list-item-phone, .list-item-date,
+    .list-item-assignee { display: none; }
     .list-item > div:nth-child(5) { grid-column: 1; grid-row: 2; }
     .pagination { flex-direction: column; align-items: flex-start; }
     .jump-wrap { display: none; }
   }
-  
-  /* ── COLLAPSIBLE SIDEBAR ── */
-	aside {
-	  transition: width .25s cubic-bezier(.4,0,.2,1);
-	  width: 230px;
-	  min-width: 0;
-	  overflow: hidden;
-	}
-	aside.collapsed {
-	  width: 52px;
-	}
-	aside.collapsed .aside-label,
-	aside.collapsed .aside-count,
-	aside.collapsed .aside-count-danger,
-	aside.collapsed .aside-user-text,
-	aside.collapsed .aside-item span:not(svg):not(.aside-count):not(.aside-count-danger) {
-	  display: none;
-	}
-	aside.collapsed .aside-item {
-	  justify-content: center;
-	  padding: 8px;
-	}
-	aside.collapsed .aside-user-footer {
-	  justify-content: center;
-	  padding: 14px 8px;
-	}
-
-	.sidebar-toggle {
-	  position: absolute;
-	  top: 50%;
-	  right: -13px;
-	  transform: translateY(-50%);
-	  width: 26px;
-	  height: 26px;
-	  border-radius: 50%;
-	  background: var(--surface2);
-	  border: 1px solid var(--border);
-	  color: var(--muted);
-	  display: flex;
-	  align-items: center;
-	  justify-content: center;
-	  cursor: pointer;
-	  z-index: 10;
-	  transition: all .18s;
-	  flex-shrink: 0;
-	}
-	.sidebar-toggle:hover {
-	  border-color: var(--accent);
-	  color: var(--accent);
-	  background: rgba(0,229,160,.08);
-	}
-	.sidebar-toggle svg {
-	  transition: transform .25s;
-	}
-	aside.collapsed .sidebar-toggle svg {
-	  transform: rotate(180deg);
-	}
-
-	/* make shell columns dynamic */
-	.shell {
-	  grid-template-columns: 230px 1fr;
-	  transition: grid-template-columns .25s cubic-bezier(.4,0,.2,1);
-	}
-	.shell.sidebar-collapsed {
-	  grid-template-columns: 52px 1fr;
-	}
 </style>
 </head>
 <body>
@@ -983,9 +1009,9 @@
 <div class="shell">
   <!-- SIDEBAR -->
   <aside id="sidebar">
-  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-  </button>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Pipeline</div>
@@ -1030,6 +1056,12 @@
         <div class="aside-item" id="overdueFilterItem" onclick="toggleOverdueFilter(this)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           Overdue Follow-ups <span class="aside-count-danger" id="cnt-overdue">—</span>
+        </div>
+
+        <!-- MY LEADS FILTER -->
+        <div class="aside-item" id="myLeadsFilterItem" onclick="toggleMyLeadsFilter(this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          My Leads <span class="aside-count" id="cnt-my">—</span>
         </div>
       </div>
 
@@ -1096,7 +1128,7 @@
     <div class="toolbar">
       <div class="search-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="Search name, email, company, service… (scans up to 500 records)" oninput="onSearchInput(this.value)"/>
+        <input type="text" id="searchInput" placeholder="Search name, email, company, service, assignee… (scans up to 500 records)" oninput="onSearchInput(this.value)"/>
       </div>
       <select id="serviceFilter" onchange="onFilterChange()">
         <option value="">All services</option>
@@ -1154,6 +1186,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Change Status
       </button>
+      <button class="bulk-action" onclick="bulkAssignToMe()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Assign to Me
+      </button>
       <button class="bulk-action" onclick="bulkExport()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export Selected
@@ -1194,13 +1230,14 @@
               <th>Industry</th>
               <th>Service</th>
               <th>Status</th>
+              <th>Assigned To</th>
               <th>Score</th>
               <th>Date</th>
               <th style="width:80px;">Actions</th>
             </tr>
           </thead>
           <tbody id="leadsBody">
-            <tr><td colspan="10"><div class="empty-state">
+            <tr><td colspan="11"><div class="empty-state">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <p>Loading leads…</p>
             </div></td></tr>
@@ -1237,30 +1274,23 @@
     </div>
 
     <!-- BOARD VIEW -->
-	<div id="boardView">
-	  <div style="display:flex;align-items:center;gap:8px;
-		background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.22);
-		border-radius:8px;padding:7px 13px;margin-bottom:12px;
-		font-size:.76rem;color:var(--warn);">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
-		  stroke="currentColor" stroke-width="2">
-		  <circle cx="12" cy="12" r="10"/>
-		  <line x1="12" y1="8" x2="12" y2="12"/>
-		  <line x1="12" y1="16" x2="12.01" y2="16"/>
-		</svg>
-		<span>Search and filters apply to <strong style="color:var(--text);">
-		  Table &amp; List views only</strong> — 
-		  Board always shows the full pipeline (up to 200 leads per stage).</span>
-	  </div>
-	  <div class="board-scroll" id="boardScroll"></div>
-	</div>
+    <div id="boardView">
+      <div style="display:flex;align-items:center;gap:8px;
+        background:rgba(255,183,48,.07);border:1px solid rgba(255,183,48,.22);
+        border-radius:8px;padding:7px 13px;margin-bottom:12px;
+        font-size:.76rem;color:var(--warn);">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>Search and filters apply to <strong style="color:var(--text);">Table &amp; List views only</strong> — Board always shows the full pipeline (up to 200 leads per stage).</span>
+      </div>
+      <div class="board-scroll" id="boardScroll"></div>
+    </div>
 
     <!-- LIST VIEW -->
     <div id="listView">
       <div class="list-wrap">
         <div class="list-header">
           <span>Contact</span><span>Company / Role</span><span>Industry</span>
-          <span>Phone</span><span>Status</span><span>Date</span><span>Actions</span>
+          <span>Assigned To</span><span>Status</span><span>Date</span><span>Actions</span>
         </div>
         <div id="listBody"></div>
       </div>
@@ -1270,23 +1300,23 @@
           <span class="page-counter" id="listPageCounter">Page 1</span>
         </div>
         <div class="page-btns">
-          <button class="page-btn" id="listBtnFirst" onclick="goFirstPage()" title="First page">
+          <button class="page-btn" id="listBtnFirst" onclick="goFirstPage()">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>First
           </button>
-          <button class="page-btn" id="listBtnPrev" onclick="goPrevPage()" title="Previous page">
+          <button class="page-btn" id="listBtnPrev" onclick="goPrevPage()">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Prev
           </button>
-          <button class="page-btn" id="listBtnNext" onclick="goNextPage()" title="Next page">
+          <button class="page-btn" id="listBtnNext" onclick="goNextPage()">
             Next<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <button class="page-btn" id="listBtnLast" onclick="goLastPage()" title="Last page">
+          <button class="page-btn" id="listBtnLast" onclick="goLastPage()">
             Last<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 17 11 12 6 7"/><polyline points="13 17 18 12 13 7"/></svg>
           </button>
         </div>
         <div class="jump-wrap">
           Go to
           <input type="number" id="listJumpInput" min="1" placeholder="pg#"
-            onkeydown="if(event.key==='Enter')goJumpPage()" title="Jump to page number"/>
+            onkeydown="if(event.key==='Enter')goJumpPage()"/>
           <button onclick="goJumpPage()">Go</button>
         </div>
       </div>
@@ -1344,6 +1374,21 @@
         <div class="form-section-title">Pipeline Details</div>
         <div class="field"><label>Deal Value (USD)</label><input type="text" id="f-dealvalue" placeholder="e.g. 12000"/></div>
         <div class="field"><label>Next Follow-Up</label><input type="date" id="f-followup"/></div>
+
+        <!-- ── ASSIGNMENT SECTION ── -->
+        <div class="form-section-title">Assignment</div>
+        <div class="field">
+          <label>Assigned To (Name)</label>
+          <input type="text" id="f-assignedTo" placeholder="e.g. Rahul Sharma"/>
+          <button type="button" class="assign-me-btn" onclick="assignToMe()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Assign to Me
+          </button>
+        </div>
+        <div class="field">
+          <label>Assigned To (Email)</label>
+          <input type="email" id="f-assignedToEmail" placeholder="rahul@company.com"/>
+        </div>
 
         <div class="form-section-title">Lead Details</div>
         <div class="field">
@@ -1480,6 +1525,14 @@
       </div>
     </div>
     <div class="help-section">
+      <div class="help-section-title">Assignment Fields</div>
+      <div class="help-row"><div class="help-row-key">Assigned To</div><div class="help-row-val">Full name of the team member responsible for this lead.</div></div>
+      <div class="help-row"><div class="help-row-key">Assigned Email</div><div class="help-row-val">Email of the assignee — used by automations to route notifications.</div></div>
+      <div class="help-row"><div class="help-row-key">Assigned At</div><div class="help-row-val">Timestamp when the assignment was last changed (set automatically).</div></div>
+      <div class="help-row"><div class="help-row-key">Assign to Me</div><div class="help-row-val">Shortcut button in the form and bulk bar — fills your own name &amp; email in one click.</div></div>
+      <div class="help-row"><div class="help-row-key">My Leads filter</div><div class="help-row-val">Sidebar shortcut to see only leads assigned to the logged-in user.</div></div>
+    </div>
+    <div class="help-section">
       <div class="help-section-title">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         How Points Are Calculated
@@ -1512,14 +1565,14 @@
     </div>
     <div class="help-section">
       <div class="help-section-title">Pro Tips</div>
+      <div class="help-tip"><div class="help-tip-icon">👤</div><div class="help-tip-text"><strong>Assignment:</strong> Use "Assign to Me" in the form or bulk bar for one-click ownership. The timestamp (assignedAt) is set automatically when you assign.</div></div>
       <div class="help-tip"><div class="help-tip-icon">🗂️</div><div class="help-tip-text"><strong>Server-side pagination:</strong> Only 15 leads are fetched per page. Use "Last" to jump to the final page, or type a page number in the "Go to" box.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">⏰</div><div class="help-tip-text"><strong>Overdue filter:</strong> Click "Overdue Follow-ups" in the sidebar to instantly see all leads with past follow-up dates (scans up to 500 records).</div></div>
-      <div class="help-tip"><div class="help-tip-icon">💰</div><div class="help-tip-text"><strong>Pipeline Value:</strong> Computed once on load from the first 500 active leads (excludes Won/Lost). Hover the stat card for details.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">🎯</div><div class="help-tip-text"><strong>Maximise scores fast:</strong> Fill in phone, LinkedIn, and deal value — these three fields alone add up to +45 points.</div></div>
-      <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage. Each column loads up to 200 leads.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">⏰</div><div class="help-tip-text"><strong>Overdue filter:</strong> Click "Overdue Follow-ups" in the sidebar to instantly see all leads with past follow-up dates.</div></div>
+      <div class="help-tip"><div class="help-tip-icon">💰</div><div class="help-tip-text"><strong>Pipeline Value:</strong> Computed once on load from the first 500 active leads (excludes Won/Lost).</div></div>
+      <div class="help-tip"><div class="help-tip-icon">🔄</div><div class="help-tip-text"><strong>Board view for pipeline:</strong> Drag cards between columns to instantly update a lead's stage.</div></div>
     </div>
   </div>
-  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.1 · Server-Side Pagination</div>
+  <div class="help-footer">evoAI Lead Manager · Firebase Edition v3.2 · Assignment Fields</div>
 </div>
 
 </div><!-- end #authShell -->
@@ -1529,12 +1582,15 @@
 
 <script>
 /* ════════════════════════════════════════════════════════════════
-   EVOAI LEAD MANAGER v3.1
+   EVOAI LEAD MANAGER v3.2
    New in this version:
-   - Last page button (uses limitToLast Firestore query)
-   - Jump-to-page input (chains forward from page 1)
-   - Overdue Follow-ups sidebar filter (client-side, 500-doc window)
-   - Pipeline Value stat card (computed once on first load)
+   - assignedTo, assignedToEmail, assignedAt fields throughout
+   - "Assign to Me" quick-fill in form + bulk action
+   - Assignee chip in table, board, list views
+   - Assignment card in view modal details tab
+   - My Leads sidebar filter
+   - assignedAt logged to activity timeline
+   - CSV export includes assignment fields
 ════════════════════════════════════════════════════════════════ */
 
 const PAGE_SIZE   = 15;
@@ -1542,7 +1598,7 @@ let currentView   = 'table';
 let editingLeadId = null;
 let editingDocId  = null;
 let searchTimer   = null;
-let pipelineValueLoaded = false; // compute only once
+let pipelineValueLoaded = false;
 
 /* ── FILTER STATE ── */
 let activeFilters = { status: '', service: '', industry: '' };
@@ -1559,6 +1615,7 @@ let currentLeads   = [];
 let searchResults  = [];
 let isSearchMode   = false;
 let isOverdueMode  = false;
+let isMyLeadsMode  = false;
 
 /* ── SELECTION ── */
 let selectedLeads  = new Map();
@@ -1567,14 +1624,14 @@ let selectedLeads  = new Map();
 let boardLeads     = {};
 
 const BOARD_STAGES = [
-  { key:'New',           label:'New',           color:'#e8f0fe' },
-  { key:'Contacted',     label:'Contacted',      color:'#ffb730' },
-  { key:'Discovery Call',label:'Discovery',      color:'#b0bec5' },
-  { key:'Qualified',     label:'Qualified',      color:'#64b4ff' },
-  { key:'Proposal Sent', label:'Proposal Sent',  color:'#c084fc' },
-  { key:'Negotiation',   label:'Negotiation',    color:'#a0aec0' },
-  { key:'Won',           label:'Won',            color:'#00c864' },
-  { key:'Lost',          label:'Lost',           color:'#ff4d4d' },
+  { key:'New',           label:'New',          color:'#e8f0fe' },
+  { key:'Contacted',     label:'Contacted',     color:'#ffb730' },
+  { key:'Discovery Call',label:'Discovery',     color:'#b0bec5' },
+  { key:'Qualified',     label:'Qualified',     color:'#64b4ff' },
+  { key:'Proposal Sent', label:'Proposal Sent', color:'#c084fc' },
+  { key:'Negotiation',   label:'Negotiation',   color:'#a0aec0' },
+  { key:'Won',           label:'Won',           color:'#00c864' },
+  { key:'Lost',          label:'Lost',          color:'#ff4d4d' },
 ];
 
 /* ════════════════════════════════════════════════════
@@ -1586,37 +1643,31 @@ window.initApp = async function() {
 
 window.refreshAll = async function() {
   resetPagination();
-  await Promise.all([
-    loadPage('first'),
-    refreshCounts(),
-  ]);
+  await Promise.all([loadPage('first'), refreshCounts()]);
 };
 
 /* ════════════════════════════════════════════════════
-   COUNTS — zero document reads + pipeline value once
+   COUNTS
 ════════════════════════════════════════════════════ */
 async function refreshCounts() {
   try {
     const counts = await window.dbCountAllStatuses();
-    document.getElementById('cnt-all').textContent         = counts['ALL']           || 0;
-    document.getElementById('cnt-new').textContent         = counts['New']           || 0;
-    document.getElementById('cnt-contacted').textContent   = counts['Contacted']     || 0;
-    document.getElementById('cnt-discovery').textContent   = counts['Discovery Call']|| 0;
-    document.getElementById('cnt-qualified').textContent   = counts['Qualified']     || 0;
-    document.getElementById('cnt-proposal').textContent    = counts['Proposal Sent'] || 0;
-    document.getElementById('cnt-negotiation').textContent = counts['Negotiation']   || 0;
-    document.getElementById('cnt-won').textContent         = counts['Won']           || 0;
-    document.getElementById('cnt-lost').textContent        = counts['Lost']          || 0;
+    document.getElementById('cnt-all').textContent         = counts['ALL']            || 0;
+    document.getElementById('cnt-new').textContent         = counts['New']            || 0;
+    document.getElementById('cnt-contacted').textContent   = counts['Contacted']      || 0;
+    document.getElementById('cnt-discovery').textContent   = counts['Discovery Call'] || 0;
+    document.getElementById('cnt-qualified').textContent   = counts['Qualified']      || 0;
+    document.getElementById('cnt-proposal').textContent    = counts['Proposal Sent']  || 0;
+    document.getElementById('cnt-negotiation').textContent = counts['Negotiation']    || 0;
+    document.getElementById('cnt-won').textContent         = counts['Won']            || 0;
+    document.getElementById('cnt-lost').textContent        = counts['Lost']           || 0;
 
     document.getElementById('s-total').textContent = counts['ALL']       || 0;
     document.getElementById('s-new').textContent   = counts['New']       || 0;
     document.getElementById('s-qual').textContent  = counts['Qualified'] || 0;
     document.getElementById('s-won').textContent   = counts['Won']       || 0;
-  } catch(e) {
-    console.warn('refreshCounts failed', e);
-  }
+  } catch(e) { console.warn('refreshCounts failed', e); }
 
-  // Pipeline value — compute once only on first load
   if (!pipelineValueLoaded) {
     pipelineValueLoaded = true;
     try {
@@ -1624,28 +1675,32 @@ async function refreshCounts() {
       const activeLeads = await window.dbSearchLeads('', {}, 500);
       const total = activeLeads
         .filter(l => pipelineStatuses.includes(l.status))
-        .reduce((sum, l) => {
-          return sum + (Number(String(l.dealvalue || '').replace(/[^0-9.]/g, '')) || 0);
-        }, 0);
+        .reduce((sum, l) => sum + (Number(String(l.dealvalue||'').replace(/[^0-9.]/g,''))||0), 0);
 
       let formatted;
-      if (total >= 1_000_000)      formatted = '$' + (total / 1_000_000).toFixed(1) + 'M';
-      else if (total >= 1_000)     formatted = '$' + (total / 1_000).toFixed(0) + 'k';
-      else if (total > 0)          formatted = '$' + total.toLocaleString();
-      else                         formatted = '—';
+      if (total >= 1_000_000)  formatted = '$' + (total/1_000_000).toFixed(1) + 'M';
+      else if (total >= 1_000) formatted = '$' + (total/1_000).toFixed(0) + 'k';
+      else if (total > 0)      formatted = '$' + total.toLocaleString();
+      else                     formatted = '—';
 
-      document.getElementById('s-pipeline').textContent = formatted;
-      document.getElementById('s-pipeline').title = 'Sampled from first 500 active leads (excl. Won / Lost)';
+      document.getElementById('s-pipeline').textContent     = formatted;
+      document.getElementById('s-pipeline').title           = 'Sampled from first 500 active leads (excl. Won / Lost)';
       document.getElementById('s-pipeline-sub').textContent = 'Active deals · est. 500 leads';
 
-      // Overdue count for sidebar badge
-      const today = new Date().toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0,10);
       const overdueCount = activeLeads.filter(l =>
         l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost'
       ).length;
       document.getElementById('cnt-overdue').textContent = overdueCount;
+
+      // My leads count
+      const myEmail = window._currentUserEmail || '';
+      const myCount = myEmail
+        ? activeLeads.filter(l => l.assignedToEmail && l.assignedToEmail.toLowerCase() === myEmail.toLowerCase()).length
+        : 0;
+      document.getElementById('cnt-my').textContent = myCount;
     } catch(e) {
-      console.warn('Pipeline value computation failed', e);
+      console.warn('Pipeline value / counts failed', e);
       document.getElementById('s-pipeline').textContent = '—';
     }
   }
@@ -1653,28 +1708,16 @@ async function refreshCounts() {
 
 /* ════════════════════════════════════════════════════
    CORE PAGE LOADER
-   direction: 'first' | 'next' | 'prev' | 'last'
 ════════════════════════════════════════════════════ */
 async function loadPage(direction = 'first') {
-  if (isSearchMode || isOverdueMode) return;
+  if (isSearchMode || isOverdueMode || isMyLeadsMode) return;
   setLoadingState(true);
-
   try {
-    let afterSnap  = null;
-    let beforeSnap = null;
-    let useLastPage = false;
-
-    if (direction === 'next') {
-      afterSnap  = pageLastSnap;
-      pageNumber++;
-    } else if (direction === 'prev') {
+    let afterSnap = null, beforeSnap = null, useLastPage = false;
+    if (direction === 'next') { afterSnap = pageLastSnap; pageNumber++; }
+    else if (direction === 'prev') {
       pageNumber = Math.max(1, pageNumber - 1);
-      if (pageNumber === 1) {
-        afterSnap = null; beforeSnap = null;
-      } else {
-        afterSnap = pageStack[pageNumber - 2] || null;
-        beforeSnap = null;
-      }
+      if (pageNumber > 1) { afterSnap = pageStack[pageNumber - 2] || null; }
       pageStack = pageStack.slice(0, pageNumber);
     } else if (direction === 'last') {
       useLastPage = true;
@@ -1682,31 +1725,19 @@ async function loadPage(direction = 'first') {
       pageNumber = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
       pageStack = [];
     } else {
-      // 'first'
-      pageNumber = 1;
-      pageStack  = [];
-      afterSnap  = null;
-      beforeSnap = null;
+      pageNumber = 1; pageStack = []; afterSnap = null; beforeSnap = null;
     }
 
-    // Get total count
-    if (direction !== 'last') {
-      totalCount = await window.dbCountLeads(activeFilters);
-    }
+    if (direction !== 'last') totalCount = await window.dbCountLeads(activeFilters);
 
     const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, afterSnap, beforeSnap, useLastPage);
     currentLeads  = result.leads;
     pageFirstSnap = result.firstSnap;
     pageLastSnap  = result.lastSnap;
 
-    if (direction === 'first') {
-      pageStack = [pageFirstSnap];
-    } else if (direction === 'next') {
-      pageStack.push(pageFirstSnap);
-    } else if (direction === 'last') {
-      pageStack = new Array(pageNumber).fill(null);
-      pageStack[pageNumber - 1] = pageFirstSnap;
-    }
+    if (direction === 'first')      pageStack = [pageFirstSnap];
+    else if (direction === 'next')  pageStack.push(pageFirstSnap);
+    else if (direction === 'last') { pageStack = new Array(pageNumber).fill(null); pageStack[pageNumber-1] = pageFirstSnap; }
 
     renderCurrentView();
     updatePaginationControls();
@@ -1724,108 +1755,67 @@ function resetPagination() {
   totalCount = 0;
 }
 
-/* ── Pagination nav buttons ── */
-async function goNextPage() {
-  if (isSearchMode || isOverdueMode) return;
-  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
-  if (pageNumber >= maxPage) return;
-  await loadPage('next');
-}
+async function goNextPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('next'); }
+async function goPrevPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber > 1) await loadPage('prev'); }
+async function goFirstPage() { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber > 1) await loadPage('first'); }
+async function goLastPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('last'); }
 
-async function goPrevPage() {
-  if (isSearchMode || isOverdueMode || pageNumber <= 1) return;
-  await loadPage('prev');
-}
-
-async function goFirstPage() {
-  if (isSearchMode || isOverdueMode || pageNumber === 1) return;
-  await loadPage('first');
-}
-
-async function goLastPage() {
-  if (isSearchMode || isOverdueMode) return;
-  const maxPage = Math.ceil(totalCount / PAGE_SIZE);
-  if (pageNumber >= maxPage) return;
-  await loadPage('last');
-}
-
-/* ── Jump to page ── */
 async function goJumpPage() {
-  if (isSearchMode || isOverdueMode) return;
-
-  // Read from whichever input is visible
+  if (isSearchMode || isOverdueMode || isMyLeadsMode) return;
   const tableInput = document.getElementById('jumpInput');
   const listInput  = document.getElementById('listJumpInput');
   const raw = (tableInput && tableInput.value) || (listInput && listInput.value) || '';
   if (tableInput) tableInput.value = '';
   if (listInput)  listInput.value  = '';
-
-  const maxPage = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const target  = Math.max(1, Math.min(maxPage, parseInt(raw) || 1));
-
+  const maxPage = Math.max(1, Math.ceil(totalCount/PAGE_SIZE));
+  const target  = Math.max(1, Math.min(maxPage, parseInt(raw)||1));
   if (target === pageNumber) return;
-  if (target === 1)        { await loadPage('first'); return; }
-  if (target === maxPage)  { await loadPage('last');  return; }
-
-  // For mid-range: reset to first, step forward page by page
-  // Each step is a cheap Firestore cursor query (only fetches 1 doc per step to get the cursor,
-  // then fetches 15 for the actual target page).
+  if (target === 1)       { await loadPage('first'); return; }
+  if (target === maxPage) { await loadPage('last');  return; }
   toast(`Jumping to page ${target} of ${maxPage}…`, 'success');
   await loadPage('first');
   for (let i = 1; i < target; i++) {
-    // Lightweight forward-step: just advance the cursor, don't re-render until the final page
     try {
       const result = await window.dbLoadPage(activeFilters, PAGE_SIZE, pageLastSnap, null, false);
       pageFirstSnap = result.firstSnap;
       pageLastSnap  = result.lastSnap;
       pageNumber++;
       pageStack.push(pageFirstSnap);
-      if (i === target - 1) {
-        currentLeads = result.leads;
-        renderCurrentView();
-        updatePaginationControls();
-      }
-    } catch(e) {
-      toast('Jump failed at page ' + (i + 1), 'error');
-      break;
-    }
+      if (i === target - 1) { currentLeads = result.leads; renderCurrentView(); updatePaginationControls(); }
+    } catch(e) { toast('Jump failed at page ' + (i+1), 'error'); break; }
   }
 }
 
 function updatePaginationControls() {
-  const maxPage    = totalCount > 0 ? Math.ceil(totalCount / PAGE_SIZE) : 1;
-  const start      = (pageNumber - 1) * PAGE_SIZE + 1;
-  const end        = Math.min(pageNumber * PAGE_SIZE, totalCount);
-  const infoText   = totalCount > 0 ? `${start}–${end} of ${totalCount} leads` : 'No leads found';
-  const counterTxt = `Page ${pageNumber} of ${maxPage}`;
-  const showPag    = totalCount > PAGE_SIZE || pageNumber > 1;
+  const maxPage  = totalCount > 0 ? Math.ceil(totalCount/PAGE_SIZE) : 1;
+  const start    = (pageNumber-1) * PAGE_SIZE + 1;
+  const end      = Math.min(pageNumber * PAGE_SIZE, totalCount);
+  const infoText = totalCount > 0 ? `${start}–${end} of ${totalCount} leads` : 'No leads found';
+  const counterT = `Page ${pageNumber} of ${maxPage}`;
+  const showPag  = totalCount > PAGE_SIZE || pageNumber > 1;
 
-  // Table view
   const pag = document.getElementById('pagination');
   pag.style.display = showPag ? 'flex' : 'none';
   if (showPag) {
     document.getElementById('pageInfo').textContent    = infoText;
-    document.getElementById('pageCounter').textContent = counterTxt;
+    document.getElementById('pageCounter').textContent = counterT;
     document.getElementById('btnFirst').disabled = pageNumber === 1;
     document.getElementById('btnPrev').disabled  = pageNumber === 1;
     document.getElementById('btnNext').disabled  = pageNumber >= maxPage;
     document.getElementById('btnLast').disabled  = pageNumber >= maxPage;
-    const ji = document.getElementById('jumpInput');
-    if (ji) ji.max = maxPage;
+    const ji = document.getElementById('jumpInput'); if(ji) ji.max = maxPage;
   }
 
-  // List view
   const listPag = document.getElementById('listPagination');
   listPag.style.display = showPag ? 'flex' : 'none';
   if (showPag) {
     document.getElementById('listPageInfo').textContent    = infoText;
-    document.getElementById('listPageCounter').textContent = counterTxt;
+    document.getElementById('listPageCounter').textContent = counterT;
     document.getElementById('listBtnFirst').disabled = pageNumber === 1;
     document.getElementById('listBtnPrev').disabled  = pageNumber === 1;
     document.getElementById('listBtnNext').disabled  = pageNumber >= maxPage;
     document.getElementById('listBtnLast').disabled  = pageNumber >= maxPage;
-    const lji = document.getElementById('listJumpInput');
-    if (lji) lji.max = maxPage;
+    const lji = document.getElementById('listJumpInput'); if(lji) lji.max = maxPage;
   }
 }
 
@@ -1833,15 +1823,9 @@ function updatePaginationControls() {
    OVERDUE FILTER
 ════════════════════════════════════════════════════ */
 function toggleOverdueFilter(el) {
-  if (isOverdueMode) {
-    clearOverdueFilter();
-    return;
-  }
-  // Deselect all sidebar items, activate overdue
-  document.querySelectorAll('.aside-item').forEach(i => {
-    i.classList.remove('active');
-    i.classList.remove('active-danger');
-  });
+  if (isOverdueMode) { clearOverdueFilter(); return; }
+  if (isMyLeadsMode) clearMyLeadsFilter();
+  document.querySelectorAll('.aside-item').forEach(i => { i.classList.remove('active','active-danger'); });
   el.classList.add('active-danger');
   isOverdueMode = true;
   runOverdueFilter();
@@ -1852,35 +1836,64 @@ async function runOverdueFilter() {
   document.getElementById('searchModeBanner').classList.remove('show');
   setLoadingState(true);
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0,10);
     const all = await window.dbSearchLeads('', activeFilters, 500);
-    const overdue = all.filter(l =>
-      l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost'
-    );
-    searchResults = overdue;
-    currentLeads  = overdue;
-    document.getElementById('cnt-overdue').textContent = overdue.length;
+    const overdue = all.filter(l => l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost');
+    searchResults = overdue; currentLeads = overdue;
+    document.getElementById('cnt-overdue').textContent     = overdue.length;
     document.getElementById('overdueModeBanner').classList.add('show');
     document.getElementById('overdueResultCount').textContent = overdue.length;
-    // Hide server pagination during overdue mode
     document.getElementById('pagination').style.display     = 'none';
     document.getElementById('listPagination').style.display = 'none';
     renderCurrentView();
-  } catch(e) {
-    toast('Failed to load overdue leads: ' + e.message, 'error');
-  } finally {
-    setLoadingState(false);
-  }
+  } catch(e) { toast('Failed to load overdue leads: ' + e.message, 'error'); }
+  finally { setLoadingState(false); }
 }
 
 function clearOverdueFilter() {
-  isOverdueMode = false;
-  searchResults = [];
+  isOverdueMode = false; searchResults = [];
   document.getElementById('overdueModeBanner').classList.remove('show');
   document.getElementById('overdueFilterItem').classList.remove('active-danger');
-  // Reactivate "All Leads"
-  const allItem = document.querySelector('.aside-item');
-  if (allItem) allItem.classList.add('active');
+  document.querySelector('.aside-item')?.classList.add('active');
+  updatePaginationControls();
+  loadPage('first');
+}
+
+/* ════════════════════════════════════════════════════
+   MY LEADS FILTER
+════════════════════════════════════════════════════ */
+function toggleMyLeadsFilter(el) {
+  if (isMyLeadsMode) { clearMyLeadsFilter(); return; }
+  if (isOverdueMode) clearOverdueFilter();
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
+  el.classList.add('active');
+  isMyLeadsMode = true;
+  runMyLeadsFilter();
+}
+
+async function runMyLeadsFilter() {
+  isSearchMode = false;
+  document.getElementById('searchModeBanner').classList.remove('show');
+  setLoadingState(true);
+  try {
+    const myEmail = (window._currentUserEmail || '').toLowerCase();
+    if (!myEmail) { toast('No user email found', 'warn'); return; }
+    const all = await window.dbSearchLeads('', {}, 500);
+    const mine = all.filter(l => (l.assignedToEmail || '').toLowerCase() === myEmail);
+    searchResults = mine; currentLeads = mine;
+    document.getElementById('cnt-my').textContent = mine.length;
+    document.getElementById('pagination').style.display     = 'none';
+    document.getElementById('listPagination').style.display = 'none';
+    renderCurrentView();
+    toast(`Showing ${mine.length} leads assigned to you`, 'success');
+  } catch(e) { toast('Failed to load my leads: ' + e.message, 'error'); }
+  finally { setLoadingState(false); }
+}
+
+function clearMyLeadsFilter() {
+  isMyLeadsMode = false; searchResults = [];
+  document.getElementById('myLeadsFilterItem').classList.remove('active');
+  document.querySelector('.aside-item')?.classList.add('active');
   updatePaginationControls();
   loadPage('first');
 }
@@ -1890,11 +1903,9 @@ function clearOverdueFilter() {
 ════════════════════════════════════════════════════ */
 function setStatusFilter(status, el) {
   if (isOverdueMode) clearOverdueFilter();
+  if (isMyLeadsMode) clearMyLeadsFilter();
   activeFilters.status = status;
-  document.querySelectorAll('.aside-item').forEach(i => {
-    i.classList.remove('active');
-    i.classList.remove('active-danger');
-  });
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
   if (el) el.classList.add('active');
   clearSearch();
   resetPagination();
@@ -1910,7 +1921,7 @@ function onFilterChange() {
 }
 
 /* ════════════════════════════════════════════════════
-   SEARCH — client-side over 500-doc window
+   SEARCH
 ════════════════════════════════════════════════════ */
 function onSearchInput(q) {
   clearTimeout(searchTimer);
@@ -1918,6 +1929,7 @@ function onSearchInput(q) {
     const term = q.trim();
     if (!term) { clearSearch(); return; }
     if (isOverdueMode) clearOverdueFilter();
+    if (isMyLeadsMode) clearMyLeadsFilter();
     runSearch(term);
   }, 380);
 }
@@ -1933,21 +1945,16 @@ async function runSearch(term) {
     document.getElementById('listPagination').style.display  = 'none';
     currentLeads = searchResults;
     renderCurrentView();
-  } catch(e) {
-    toast('Search failed: ' + e.message, 'error');
-  } finally {
-    setLoadingState(false);
-  }
+  } catch(e) { toast('Search failed: ' + e.message, 'error'); }
+  finally { setLoadingState(false); }
 }
 
 function clearSearch() {
-  const inp = document.getElementById('searchInput');
-  if (inp) inp.value = '';
-  isSearchMode  = false;
-  searchResults = [];
+  const inp = document.getElementById('searchInput'); if(inp) inp.value = '';
+  isSearchMode = false; searchResults = [];
   document.getElementById('searchModeBanner').classList.remove('show');
   updatePaginationControls();
-  loadPage('first');  
+  loadPage('first');
 }
 
 /* ════════════════════════════════════════════════════
@@ -1955,9 +1962,7 @@ function clearSearch() {
 ════════════════════════════════════════════════════ */
 function setView(view, btn) {
   currentView = view;
-  document.querySelectorAll('#viewToggle button').forEach(b => {
-    b.style.background = 'transparent'; b.style.color = 'var(--muted)';
-  });
+  document.querySelectorAll('#viewToggle button').forEach(b => { b.style.background='transparent'; b.style.color='var(--muted)'; });
   btn.style.background = 'var(--surface)'; btn.style.color = 'var(--accent)';
   if (view === 'board') loadBoardView();
   else renderCurrentView();
@@ -1968,7 +1973,7 @@ function renderCurrentView() {
   document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
   if (currentView === 'table') renderTable(currentLeads);
-  else if (currentView === 'list')  renderList(currentLeads);
+  else if (currentView === 'list') renderList(currentLeads);
 }
 
 /* ════════════════════════════════════════════════════
@@ -1977,7 +1982,7 @@ function renderCurrentView() {
 function renderTable(leads) {
   const tbody = document.getElementById('leadsBody');
   if (!leads || !leads.length) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div></td></tr>`;
     return;
@@ -2001,6 +2006,7 @@ function renderTable(leads) {
       <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry||'—')}</td>
       <td style="font-size:.78rem">${esc(l.service||'—')}</td>
       <td>${statusBadge(l.status)}</td>
+      <td>${assigneeChip(l)}</td>
       <td>${scoreBadge(score)}</td>
       <td style="font-size:.73rem;color:var(--muted);font-family:var(--mono)">${esc(String(l.date||'').slice(0,10))}</td>
       <td>
@@ -2027,14 +2033,10 @@ async function loadBoardView() {
   document.getElementById('boardScroll').innerHTML =
     `<div style="padding:40px;color:var(--muted);font-size:.84rem;display:flex;align-items:center;gap:12px;"><div class="spinner"></div> Loading board…</div>`;
   try {
-    const stageData = await Promise.all(
-      BOARD_STAGES.map(s => window.dbLoadStage(s.key))
-    );
+    const stageData = await Promise.all(BOARD_STAGES.map(s => window.dbLoadStage(s.key)));
     BOARD_STAGES.forEach((s,i) => { boardLeads[s.key] = stageData[i]; });
     renderBoard();
-  } catch(e) {
-    toast('Board load failed: ' + e.message, 'error');
-  }
+  } catch(e) { toast('Board load failed: ' + e.message, 'error'); }
 }
 
 function renderBoard() {
@@ -2092,15 +2094,22 @@ function createBoardCard(l) {
   card.draggable = true;
   card.dataset.leadId = l.leadId;
   const initials = (l.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const assigneeInitials = l.assignedTo ? l.assignedTo.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) : '';
+
   card.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
       <div style="width:26px;height:26px;border-radius:6px;background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--accent);font-family:var(--mono);flex-shrink:0;">${esc(initials)}</div>
       <div style="min-width:0;flex:1;"><div class="board-card-name">${esc(l.name||'—')}</div></div>
-      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;" title="Drag to move">
+      <div style="width:14px;height:14px;flex-shrink:0;opacity:.3;">
         <svg viewBox="0 0 14 14" fill="currentColor" width="14" height="14"><circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg>
       </div>
     </div>
     <div class="board-card-company">${esc(l.company||'—')}${l.jobtitle?' · '+esc(l.jobtitle):''}</div>
+    ${l.assignedTo ? `
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+      <div style="width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:.45rem;font-weight:700;color:#080c10;font-family:var(--mono);flex-shrink:0;">${esc(assigneeInitials)}</div>
+      <span style="font-size:.63rem;color:var(--accent2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;" title="${esc(l.assignedToEmail||l.assignedTo)}">${esc(l.assignedTo)}</span>
+    </div>` : ''}
     <div class="board-card-footer">
       <span class="board-card-service">${esc(l.service||'—')}</span>
       <div style="display:flex;align-items:center;gap:5px;">
@@ -2148,11 +2157,7 @@ async function moveLead(leadId, fromStage, newStage) {
   toast(`Moving ${lead.name} → ${newStage}…`, 'success');
   try {
     await window.dbUpdateLead(lead._docId, updated);
-    await window.dbAddActivity(lead._docId, {
-      type: 'status',
-      text: `Status changed to ${newStage}`,
-      user: document.getElementById('sideUserName').textContent || 'Team'
-    });
+    await window.dbAddActivity(lead._docId, { type:'status', text:`Status changed to ${newStage}`, user: document.getElementById('sideUserName').textContent||'Team' });
     toast(`${lead.name} moved to ${newStage}`, 'success');
     refreshCounts();
   } catch(e) {
@@ -2174,10 +2179,16 @@ function renderList(leads) {
   }
   listBody.innerHTML = leads.map(l=>`
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
-      <div class="list-item-contact"><div class="list-item-name">${esc(l.name||'—')}</div><div class="list-item-email">${esc(l.email||'')}</div></div>
-      <div class="list-item-company-wrap"><div class="list-item-company">${esc(l.company||'—')}</div>${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}</div>
+      <div class="list-item-contact">
+        <div class="list-item-name">${esc(l.name||'—')}</div>
+        <div class="list-item-email">${esc(l.email||'')}</div>
+      </div>
+      <div class="list-item-company-wrap">
+        <div class="list-item-company">${esc(l.company||'—')}</div>
+        ${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}
+      </div>
       <div class="list-item-industry" title="${esc(l.industry||'')}">${esc(l.industry||'—')}</div>
-      <div class="list-item-phone">${l.phone?`<a href="tel:${esc(l.phone)}" onclick="event.stopPropagation()">${esc(l.phone)}</a>`:'<span style="opacity:.35">—</span>'}</div>
+      <div class="list-item-assignee">${assigneeChip(l)}</div>
       <div>${statusBadge(l.status)}</div>
       <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
       <div class="list-item-actions" onclick="event.stopPropagation()">
@@ -2198,8 +2209,8 @@ function openCreate() {
   editingLeadId = null; editingDocId = null;
   document.getElementById('formModalTitle').textContent = 'New Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
-  ['name','email','phone','linkedin','company','jobtitle','industry',
-   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f => {
+  ['name','email','phone','linkedin','company','jobtitle','industry','service','status','source','page',
+   'message','comments','dealvalue','followup','assignedTo','assignedToEmail'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if(el) el.value = f === 'status' ? 'New' : '';
   });
@@ -2210,8 +2221,12 @@ async function editLeadById(leadId, docId) {
   let lead = currentLeads.find(l => l.leadId === leadId)
           || searchResults.find(l => l.leadId === leadId);
   if (!lead) {
-    lead = await window.dbGetLead(docId);
+    for (const stage of BOARD_STAGES) {
+      const found = (boardLeads[stage.key]||[]).find(l => l.leadId === leadId);
+      if (found) { lead = found; break; }
+    }
   }
+  if (!lead) lead = await window.dbGetLead(docId);
   if (!lead) { toast('Lead not found', 'error'); return; }
 
   editingLeadId = leadId;
@@ -2219,8 +2234,8 @@ async function editLeadById(leadId, docId) {
   document.getElementById('formModalTitle').textContent = 'Edit Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
 
-  ['name','email','phone','linkedin','company','jobtitle',
-   'service','status','source','page','message','comments','dealvalue','followup'].forEach(f => {
+  ['name','email','phone','linkedin','company','jobtitle','service','status','source','page',
+   'message','comments','dealvalue','followup','assignedTo','assignedToEmail'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if(el) el.value = lead[f] || '';
   });
@@ -2247,37 +2262,64 @@ async function submitForm() {
   const btn = document.getElementById('formSubmitBtn');
   btn.disabled = true; btn.innerHTML = '<div class="spinner"></div>';
 
+  const newAssignedTo      = document.getElementById('f-assignedTo').value.trim();
+  const newAssignedToEmail = document.getElementById('f-assignedToEmail').value.trim();
+
+  // Detect if assignee changed (to stamp assignedAt)
+  let _setAssignedAt = false;
+  if (editingLeadId) {
+    const prev = currentLeads.find(l => l.leadId === editingLeadId) || searchResults.find(l => l.leadId === editingLeadId);
+    if (prev && (prev.assignedTo !== newAssignedTo || prev.assignedToEmail !== newAssignedToEmail)) _setAssignedAt = true;
+  } else {
+    if (newAssignedTo || newAssignedToEmail) _setAssignedAt = true;
+  }
+
   const lead = {
-    leadId:    editingLeadId||'',
-    _docId:    editingDocId||'',
+    leadId:          editingLeadId||'',
+    _docId:          editingDocId||'',
     name, email, phone,
-    linkedin:  document.getElementById('f-linkedin').value.trim(),
-    company:   document.getElementById('f-company').value.trim(),
-    jobtitle:  document.getElementById('f-jobtitle').value.trim(),
-    industry:  document.getElementById('f-industry').value,
-    service:   document.getElementById('f-service').value,
-    status:    document.getElementById('f-status').value,
-    source:    document.getElementById('f-source').value.trim(),
-    page:      document.getElementById('f-page').value.trim(),
-    message:   document.getElementById('f-message').value.trim(),
-    comments:  document.getElementById('f-comments').value.trim(),
-    dealvalue: document.getElementById('f-dealvalue').value.trim(),
-    followup:  document.getElementById('f-followup').value,
+    linkedin:        document.getElementById('f-linkedin').value.trim(),
+    company:         document.getElementById('f-company').value.trim(),
+    jobtitle:        document.getElementById('f-jobtitle').value.trim(),
+    industry:        document.getElementById('f-industry').value,
+    service:         document.getElementById('f-service').value,
+    status:          document.getElementById('f-status').value,
+    source:          document.getElementById('f-source').value.trim(),
+    page:            document.getElementById('f-page').value.trim(),
+    message:         document.getElementById('f-message').value.trim(),
+    comments:        document.getElementById('f-comments').value.trim(),
+    dealvalue:       document.getElementById('f-dealvalue').value.trim(),
+    followup:        document.getElementById('f-followup').value,
+    assignedTo:      newAssignedTo,
+    assignedToEmail: newAssignedToEmail,
+    _setAssignedAt,
   };
 
   try {
+    const user = document.getElementById('sideUserName').textContent||'Team';
     if (editingLeadId) {
       await window.dbUpdateLead(editingDocId, lead);
       const idx = currentLeads.findIndex(l => l.leadId === editingLeadId);
       if(idx !== -1) currentLeads[idx] = { ...currentLeads[idx], ...lead };
       toast('Lead updated!', 'success');
-      await window.dbAddActivity(editingDocId, {
-        type: 'note', text: 'Lead details updated',
-        user: document.getElementById('sideUserName').textContent||'Team'
-      });
+      await window.dbAddActivity(editingDocId, { type:'note', text:'Lead details updated', user });
+      if (_setAssignedAt && newAssignedTo) {
+        await window.dbAddActivity(editingDocId, {
+          type: 'assign',
+          text: `Assigned to ${newAssignedTo}${newAssignedToEmail ? ' ('+newAssignedToEmail+')' : ''}`,
+          user,
+        });
+      }
       renderCurrentView();
     } else {
       const newId = await window.dbAddLead(lead);
+      if (_setAssignedAt && newAssignedTo) {
+        await window.dbAddActivity(newId, {
+          type: 'assign',
+          text: `Assigned to ${newAssignedTo}${newAssignedToEmail ? ' ('+newAssignedToEmail+')' : ''}`,
+          user,
+        });
+      }
       toast('Lead created — ' + newId, 'success');
       await refreshAll();
     }
@@ -2289,6 +2331,12 @@ async function submitForm() {
     btn.disabled = false;
     btn.textContent = editingLeadId ? 'Save Changes' : 'Create Lead';
   }
+}
+
+/* ── Assign-to-Me shortcut ── */
+function assignToMe() {
+  document.getElementById('f-assignedTo').value      = window._currentUserName  || '';
+  document.getElementById('f-assignedToEmail').value = window._currentUserEmail || '';
 }
 
 /* ════════════════════════════════════════════════════
@@ -2310,7 +2358,7 @@ const AUTO_ACTIONS = [
   {id:'send_intro_email', label:'Send Intro Email',    icon:'📧', badge:'Email'},
   {id:'send_proposal',    label:'Send Proposal',       icon:'📄', badge:'Email'},
   {id:'schedule_followup',label:'Schedule Follow-Up',  icon:'📅', badge:'Email'},
-  {id:'send_nurture', label:'Remind Me in 3 Days',  icon:'🔄', badge:'Email'},
+  {id:'send_nurture',     label:'Remind Me in 3 Days', icon:'🔄', badge:'Email'},
 ];
 const OUTREACH_ACTIONS = [
   {id:'send_whatsapp', label:'Send WhatsApp', icon:'💬', badge:'WhatsApp'},
@@ -2342,11 +2390,12 @@ async function viewLead(leadId, docId) {
   const qb = document.getElementById('viewQuickBar');
   const dealVal = lead.dealvalue ? `$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
   qb.innerHTML = [
-    ['💼 Service', lead.service||'—'],
-    ['📊 Status',  lead.status||'—'],
-    ['💰 Deal Value', dealVal],
-    ['📅 Follow-up',  lead.followup||'—'],
-  ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
+    ['💼 Service',     lead.service||'—'],
+    ['📊 Status',      lead.status||'—'],
+    ['💰 Deal Value',  dealVal],
+    ['📅 Follow-up',   lead.followup||'—'],
+    ['👤 Assigned To', lead.assignedTo||'Unassigned'],
+  ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:${k==='👤 Assigned To'&&v!=='Unassigned'?'var(--accent2)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
 
   const section = (title, rows) => {
     const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
@@ -2356,7 +2405,41 @@ async function viewLead(leadId, docId) {
         k==='Status' ? statusBadge(v) : link ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>` : esc(String(v||'—'))
       }</span></div>`).join('')}</div>`;
   };
+
+  // ── Assignment card ──
+  let assignmentHtml = '';
+  if (lead.assignedTo) {
+    const aInitials = lead.assignedTo.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    const assignedAtStr = lead.assignedAt
+      ? new Date(lead.assignedAt).toLocaleString()
+      : '—';
+    assignmentHtml = `
+      <div class="assignment-card">
+        <div class="big-avatar">${esc(aInitials)}</div>
+        <div class="assign-info">
+          <div class="assign-name">${esc(lead.assignedTo)}</div>
+          ${lead.assignedToEmail ? `<div class="assign-email"><a href="mailto:${esc(lead.assignedToEmail)}" style="color:var(--accent2);text-decoration:none;">${esc(lead.assignedToEmail)}</a></div>` : ''}
+          <div class="assign-date">Assigned: ${assignedAtStr}</div>
+        </div>
+        <button class="assign-me-btn" onclick="quickAssignToMe('${esc(lead._docId||docId)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Reassign to Me
+        </button>
+      </div>`;
+  } else {
+    assignmentHtml = `
+      <div class="unassigned-card">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Unassigned</span>
+        <button class="assign-me-btn" style="margin-left:auto;" onclick="quickAssignToMe('${esc(lead._docId||docId)}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Assign to Me
+        </button>
+      </div>`;
+  }
+
   document.getElementById('viewBody').innerHTML =
+    assignmentHtml +
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
     section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
@@ -2365,21 +2448,15 @@ async function viewLead(leadId, docId) {
   document.getElementById('timelineBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
   await loadActivities(_viewingDocId);
 
-  const leadPayload = JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,phone:lead.phone,company:lead.company,status:lead.status,service:lead.service});
-  // Store the current lead globally so buttons can access it safely
-	window._viewingLead = lead;
-
-	document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
-	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
-		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-	  </button>`
-	).join('');
-
-	document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
-	  `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
-		<span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
-	  </button>`
-	).join('');
+  window._viewingLead = lead;
+  document.getElementById('autoGrid').innerHTML = AUTO_ACTIONS.map(a =>
+    `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+    </button>`).join('');
+  document.getElementById('outreachGrid').innerHTML = OUTREACH_ACTIONS.map(a =>
+    `<button class="auto-btn" data-action="${a.id}" onclick="handleAutoBtn(this)">
+      <span>${a.icon}</span> ${a.label}<span class="auto-badge">${a.badge}</span>
+    </button>`).join('');
 
   const na = document.getElementById('viewNextAction');
   if (lead.followup) {
@@ -2390,6 +2467,33 @@ async function viewLead(leadId, docId) {
 
   switchViewTab('details', document.querySelector('.view-tab'));
   document.getElementById('viewOverlay').classList.add('open');
+}
+
+/* Quick assign from view modal */
+async function quickAssignToMe(docId) {
+  const name  = window._currentUserName  || '';
+  const email = window._currentUserEmail || '';
+  if (!name && !email) { toast('No user info available','warn'); return; }
+  try {
+    const lead = await window.dbGetLead(docId);
+    if (!lead) { toast('Lead not found','error'); return; }
+    const updated = { ...lead, assignedTo: name, assignedToEmail: email, _setAssignedAt: true };
+    await window.dbUpdateLead(docId, updated);
+    await window.dbAddActivity(docId, {
+      type: 'assign',
+      text: `Assigned to ${name}${email ? ' ('+email+')' : ''}`,
+      user: document.getElementById('sideUserName').textContent||'Team',
+    });
+    toast(`Lead assigned to ${name}`, 'success');
+    // Refresh view
+    viewLead(lead.leadId, docId);
+    // Update in-memory lists
+    [currentLeads, searchResults].forEach(arr => {
+      const idx = arr.findIndex(l => l._docId === docId);
+      if (idx !== -1) arr[idx] = { ...arr[idx], assignedTo: name, assignedToEmail: email };
+    });
+    renderCurrentView();
+  } catch(e) { toast('Failed to assign: '+e.message,'error'); }
 }
 
 /* ════════════════════════════════════════════════════
@@ -2406,8 +2510,8 @@ function renderTimeline(acts) {
     body.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);font-size:.8rem;opacity:.6;">No activity yet.</div>`;
     return;
   }
-  const iconMap  = {note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto'};
-  const emojiMap = {note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡'};
+  const iconMap  = {note:'tl-icon-note',email:'tl-icon-email',call:'tl-icon-call',status:'tl-icon-status',auto:'tl-icon-auto',assign:'tl-icon-assign'};
+  const emojiMap = {note:'📝',email:'📧',call:'📞',status:'🔄',auto:'⚡',assign:'👤'};
   body.innerHTML = acts.map(a => `
     <div class="timeline-entry">
       <div class="tl-icon ${iconMap[a.type]||'tl-icon-note'}">${emojiMap[a.type]||'📝'}</div>
@@ -2428,37 +2532,29 @@ async function addNote() {
     document.getElementById('noteInput').value = '';
     await loadActivities(_viewingDocId);
     toast('Activity saved','success');
-  } catch(e) {
-    toast('Failed to save note: '+e.message,'error');
-  }
+  } catch(e) { toast('Failed to save note: '+e.message,'error'); }
 }
 
 /* ════════════════════════════════════════════════════
    n8n
 ════════════════════════════════════════════════════ */
-function handleAutoBtn(btnEl) {
-  const actionId = btnEl.dataset.action;
-  triggerN8n(actionId, window._viewingLead, btnEl);
-}
+function handleAutoBtn(btnEl) { triggerN8n(btnEl.dataset.action, window._viewingLead, btnEl); }
 
 async function triggerN8n(actionId, lead, btnEl) {
   const url = N8N_WEBHOOKS[actionId];
- 
- 
- // ── PLACEHOLDER: block unconnected actions ──
-  const activeActions = ['send_intro_email', 'send_proposal', 'schedule_followup', 'send_nurture', 'send_whatsapp'];
-  if (!activeActions.includes(actionId)) {
-    toast('The automation to be configured!', 'warn');
-    return;
-  }
- 
+  const activeActions = ['send_intro_email','send_proposal','schedule_followup','send_nurture','send_whatsapp'];
+  if (!activeActions.includes(actionId)) { toast('Automation to be configured!', 'warn'); return; }
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({leadId:lead.leadId,name:lead.name,email:lead.email,
-        phone:lead.phone,company:lead.company,status:lead.status,service:lead.service,actId:actionId,followup_date:lead.followup,
-        triggeredAt:new Date().toISOString()})});
+      body:JSON.stringify({
+        leadId: lead.leadId, name: lead.name, email: lead.email,
+        phone: lead.phone, company: lead.company, status: lead.status,
+        service: lead.service, actId: actionId, followup_date: lead.followup,
+        assignedTo: lead.assignedTo, assignedToEmail: lead.assignedToEmail,
+        triggeredAt: new Date().toISOString(),
+      })});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`Automation: ${actionId.replace(/_/g,' ')} completed successfully`,'success');
     if(_viewingDocId) {
@@ -2472,12 +2568,14 @@ async function triggerN8n(actionId, lead, btnEl) {
 }
 
 /* ════════════════════════════════════════════════════
-   EXPORT CSV
+   EXPORT CSV — includes assignment fields
 ════════════════════════════════════════════════════ */
 function exportCSV() {
-  const leads = (isSearchMode || isOverdueMode) ? searchResults : currentLeads;
+  const leads = (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults : currentLeads;
   if(!leads.length) { toast('No leads on this page to export','warn'); return; }
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status',
+                'source','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
+                'message','comments'];
   const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
   const blob = new Blob([csv],{type:'text/csv'});
   const url  = URL.createObjectURL(blob);
@@ -2491,16 +2589,12 @@ function exportCSV() {
    SELECTION & BULK ACTIONS
 ════════════════════════════════════════════════════ */
 function toggleSelect(leadId, cb, leadObj) {
-  if(cb.checked) selectedLeads.set(leadId, leadObj);
-  else selectedLeads.delete(leadId);
+  if(cb.checked) selectedLeads.set(leadId, leadObj); else selectedLeads.delete(leadId);
   updateBulkBar();
-  const row = cb.closest('tr');
-  if(row) row.classList.toggle('selected-row', cb.checked);
+  const row = cb.closest('tr'); if(row) row.classList.toggle('selected-row', cb.checked);
 }
 function toggleSelectAll(masterCb) {
-  currentLeads.forEach(l => {
-    if(masterCb.checked) selectedLeads.set(l.leadId, l); else selectedLeads.delete(l.leadId);
-  });
+  currentLeads.forEach(l => { if(masterCb.checked) selectedLeads.set(l.leadId, l); else selectedLeads.delete(l.leadId); });
   updateBulkBar(); renderCurrentView();
 }
 function clearSelection() {
@@ -2512,9 +2606,31 @@ function updateBulkBar() {
   document.getElementById('bulkBar').classList.toggle('show', n>0);
   document.getElementById('bulkCount').textContent = n;
 }
-function bulkChangeStatus() {
-  if(!selectedLeads.size) return;
-  document.getElementById('bulkStatusOverlay').classList.add('open');
+function bulkChangeStatus() { if(!selectedLeads.size) return; document.getElementById('bulkStatusOverlay').classList.add('open'); }
+
+/* Bulk assign to logged-in user */
+async function bulkAssignToMe() {
+  const entries = [...selectedLeads.values()];
+  if (!entries.length) return;
+  const name  = window._currentUserName  || '';
+  const email = window._currentUserEmail || '';
+  if (!name && !email) { toast('No user info available','warn'); return; }
+  toast(`Assigning ${entries.length} leads to ${name}…`, 'success');
+  const user = document.getElementById('sideUserName').textContent||'Team';
+  for (const lead of entries) {
+    try {
+      const updated = { ...lead, assignedTo: name, assignedToEmail: email, _setAssignedAt: true };
+      await window.dbUpdateLead(lead._docId, updated);
+      await window.dbAddActivity(lead._docId, {
+        type: 'assign',
+        text: `Assigned to ${name}${email ? ' ('+email+')' : ''}`,
+        user,
+      });
+    } catch(e) { console.error('bulk assign', e); }
+  }
+  clearSelection();
+  await refreshAll();
+  toast(`${entries.length} leads assigned to ${name}`, 'success');
 }
 
 async function applyBulkStatus() {
@@ -2525,27 +2641,28 @@ async function applyBulkStatus() {
   const user = document.getElementById('sideUserName').textContent||'Team';
   for(const lead of entries) {
     try {
-      const updated = { ...lead, status: newStatus };
-      await window.dbUpdateLead(lead._docId, updated);
-      await window.dbAddActivity(lead._docId,{type:'status',text:`Status changed to ${newStatus}`,user});
+      await window.dbUpdateLead(lead._docId, { ...lead, status: newStatus });
+      await window.dbAddActivity(lead._docId, {type:'status',text:`Status changed to ${newStatus}`,user});
     } catch(e) { console.error('bulk update', e); }
   }
   clearSelection();
   await refreshAll();
-  toast(`${entries.length} leads updated to "${newStatus}"`,'success');
+  toast(`${entries.length} leads updated to "${newStatus}"`, 'success');
 }
 
 function bulkExport() {
   const leads = [...selectedLeads.values()];
   if(!leads.length) { toast('No leads selected','warn'); return; }
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status','source','date','dealvalue','followup','message','comments'];
+  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status',
+                'source','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
+                'message','comments'];
   const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
   const blob = new Blob([csv],{type:'text/csv'});
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url; a.download = `leads-selected-${leads.length}.csv`; a.click();
   URL.revokeObjectURL(url);
-  toast(`Exported ${leads.length} selected leads`,'success');
+  toast(`Exported ${leads.length} selected leads`, 'success');
 }
 
 /* ════════════════════════════════════════════════════
@@ -2568,10 +2685,13 @@ function scoreBadge(score) {
   if(score>=35) return `<span class="score-badge score-warm"><span class="score-dot"></span> WARM ${score}</span>`;
   return `<span class="score-badge score-cold"><span class="score-dot"></span> COLD ${score}</span>`;
 }
-function isOverdue(lead) {
-  if(!lead.followup) return false;
-  return new Date(lead.followup) < new Date();
+function assigneeChip(l) {
+  if (!l.assignedTo) return `<span class="unassigned-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>—</span>`;
+  const initials = l.assignedTo.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const title = l.assignedToEmail ? `${l.assignedTo} (${l.assignedToEmail})` : l.assignedTo;
+  return `<span class="assignee-chip" title="${esc(title)}"><span class="assignee-avatar">${esc(initials)}</span><span class="assignee-chip-text">${esc(l.assignedTo)}</span></span>`;
 }
+function isOverdue(lead) { return lead.followup ? new Date(lead.followup) < new Date() : false; }
 function statusBadge(s) {
   const map={'New':'new','Contacted':'contacted','Discovery Call':'discovery','Qualified':'qualified','Proposal Sent':'proposal','Negotiation':'negotiation','Won':'won','Lost':'lost'};
   return `<span class="badge badge-${map[s]||'new'}">${esc(s||'New')}</span>`;
@@ -2580,16 +2700,14 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function switchViewTab(tab, btnEl) {
-  ['details','timeline','automations'].forEach(t => {
-    document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none';
-  });
+  ['details','timeline','automations'].forEach(t => { document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none'; });
   document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
   if(btnEl) btnEl.classList.add('active');
 }
 function setLoadingState(on) {
   if(!on) return;
   if(currentView==='table') {
-    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div></td></tr>`;
+    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div></td></tr>`;
   } else if(currentView==='list') {
     document.getElementById('listBody').innerHTML = `<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div>`;
   }
@@ -2606,7 +2724,7 @@ let toastTimer;
 function toast(msg, type='success') {
   const el = document.getElementById('toast');
   document.getElementById('toastMsg').textContent = msg;
-  el.className = 'show '+type;
+  el.className = 'show ' + type;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
@@ -2617,7 +2735,6 @@ function toggleHelpPanel() {
   panel.classList.toggle('open',!isOpen);
   overlay.classList.toggle('open',!isOpen);
 }
-
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const shell   = sidebar.closest('.shell');
@@ -2625,8 +2742,6 @@ function toggleSidebar() {
   shell.classList.toggle('sidebar-collapsed');
   localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
 }
-
-// Restore state on load
 (function() {
   if (localStorage.getItem('sidebarCollapsed') === 'true') {
     const sidebar = document.getElementById('sidebar');
