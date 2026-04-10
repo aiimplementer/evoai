@@ -2685,7 +2685,7 @@ async function fetchReport(reportType, btnEl) {
     const iframe = document.createElement('iframe');
     iframe.className = 'report-frame';
     iframe.sandbox = 'allow-same-origin allow-scripts';
-    iframe.title = reportType === 'daily' ? 'Daily Report' : 'Status Pipeline Report';
+    iframe.title = reportType === 'full_pipeline' ? 'Activity' : 'Status Pipeline';
     wrap.appendChild(iframe);
 
     // Write HTML into the iframe
@@ -2704,7 +2704,7 @@ async function fetchReport(reportType, btnEl) {
 
     btnEl.classList.remove('loading');
     btnEl.classList.add('active');
-    toast(`${reportType === 'daily' ? 'Daily Report' : 'Status Pipeline'} loaded`, 'success');
+    toast(`${reportType === 'full_pipeline' ? 'Activity Report' : 'Status Pipeline'} loaded`, 'success');
 
   } catch(e) {
     wrap.innerHTML = `<div class="report-error">
