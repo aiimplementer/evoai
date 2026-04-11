@@ -511,7 +511,7 @@
 
   /* ── TABLE ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; min-width: 960px;}
+  table { width: 100%; border-collapse: collapse; }
   thead tr { background: var(--surface2); }
   th {
     text-align: left; padding: 11px 14px;
@@ -1379,20 +1379,16 @@
           <thead>
             <tr>
               <th style="width:36px;"><input type="checkbox" class="row-check" id="selectAll" onchange="toggleSelectAll(this)" title="Select all on this page"/></th>
-              <th>Lead ID</th>
               <th>Contact</th>
               <th>Company</th>
-              <th>Industry</th>
-              <th>Service</th>
               <th>Status</th>
               <th>Assigned To</th>
-              <th>Score</th>
-              <th>Date</th>
+              <th>Follow-up</th>
               <th style="width:80px;">Actions</th>
             </tr>
           </thead>
           <tbody id="leadsBody">
-            <tr><td colspan="11"><div class="empty-state">
+            <tr><td colspan="7"><div class="empty-state">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <p>Loading leads…</p>
             </div></td></tr>
@@ -2198,7 +2194,7 @@ function renderCurrentView() {
 function renderTable(leads) {
   const tbody = document.getElementById('leadsBody');
   if (!leads || !leads.length) {
-    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <p>No leads found.</p></div></td></tr>`;
     return;
@@ -2207,24 +2203,33 @@ function renderTable(leads) {
     const score   = computeScore(l);
     const overdue = isOverdue(l);
     const sel     = selectedLeads.has(l.leadId);
+    // Score dot colour for status column
+    const scoreDotColor = score>=60 ? 'var(--danger)' : score>=35 ? 'var(--warn)' : 'var(--accent2)';
+    // Follow-up cell
+    const followupCell = l.followup
+      ? `<span style="font-size:.73rem;font-family:var(--mono);color:${overdue?'var(--danger)':'var(--muted)'};">⏰ ${esc(String(l.followup).slice(0,10))}</span>`
+      : '';
     return `
     <tr class="${sel ? 'selected-row' : ''}">
       <td style="padding:11px 10px;"><input type="checkbox" class="row-check" data-id="${esc(l.leadId)}" ${sel ? 'checked' : ''} onchange="toggleSelect('${esc(l.leadId)}',this,${JSON.stringify(l).replace(/"/g,'&quot;')})"/></td>
-      <td><span class="lead-id">${esc(l.leadId||'—')}</span></td>
       <td>
         <div class="lead-name">${esc(l.name||'—')}${overdue ? ` <span class="overdue-tag" style="font-size:.55rem;padding:1px 5px;">⏰</span>` : ''}</div>
         <div class="lead-sub">${esc(l.email||'')}</div>
+        <div class="lead-id">${esc(l.leadId||'')}</div>
       </td>
       <td>
         <div style="font-weight:600;font-size:.81rem">${esc(l.company||'—')}</div>
         ${l.jobtitle ? `<div class="lead-sub">${esc(l.jobtitle)}</div>` : ''}
+        ${l.industry ? `<div class="lead-sub">${esc(l.industry)}</div>` : ''}
       </td>
-      <td style="font-size:.76rem;color:var(--muted)">${esc(l.industry||'—')}</td>
-      <td style="font-size:.78rem">${esc(l.service||'—')}</td>
-      <td>${statusBadge(l.status)}</td>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:${scoreDotColor};flex-shrink:0;"></span>
+          ${statusBadge(l.status)}
+        </span>
+      </td>
       <td>${assigneeChip(l)}</td>
-      <td>${scoreBadge(score)}</td>
-      <td style="font-size:.73rem;color:var(--muted);font-family:var(--mono)">${esc(String(l.date||'').slice(0,10))}</td>
+      <td>${followupCell}</td>
       <td>
         <div class="row-actions">
           <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
@@ -3144,7 +3149,7 @@ function switchViewTab(tab, btnEl) {
 function setLoadingState(on) {
   if(!on) return;
   if(currentView==='table') {
-    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div></td></tr>`;
+    document.getElementById('leadsBody').innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div></td></tr>`;
   } else if(currentView==='list') {
     document.getElementById('listBody').innerHTML = `<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Loading…</p></div>`;
   }
