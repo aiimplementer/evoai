@@ -784,25 +784,30 @@
 
   /* ── LIST VIEW ── */
   #listView { display: none; }
-  .list-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .list-header, .list-item { display: grid; grid-template-columns: 190px 180px 1fr 120px 130px auto 100px auto; align-items: center; gap: 14px; padding: 10px 16px; }
-  .list-header { background: var(--surface2); border-bottom: 1px solid var(--border); }
-  .list-header span { font-size: .64rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
-  .list-item { border-bottom: 1px solid rgba(30,45,66,.6); cursor: pointer; transition: background .12s; }
-  .list-item:last-child { border-bottom: none; }
-  .list-item:hover { background: rgba(255,255,255,.025); }
-  .list-item-contact { min-width: 0; }
-  .list-item-name { font-size: .84rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item-email { font-size: .71rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item-company-wrap { min-width: 0; }
-  .list-item-company { font-size: .80rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item-jobtitle { font-size: .70rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item-industry { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .list-item-phone { font-family: var(--mono); font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item-phone a { color: var(--accent2); text-decoration: none; }
-  .list-item-phone a:hover { text-decoration: underline; }
-  .list-item-date { font-family: var(--mono); font-size: .68rem; color: var(--muted); white-space: nowrap; }
-  .list-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
+  .list-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .list-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .12s;
+    display: grid; grid-template-columns: minmax(180px,2fr) minmax(140px,1.5fr) auto auto auto; align-items: center; gap: 16px;
+  }
+  .list-card:hover { border-color: rgba(0,229,160,.3); background: rgba(255,255,255,.015); }
+  .lc-identity { min-width: 0; }
+  .lc-name { font-size: .87rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lc-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .lc-email { font-size: .71rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .lc-links { display: flex; gap: 5px; }
+  .lc-link-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--muted); text-decoration: none; transition: all .14s; flex-shrink: 0; }
+  .lc-link-btn:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(0,184,255,.06); }
+  .lc-company-wrap { min-width: 0; }
+  .lc-company { font-size: .80rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lc-jobtitle { font-size: .69rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lc-service { display: inline-block; margin-top: 5px; font-size: .63rem; color: var(--muted); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .lc-pipeline { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+  .lc-deal { font-family: var(--mono); font-size: .78rem; font-weight: 700; color: #c084fc; }
+  .lc-followup { font-family: var(--mono); font-size: .68rem; color: var(--muted); white-space: nowrap; }
+  .lc-followup.overdue { color: var(--danger); }
+  .lc-people { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+  .lc-actions { display: flex; gap: 5px; flex-shrink: 0; }
 
   /* ── ACTIVITY TIMELINE ── */
   .timeline-wrap { display: flex; flex-direction: column; gap: 0; }
@@ -1442,13 +1447,7 @@
 
     <!-- LIST VIEW -->
     <div id="listView">
-      <div class="list-wrap">
-        <div class="list-header">
-          <span>Contact</span><span>Company / Role</span><span>Industry</span>
-          <span>Assigned To</span><span>Status</span><span>Date</span><span>Actions</span>
-        </div>
-        <div id="listBody"></div>
-      </div>
+      <div class="list-wrap" id="listBody"></div>
       <div class="pagination" id="listPagination" style="display:none">
         <div class="page-info-block">
           <span id="listPageInfo" style="font-size:.75rem;"></span>
@@ -2402,29 +2401,61 @@ function renderList(leads) {
     listBody.innerHTML = `<div class="empty-state"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No leads found.</p></div>`;
     return;
   }
-  listBody.innerHTML = leads.map(l=>`
-    <div class="list-item" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
-      <div class="list-item-contact">
-        <div class="list-item-name">${esc(l.name||'—')}</div>
-        <div class="list-item-email">${esc(l.email||'')}</div>
+  listBody.innerHTML = leads.map(l => {
+    const score   = computeScore(l);
+    const overdue = isOverdue(l);
+    const dealStr = l.dealvalue ? `$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '';
+    const followupStr = l.followup ? `⏰ ${String(l.followup).slice(0,10)}` : '';
+    // Phone & LinkedIn quick-link icons
+    const phoneLink = l.phone
+      ? `<a class="lc-link-btn" href="tel:${esc(l.phone)}" title="${esc(l.phone)}" onclick="event.stopPropagation()">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.29 6.19 2 2 0 0 1 6.28 4h3a2 2 0 0 1 2 1.72 12.9 12.9 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L10.09 11a16 16 0 0 0 6 6z"/></svg>
+         </a>` : '';
+    const liLink = l.linkedin
+      ? `<a class="lc-link-btn" href="${esc(l.linkedin)}" target="_blank" title="LinkedIn" onclick="event.stopPropagation()">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+         </a>` : '';
+    return `
+    <div class="list-card" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
+      <!-- Col 1: Identity -->
+      <div class="lc-identity">
+        <div class="lc-name">${esc(l.name||'—')}</div>
+        <div class="lc-meta">
+          <span class="lc-email">${esc(l.email||'')}</span>
+          ${(phoneLink||liLink) ? `<div class="lc-links">${phoneLink}${liLink}</div>` : ''}
+        </div>
       </div>
-      <div class="list-item-company-wrap">
-        <div class="list-item-company">${esc(l.company||'—')}</div>
-        ${l.jobtitle?`<div class="list-item-jobtitle">${esc(l.jobtitle)}</div>`:''}
+      <!-- Col 2: Company + Service -->
+      <div class="lc-company-wrap">
+        <div class="lc-company">${esc(l.company||'—')}</div>
+        ${l.jobtitle ? `<div class="lc-jobtitle">${esc(l.jobtitle)}</div>` : ''}
+        ${l.service  ? `<div class="lc-service">${esc(l.service)}</div>`  : ''}
       </div>
-      <div class="list-item-industry" title="${esc(l.industry||'')}">${esc(l.industry||'—')}</div>
-      <div class="list-item-assignee">${assigneeChip(l)}</div>
-      <div>${statusBadge(l.status)}</div>
-      <div class="list-item-date">${esc(String(l.date||'').slice(0,10))}</div>
-      <div class="list-item-actions" onclick="event.stopPropagation()">
-        <button class="icon-btn" title="View"  onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
+      <!-- Col 3: Status + Score -->
+      <div class="lc-people">
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${score>=60?'var(--danger)':score>=35?'var(--warn)':'var(--accent2)'};flex-shrink:0;"></span>
+          ${statusBadge(l.status)}
+        </span>
+        ${scoreBadge(score)}
+      </div>
+      <!-- Col 4: Deal + Follow-up -->
+      <div class="lc-pipeline">
+        ${dealStr ? `<span class="lc-deal">${esc(dealStr)}</span>` : ''}
+        ${followupStr ? `<span class="lc-followup${overdue?' overdue':''}">${esc(followupStr)}</span>` : ''}
+        <div style="margin-top:2px;">${assigneeChip(l)}</div>
+      </div>
+      <!-- Col 5: Actions -->
+      <div class="lc-actions" onclick="event.stopPropagation()">
+        <button class="icon-btn" title="View" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        <button class="icon-btn" title="Edit"  onclick="editLeadById('${esc(l.leadId)}','${esc(l._docId)}')">
+        <button class="icon-btn" title="Edit" onclick="editLeadById('${esc(l.leadId)}','${esc(l._docId)}')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 /* ════════════════════════════════════════════════════
