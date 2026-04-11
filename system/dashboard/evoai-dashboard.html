@@ -94,7 +94,7 @@
       followup:        toDate(d.followupDate),
       date:            toDate(d.createdAt),
       // ── Assignment fields ──
-      assignedTo:      d.assignedTo      || '',
+      assignedTo:      d.assignedTo      || 'Unassigned',
       assignedToEmail: d.assignedToEmail || '',
       assignedAt:      toISO(d.assignedAt),
     };
@@ -121,7 +121,7 @@
       followupDate:        lead.followup        || '',
       lastUpdateTimestamp: serverTimestamp(),
       // ── Assignment fields ──
-      assignedTo:          lead.assignedTo      || '',
+      assignedTo:          lead.assignedTo      || 'Unassigned',
       assignedToEmail:     lead.assignedToEmail || '',
       // assignedAt: only write when actually assigning
       ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
