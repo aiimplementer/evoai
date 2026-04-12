@@ -253,6 +253,11 @@
     await updateDoc(doc(db, 'leads', docId), data);
   };
 
+  window.dbLoadAll = async () => {
+    const snap = await getDocs(query(collection(db, 'leads'), orderBy('createdAt', 'desc')));
+    return snap.docs.map(d => window.docToLead(d));
+  };
+
   window.dbGetLead = async (docId) => {
     const snap = await getDoc(doc(db, 'leads', docId));
     return snap.exists() ? window.docToLead(snap) : null;
@@ -579,6 +584,26 @@
     display: flex; align-items: center; justify-content: center; transition: all .14s;
   }
   .icon-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+
+  /* ── EXPORT DROPDOWN ── */
+  .export-dropdown-wrap { position: relative; }
+  .export-dropdown {
+    display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; min-width: 210px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    overflow: hidden;
+  }
+  .export-dropdown.open { display: block; }
+  .export-drop-item {
+    width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border);
+    color: var(--text); font-family: var(--font); cursor: pointer;
+    display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px;
+    text-align: left; transition: background .13s;
+  }
+  .export-drop-item:last-child { border-bottom: none; }
+  .export-drop-item:hover { background: rgba(0,229,160,.06); color: var(--accent); }
+  .export-drop-item svg { flex-shrink: 0; margin-top: 2px; }
 
   /* ── EMPTY / LOADING ── */
   .empty-state { padding: 56px 20px; text-align: center; color: var(--muted); }
@@ -1344,10 +1369,29 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
           Reports
         </button>
-        <button onclick="exportCSV()" class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export
-        </button>
+        <div class="export-dropdown-wrap" id="exportDropWrap">
+          <button class="pill-btn outline" style="display:flex;align-items:center;gap:6px;font-size:.76rem;" onclick="toggleExportDropdown(event)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="export-dropdown" id="exportDropMenu">
+            <button class="export-drop-item" onclick="exportCSV(); closeExportDropdown();">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+              <div>
+                <div style="font-weight:600;">Export This View</div>
+                <div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Current page / search results</div>
+              </div>
+            </button>
+            <button class="export-drop-item" onclick="exportAllCSV(); closeExportDropdown();">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <div>
+                <div style="font-weight:600;">Export All Leads</div>
+                <div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Every lead in the database</div>
+              </div>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -3061,20 +3105,53 @@ async function fetchReport(reportType, btnEl) {
     toast('Report webhook failed — check URL config', 'error');
   }
 }
-function exportCSV() {
-  const leads = (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults : currentLeads;
-  if(!leads.length) { toast('No leads on this page to export','warn'); return; }
+/* ── Shared CSV builder ── */
+function buildCSV(leads) {
   const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status',
-                'source','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
-                'message','comments'];
-  const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
+                'source','page','userAgent','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
+                'message','comments','linkedin'];
+  return [cols.join(','), ...leads.map(l => cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+}
+function downloadCSV(csv, filename) {
+  const blob = new Blob([csv], {type:'text/csv'});
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = 'leads-export.csv'; a.click();
+  a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
-  toast(`Exported ${leads.length} leads as CSV`,'success');
 }
+
+/* Export current view / page */
+function exportCSV() {
+  const leads = (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults : currentLeads;
+  if (!leads.length) { toast('No leads on this page to export', 'warn'); return; }
+  downloadCSV(buildCSV(leads), 'leads-export.csv');
+  toast(`Exported ${leads.length} leads as CSV`, 'success');
+}
+
+/* Export every lead in Firestore */
+async function exportAllCSV() {
+  const btn = document.getElementById('exportDropWrap');
+  toast('Fetching all leads…', 'success');
+  try {
+    const all = await window.dbLoadAll();
+    if (!all.length) { toast('No leads found', 'warn'); return; }
+    const ts  = new Date().toISOString().slice(0,10);
+    downloadCSV(buildCSV(all), `leads-all-${ts}.csv`);
+    toast(`Exported all ${all.length} leads as CSV`, 'success');
+  } catch(e) {
+    toast('Export failed: ' + e.message, 'error');
+  }
+}
+
+/* Dropdown toggle — close on outside click */
+function toggleExportDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('exportDropMenu').classList.toggle('open');
+}
+function closeExportDropdown() {
+  document.getElementById('exportDropMenu').classList.remove('open');
+}
+document.addEventListener('click', () => closeExportDropdown());
 
 /* ════════════════════════════════════════════════════
    SELECTION & BULK ACTIONS
@@ -3158,16 +3235,8 @@ async function applyBulkStatus() {
 
 function bulkExport() {
   const leads = [...selectedLeads.values()];
-  if(!leads.length) { toast('No leads selected','warn'); return; }
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status',
-                'source','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
-                'message','comments'];
-  const csv = [cols.join(','), ...leads.map(l=>cols.map(c=>`"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `leads-selected-${leads.length}.csv`; a.click();
-  URL.revokeObjectURL(url);
+  if (!leads.length) { toast('No leads selected', 'warn'); return; }
+  downloadCSV(buildCSV(leads), `leads-selected-${leads.length}.csv`);
   toast(`Exported ${leads.length} selected leads`, 'success');
 }
 
