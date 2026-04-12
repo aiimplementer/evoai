@@ -3588,7 +3588,9 @@ function parseImportSheet(fileName, raw) {
 
     const name  = get('name');
     const email = get('email');
-    if (!name && !email) { skipped++; continue; }   // skip fully blank rows
+    // Silent skip: all-blank row (e.g. trailing newline in CSV produces a ghost row)
+    if (row.every(cell => String(cell ?? '').trim() === '')) continue;
+    if (!name && !email) { skipped++; continue; }   // skip rows with no name or email
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
 
     /* Sanitise status */
