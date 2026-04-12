@@ -6,7 +6,6 @@
 <title>evoAI — Manage Leads</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- ── FIREBASE SDK ── -->
 <script type="module">
@@ -1870,8 +1869,8 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </div>
         <div>
-          <div class="modal-title">Import Leads from Excel</div>
-          <div style="font-size:.71rem;color:var(--muted);margin-top:2px;">.xlsx or .xls file — maps columns automatically</div>
+          <div class="modal-title">Import Leads from CSV</div>
+          <div style="font-size:.71rem;color:var(--muted);margin-top:2px;">.csv file — maps columns automatically</div>
         </div>
       </div>
       <button class="modal-close" onclick="closeImportPanel()">✕</button>
@@ -1883,9 +1882,9 @@
       <div id="importStep1">
         <div id="importDropZone" class="import-drop-zone" onclick="document.getElementById('importFileInput').click()" ondragover="importDragOver(event)" ondragleave="importDragLeave(event)" ondrop="importDrop(event)">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
-          <div class="import-drop-title">Drop your Excel file here</div>
-          <div class="import-drop-sub">or click to browse &nbsp;·&nbsp; .xlsx and .xls supported</div>
-          <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;" onchange="importFileSelected(this.files[0])"/>
+          <div class="import-drop-title">Drop your CSV file here</div>
+          <div class="import-drop-sub">or click to browse &nbsp;·&nbsp; .csv supported</div>
+          <input type="file" id="importFileInput" accept=".csv" style="display:none;" onchange="importFileSelected(this.files[0])"/>
         </div>
 
         <div class="import-hint-row">
@@ -3478,33 +3477,80 @@ function importDrop(e) {
   e.preventDefault();
   document.getElementById('importDropZone').classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
-  if (file) importFileSelected(file);
+  if (file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'csv') {
+      toast('Please drop a .csv file', 'warn');
+      return;
+    }
+    importFileSelected(file);
+  }
 }
 
 function importFileSelected(file) {
   if (!file) return;
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['xlsx','xls'].includes(ext)) {
-    toast('Please select an .xlsx or .xls file', 'warn');
+  if (ext !== 'csv') {
+    toast('Please select a .csv file', 'warn');
     return;
   }
 
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
-      if (typeof XLSX === 'undefined') {
-        toast('Excel parser not loaded yet — try again in a moment', 'warn');
-        return;
-      }
-      const wb    = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-      const ws    = wb.Sheets[wb.SheetNames[0]];
-      const raw   = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const text = e.target.result;
+      const raw  = parseCSVToRows(text);
       parseImportSheet(file.name, raw);
     } catch(err) {
       toast('Could not read file: ' + err.message, 'error');
     }
   };
-  reader.readAsArrayBuffer(file);
+  reader.readAsText(file, 'UTF-8');
+}
+
+/* ── Robust CSV parser: handles quoted fields, commas inside quotes, CRLF/LF ── */
+function parseCSVToRows(text) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let inQuote = false;
+  let currentRow = [];
+  let currentField = '';
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    for (let ci = 0; ci < line.length; ci++) {
+      const ch = line[ci];
+      if (inQuote) {
+        if (ch === '"') {
+          if (line[ci + 1] === '"') { currentField += '"'; ci++; } // escaped quote
+          else inQuote = false;
+        } else {
+          currentField += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuote = true;
+        } else if (ch === ',') {
+          currentRow.push(currentField);
+          currentField = '';
+        } else {
+          currentField += ch;
+        }
+      }
+    }
+    if (inQuote) {
+      // multi-line field — append newline and continue
+      currentField += '\n';
+    } else {
+      currentRow.push(currentField);
+      currentField = '';
+      if (currentRow.some(f => f !== '')) rows.push(currentRow);
+      currentRow = [];
+    }
+  }
+  // flush last row if file doesn't end with newline
+  if (currentRow.length && currentRow.some(f => f !== '')) rows.push(currentRow);
+  return rows;
 }
 
 function parseImportSheet(fileName, raw) {
@@ -3553,14 +3599,13 @@ function parseImportSheet(fileName, raw) {
     const rawDeal = colIdx['dealvalue'] !== undefined ? row[colIdx['dealvalue']] : '';
     const dealvalue = (rawDeal !== '' && rawDeal != null) ? String(rawDeal).replace(/[^0-9.]/g,'') : '';
 
-    /* Sanitise followup — Excel may give a JS Date serial; convert to YYYY-MM-DD */
+    /* Sanitise followup — CSV values are plain strings; parse YYYY-MM-DD or common date formats */
     let followup = '';
     if (colIdx['followup'] !== undefined) {
       const rawFU = row[colIdx['followup']];
-      if (rawFU) {
-        /* SheetJS returns dates as JS Date objects when type:'array' — convert safely */
+      if (rawFU && String(rawFU).trim()) {
         try {
-          const d = (rawFU instanceof Date) ? rawFU : new Date(rawFU);
+          const d = new Date(String(rawFU).trim());
           if (!isNaN(d.getTime())) followup = d.toISOString().slice(0,10);
         } catch(e) { followup = ''; }
       }
