@@ -56,7 +56,9 @@
   window.generateLeadId = () => {
     const now = new Date();
     const pad = (n, l=2) => String(n).padStart(l,'0');
-    return `EVOWEB-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const ms  = String(now.getMilliseconds()).padStart(3,'0');
+    const rnd = Math.floor(Math.random() * 900 + 100); // 3-digit random suffix
+    return `EVOWEB-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${ms}${rnd}`;
   };
 
   /* ─── Map Firestore doc → internal lead object ─── */
@@ -3676,7 +3678,8 @@ async function runImport() {
   document.getElementById('importProgressLabel').textContent = 'Importing leads…';
   setProgress(0, 'Starting…');
 
-  /* Write in batches of 5 with small delay to avoid Firestore rate limits */
+  /* Write rows one at a time — 1ms gap ensures each generateLeadId() call
+     gets a unique millisecond, preventing ID collisions on bulk import     */
   for (let i = 0; i < _importRows.length; i++) {
     const row = _importRows[i];
     try {
@@ -3693,8 +3696,8 @@ async function runImport() {
     }
     setProgress(done + failed, `${row.name || row.email || 'Row ' + (i+2)}`);
 
-    /* Small yield every 5 rows so UI stays responsive */
-    if ((i + 1) % 5 === 0) await new Promise(r => setTimeout(r, 80));
+    /* 2ms gap: guarantees unique ms timestamp in ID + keeps UI responsive */
+    await new Promise(r => setTimeout(r, 2));
   }
 
   /* Done */
