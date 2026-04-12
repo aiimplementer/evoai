@@ -2759,8 +2759,10 @@ const OUTREACH_ACTIONS = [
   {id:'notify_slack',  label:'Notify Slack',  icon:'🔔', badge:'Slack'},
 ];
 
-async function viewLead(leadId, docId) {
-  let lead = currentLeads.find(l => l.leadId === leadId)
+async function viewLead(leadId, docId, preloadedLead = null) {
+  // Accept a pre-built lead directly (e.g. after quickAssignToMe) to avoid stale cache reads
+  let lead = preloadedLead
+          || currentLeads.find(l => l.leadId === leadId)
           || searchResults.find(l => l.leadId === leadId);
   if (!lead) {
     for (const stage of BOARD_STAGES) {
@@ -2883,13 +2885,27 @@ async function quickAssignToMe(docId) {
       user: document.getElementById('sideUserName').textContent||'Team',
     });
     toast(`Lead assigned to ${name}`, 'success');
-    // Refresh view
-    viewLead(lead.leadId, docId);
-    // Update in-memory lists
+
+    // Build the fully-updated lead with current assignedAt timestamp
+    const assignedAt = new Date().toISOString();
+    const fresh = { ...lead, assignedTo: name, assignedToEmail: email, assignedAt };
+
+    // Patch all in-memory caches so viewLead and the table both see the new data
+    const patch = { assignedTo: name, assignedToEmail: email, assignedAt };
     [currentLeads, searchResults].forEach(arr => {
       const idx = arr.findIndex(l => l._docId === docId);
-      if (idx !== -1) arr[idx] = { ...arr[idx], assignedTo: name, assignedToEmail: email };
+      if (idx !== -1) arr[idx] = { ...arr[idx], ...patch };
     });
+    for (const stage of BOARD_STAGES) {
+      const arr = boardLeads[stage.key] || [];
+      const idx = arr.findIndex(l => l._docId === docId);
+      if (idx !== -1) { arr[idx] = { ...arr[idx], ...patch }; boardLeads[stage.key] = arr; }
+    }
+
+    // Re-render the view panel with the fresh lead directly (bypass stale cache read)
+    window._viewingLead = fresh;
+    await viewLead(fresh.leadId, docId, fresh);
+
     renderCurrentView();
   } catch(e) { toast('Failed to assign: '+e.message,'error'); }
 }
