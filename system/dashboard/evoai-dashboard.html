@@ -3448,22 +3448,38 @@ const IMPORT_COL_MAP = {
 const VALID_STATUSES = new Set(['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost']);
 
 function openImportPanel() {
-  _importRows    = [];
-  _importSkipped = 0;
-  document.getElementById('importStep1').style.display = '';
-  document.getElementById('importStep2').style.display = 'none';
-  document.getElementById('importStep3').style.display = 'none';
-  document.getElementById('importConfirmBtn').style.display = 'none';
-  document.getElementById('importCancelBtn').textContent = 'Cancel';
-  document.getElementById('importFootNote').innerHTML = '';
-  document.getElementById('importFileInput').value = '';
-  const dz = document.getElementById('importDropZone');
-  dz.classList.remove('drag-over');
+  _resetImportPanel();
   document.getElementById('importOverlay').classList.add('open');
 }
 
 function closeImportPanel() {
   document.getElementById('importOverlay').classList.remove('open');
+  _resetImportPanel();
+}
+
+function _resetImportPanel() {
+  _importRows    = [];
+  _importSkipped = 0;
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importStep3').style.display = 'none';
+  document.getElementById('importStep3').innerHTML = `
+    <div class="import-progress-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:.8rem;font-weight:600;color:var(--text);" id="importProgressLabel">Importing…</span>
+        <span style="font-family:var(--mono);font-size:.75rem;color:var(--muted);" id="importProgressCount">0 / 0</span>
+      </div>
+      <div class="import-progress-track">
+        <div class="import-progress-bar" id="importProgressBar" style="width:0%"></div>
+      </div>
+      <div style="margin-top:10px;font-size:.75rem;color:var(--muted);" id="importProgressSub">Starting…</div>
+    </div>`;
+  document.getElementById('importConfirmBtn').style.display = 'none';
+  document.getElementById('importCancelBtn').textContent = 'Cancel';
+  document.getElementById('importCancelBtn').disabled = false;
+  document.getElementById('importFootNote').innerHTML = '';
+  document.getElementById('importFileInput').value = '';
+  document.getElementById('importDropZone').classList.remove('drag-over');
 }
 
 function importDragOver(e) {
