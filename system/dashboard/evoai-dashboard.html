@@ -3380,43 +3380,68 @@ let _importSkipped = 0;    // rows skipped (no name or email)
 
 /* Column name aliases → internal lead field */
 const IMPORT_COL_MAP = {
-  'name':           'name',
-  'full name':      'name',
-  'fullname':       'name',
-  'email':          'email',
-  'email address':  'email',
-  'phone':          'phone',
-  'phone number':   'phone',
-  'mobile':         'phone',
-  'company':        'company',
-  'company name':   'company',
-  'organisation':   'company',
-  'organization':   'company',
-  'job title':      'jobtitle',
-  'jobtitle':       'jobtitle',
-  'title':          'jobtitle',
-  'designation':    'jobtitle',
-  'industry':       'industry',
-  'service':        'service',
-  'status':         'status',
-  'source':         'source',
-  'lead source':    'source',
-  'deal value':     'dealvalue',
-  'dealvalue':      'dealvalue',
-  'deal':           'dealvalue',
-  'value':          'dealvalue',
-  'message':        'message',
-  'enquiry':        'message',
-  'comments':       'comments',
-  'notes':          'comments',
-  'internal notes': 'comments',
-  'linkedin':       'linkedin',
-  'linkedin url':   'linkedin',
-  'assigned to':    'assignedTo',
-  'assignee':       'assignedTo',
-  'assigned':       'assignedTo',
-  'page':           'page',
-  'url':            'page',
+  // Name
+  'name':              'name',
+  'full name':         'name',
+  'fullname':          'name',
+  // Email
+  'email':             'email',
+  'email address':     'email',
+  // Phone
+  'phone':             'phone',
+  'phone number':      'phone',
+  'mobile':            'phone',
+  // Company — includes evoAI export header "companyname"
+  'company':           'company',
+  'company name':      'company',
+  'companyname':       'company',
+  'organisation':      'company',
+  'organization':      'company',
+  // Job Title
+  'job title':         'jobtitle',
+  'jobtitle':          'jobtitle',
+  'title':             'jobtitle',
+  'designation':       'jobtitle',
+  // Industry
+  'industry':          'industry',
+  // Service
+  'service':           'service',
+  // Status
+  'status':            'status',
+  // Source
+  'source':            'source',
+  'lead source':       'source',
+  // Deal Value
+  'deal value':        'dealvalue',
+  'dealvalue':         'dealvalue',
+  'deal':              'dealvalue',
+  'value':             'dealvalue',
+  // Follow-up — includes evoAI export header "followup"
+  'followup':          'followup',
+  'follow up':         'followup',
+  'follow-up':         'followup',
+  'follow up date':    'followup',
+  'followupdate':      'followup',
+  'next follow-up':    'followup',
+  // Message
+  'message':           'message',
+  'enquiry':           'message',
+  // Comments
+  'comments':          'comments',
+  'notes':             'comments',
+  'internal notes':    'comments',
+  // LinkedIn — includes evoAI export header "linkedinprofile"
+  'linkedin':          'linkedin',
+  'linkedin url':      'linkedin',
+  'linkedinprofile':   'linkedin',
+  'linkedin profile':  'linkedin',
+  // Assigned To
+  'assigned to':       'assignedTo',
+  'assignee':          'assignedTo',
+  'assigned':          'assignedTo',
+  // Page / URL
+  'page':              'page',
+  'url':               'page',
 };
 
 const VALID_STATUSES = new Set(['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost']);
@@ -3469,7 +3494,7 @@ function importFileSelected(file) {
         toast('Excel parser not loaded yet — try again in a moment', 'warn');
         return;
       }
-      const wb    = XLSX.read(e.target.result, { type: 'array' });
+      const wb    = XLSX.read(e.target.result, { type: 'array', cellDates: true });
       const ws    = wb.Sheets[wb.SheetNames[0]];
       const raw   = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       parseImportSheet(file.name, raw);
@@ -3522,6 +3547,23 @@ function parseImportSheet(fileName, raw) {
     let status = get('status');
     if (!VALID_STATUSES.has(status)) status = 'New';
 
+    /* Sanitise dealvalue — Excel stores numbers as floats, not strings */
+    const rawDeal = colIdx['dealvalue'] !== undefined ? row[colIdx['dealvalue']] : '';
+    const dealvalue = (rawDeal !== '' && rawDeal != null) ? String(rawDeal).replace(/[^0-9.]/g,'') : '';
+
+    /* Sanitise followup — Excel may give a JS Date serial; convert to YYYY-MM-DD */
+    let followup = '';
+    if (colIdx['followup'] !== undefined) {
+      const rawFU = row[colIdx['followup']];
+      if (rawFU) {
+        /* SheetJS returns dates as JS Date objects when type:'array' — convert safely */
+        try {
+          const d = (rawFU instanceof Date) ? rawFU : new Date(rawFU);
+          if (!isNaN(d.getTime())) followup = d.toISOString().slice(0,10);
+        } catch(e) { followup = ''; }
+      }
+    }
+
     validRows.push({
       name,
       email,
@@ -3532,7 +3574,8 @@ function parseImportSheet(fileName, raw) {
       service:    get('service'),
       status,
       source:     get('source'),
-      dealvalue:  get('dealvalue'),
+      dealvalue,
+      followup,
       message:    get('message'),
       comments:   get('comments'),
       linkedin:   get('linkedin'),
