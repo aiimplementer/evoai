@@ -128,7 +128,23 @@
       // assignedAt: only write when actually assigning
       ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
     };
-    if (isNew) docData.createdAt = serverTimestamp();
+    if (isNew) {
+      // Prefer the imported date from the file; fall back to server timestamp
+      if (lead.date) {
+        try {
+          const d = new Date(lead.date);
+          if (!isNaN(d.getTime())) {
+            docData.createdAt = Timestamp.fromDate(d);
+          } else {
+            docData.createdAt = serverTimestamp();
+          }
+        } catch(e) {
+          docData.createdAt = serverTimestamp();
+        }
+      } else {
+        docData.createdAt = serverTimestamp();
+      }
+    }
     return docData;
   };
 
@@ -3443,6 +3459,15 @@ const IMPORT_COL_MAP = {
   // Page / URL
   'page':              'page',
   'url':               'page',
+  // Created Date — includes evoAI export header "date"
+  'date':              'date',
+  'created':           'date',
+  'created date':      'date',
+  'createddate':       'date',
+  'created at':        'date',
+  'createdat':         'date',
+  'lead date':         'date',
+  'submission date':   'date',
 };
 
 const VALID_STATUSES = new Set(['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost']);
@@ -3629,6 +3654,18 @@ function parseImportSheet(fileName, raw) {
       }
     }
 
+    /* Sanitise date (createdAt) — use file value if present, otherwise blank (server will fill) */
+    let importedDate = '';
+    if (colIdx['date'] !== undefined) {
+      const rawDate = row[colIdx['date']];
+      if (rawDate && String(rawDate).trim()) {
+        try {
+          const d = new Date(String(rawDate).trim());
+          if (!isNaN(d.getTime())) importedDate = d.toISOString();
+        } catch(e) { importedDate = ''; }
+      }
+    }
+
     validRows.push({
       name,
       email,
@@ -3646,6 +3683,7 @@ function parseImportSheet(fileName, raw) {
       linkedin:   get('linkedin'),
       assignedTo: get('assignedTo'),
       page:       get('page'),
+      date:       importedDate,
     });
   }
 
