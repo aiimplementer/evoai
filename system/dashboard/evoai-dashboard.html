@@ -92,6 +92,7 @@
       page:            d.page            || '',
       message:         d.message         || '',
       comments:        d.comments        || '',
+      userAgent:       d.userAgent        || '',
       dealvalue:       d.dealValue != null ? String(d.dealValue) : '',
       followup:        toDate(d.followupDate),
       date:            toDate(d.createdAt),
@@ -119,6 +120,7 @@
       page:                lead.page            || '',
       message:             lead.message         || '',
       comments:            lead.comments        || '',
+      userAgent:           lead.userAgent        || '',
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
       followupDate:        lead.followup        || '',
       lastUpdateTimestamp: serverTimestamp(),
@@ -245,7 +247,8 @@
 
   /* ─── CRUD ─── */
   window.dbAddLead = async (lead) => {
-    const id  = window.generateLeadId();
+    // Preserve source leadId if provided (import), otherwise generate a new one
+    const id = (lead.leadId && String(lead.leadId).trim()) ? String(lead.leadId).trim() : window.generateLeadId();
     lead.leadId = id;
     // If assignedTo is set on create, stamp assignedAt
     if (lead.assignedTo) lead._setAssignedAt = true;
@@ -3390,84 +3393,154 @@ function toggleSidebar() {
 })();
 
 /* ════════════════════════════════════════════════════
-   EXCEL IMPORT
+   CSV IMPORT
 ════════════════════════════════════════════════════ */
 let _importRows    = [];   // parsed valid rows ready to write
 let _importSkipped = 0;    // rows skipped (no name or email)
 
 /* Column name aliases → internal lead field */
 const IMPORT_COL_MAP = {
+  // Lead ID — preserve client's original identifier
+  'leadid':            'leadId',
+  'lead id':           'leadId',
+  'lead_id':           'leadId',
+  'id':                'leadId',
+  'ref':               'leadId',
+  'reference':         'leadId',
   // Name
   'name':              'name',
   'full name':         'name',
   'fullname':          'name',
+  'full_name':         'name',
+  'contact name':      'name',
   // Email
   'email':             'email',
   'email address':     'email',
+  'emailaddress':      'email',
+  'e-mail':            'email',
   // Phone
   'phone':             'phone',
   'phone number':      'phone',
+  'phonenumber':       'phone',
   'mobile':            'phone',
+  'mobile number':     'phone',
+  'contact number':    'phone',
+  'tel':               'phone',
   // Company — includes evoAI export header "companyname"
   'company':           'company',
   'company name':      'company',
   'companyname':       'company',
+  'company_name':      'company',
   'organisation':      'company',
   'organization':      'company',
+  'org':               'company',
+  'employer':          'company',
   // Job Title
   'job title':         'jobtitle',
   'jobtitle':          'jobtitle',
+  'job_title':         'jobtitle',
   'title':             'jobtitle',
   'designation':       'jobtitle',
+  'position':          'jobtitle',
+  'role':              'jobtitle',
   // Industry
   'industry':          'industry',
+  'sector':            'industry',
+  'vertical':          'industry',
   // Service
   'service':           'service',
+  'service interest':  'service',
+  'interested in':     'service',
+  'product':           'service',
   // Status
   'status':            'status',
+  'lead status':       'status',
   // Source
   'source':            'source',
   'lead source':       'source',
+  'leadsource':        'source',
+  'channel':           'source',
+  'utm source':        'source',
+  'utm_source':        'source',
   // Deal Value
   'deal value':        'dealvalue',
   'dealvalue':         'dealvalue',
+  'deal_value':        'dealvalue',
   'deal':              'dealvalue',
   'value':             'dealvalue',
+  'budget':            'dealvalue',
+  'amount':            'dealvalue',
   // Follow-up — includes evoAI export header "followup"
   'followup':          'followup',
   'follow up':         'followup',
   'follow-up':         'followup',
+  'follow_up':         'followup',
   'follow up date':    'followup',
   'followupdate':      'followup',
+  'followup_date':     'followup',
   'next follow-up':    'followup',
-  // Message
+  'next followup':     'followup',
+  // Message / Enquiry
   'message':           'message',
   'enquiry':           'message',
-  // Comments
+  'inquiry':           'message',
+  'description':       'message',
+  'query':             'message',
+  'requirement':       'message',
+  // Comments / Notes
   'comments':          'comments',
   'notes':             'comments',
   'internal notes':    'comments',
+  'internalnotes':     'comments',
+  'remark':            'comments',
+  'remarks':           'comments',
   // LinkedIn — includes evoAI export header "linkedinprofile"
   'linkedin':          'linkedin',
   'linkedin url':      'linkedin',
   'linkedinprofile':   'linkedin',
   'linkedin profile':  'linkedin',
+  'linkedin_url':      'linkedin',
+  'linkedin_profile':  'linkedin',
   // Assigned To
   'assigned to':       'assignedTo',
   'assignee':          'assignedTo',
   'assigned':          'assignedTo',
-  // Page / URL
+  'assignedto':        'assignedTo',
+  'owner':             'assignedTo',
+  'sales rep':         'assignedTo',
+  // Page / Landing URL
   'page':              'page',
   'url':               'page',
-  // Created Date — includes evoAI export header "date"
-  'date':              'date',
-  'created':           'date',
+  'landing page':      'page',
+  'landingpage':       'page',
+  'form url':          'page',
+  'formurl':           'page',
+  'page url':          'page',
+  'pageurl':           'page',
+  // User Agent / Browser info
+  'useragent':         'userAgent',
+  'user agent':        'userAgent',
+  'user_agent':        'userAgent',
+  'browser':           'userAgent',
+  'device':            'userAgent',
+  // Created Date — prefer "createdate" / "createdat" over generic "date"
+  'createdate':        'date',
+  'create date':       'date',
+  'create_date':       'date',
+  'createdat':         'date',
+  'created at':        'date',
   'created date':      'date',
   'createddate':       'date',
-  'created at':        'date',
-  'createdat':         'date',
-  'lead date':         'date',
+  'created':           'date',
   'submission date':   'date',
+  'submissiondate':    'date',
+  'submission_date':   'date',
+  'submitted at':      'date',
+  'submittedat':       'date',
+  'lead date':         'date',
+  'leaddate':          'date',
+  'timestamp':         'date',
+  'date':              'date',
 };
 
 const VALID_STATUSES = new Set(['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost']);
@@ -3667,6 +3740,7 @@ function parseImportSheet(fileName, raw) {
     }
 
     validRows.push({
+      leadId:     get('leadId'),
       name,
       email,
       phone:      get('phone'),
@@ -3683,6 +3757,7 @@ function parseImportSheet(fileName, raw) {
       linkedin:   get('linkedin'),
       assignedTo: get('assignedTo'),
       page:       get('page'),
+      userAgent:  get('userAgent'),
       date:       importedDate,
     });
   }
@@ -3711,8 +3786,8 @@ function renderImportPreview(fileName, rows, skipped, detectedFields) {
     </button>`;
 
   /* Preview table — show first 6 rows */
-  const previewCols = ['name','email','phone','company','status','service','dealvalue'].filter(f => detectedFields.includes(f));
-  const colLabels   = { name:'Name', email:'Email', phone:'Phone', company:'Company', status:'Status', service:'Service', dealvalue:'Deal Value' };
+  const previewCols = ['leadId','name','email','phone','company','status','service','industry','jobtitle','source','dealvalue','date'].filter(f => detectedFields.includes(f));
+  const colLabels   = { leadId:'Lead ID', name:'Name', email:'Email', phone:'Phone', company:'Company', status:'Status', service:'Service', industry:'Industry', jobtitle:'Job Title', source:'Source', dealvalue:'Deal Value', date:'Created Date' };
 
   const thead = `<thead><tr>${previewCols.map(c => `<th>${colLabels[c]||c}</th>`).join('')}<th style="text-align:right;">Row</th></tr></thead>`;
   const preview = rows.slice(0, 6);
