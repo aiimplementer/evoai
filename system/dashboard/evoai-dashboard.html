@@ -122,7 +122,13 @@
       comments:            lead.comments        || '',
       userAgent:           lead.userAgent        || '',
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
-      followupDate:        lead.followup        || '',
+      followupDate:        (() => {
+        const v = lead.followup;
+        if (!v) return null;                                   // missing → null Timestamp field
+        if (v?.toDate) return v;                               // already a Firestore Timestamp
+        const d = new Date(String(v).trim());
+        return isNaN(d.getTime()) ? null : Timestamp.fromDate(d); // parse string → Timestamp
+      })(),
       lastUpdateTimestamp: serverTimestamp(),
       // ── Assignment fields ──
       assignedTo:          lead.assignedTo      || 'Unassigned',
@@ -3885,14 +3891,24 @@ function parseImportSheet(fileName, raw) {
     const rawDeal = colIdx['dealvalue'] !== undefined ? row[colIdx['dealvalue']] : '';
     const dealvalue = (rawDeal !== '' && rawDeal != null) ? String(rawDeal).replace(/[^0-9.]/g,'') : '';
 
-    /* Sanitise followup — CSV values are plain strings; parse YYYY-MM-DD or common date formats */
+    /* Sanitise followup — parse any date/timestamp string → full ISO string so
+       leadToDoc can store it as a Firestore Timestamp via Timestamp.fromDate().
+       If the column is absent entirely we still emit followup:'' → leadToDoc writes null. */
     let followup = '';
     if (colIdx['followup'] !== undefined) {
       const rawFU = row[colIdx['followup']];
-      if (rawFU && String(rawFU).trim()) {
+      if (rawFU != null && String(rawFU).trim()) {
         try {
-          const d = new Date(String(rawFU).trim());
-          if (!isNaN(d.getTime())) followup = d.toISOString().slice(0,10);
+          const trimmed = String(rawFU).trim();
+          let d;
+          // Handle Excel numeric date serial (integer days since 1899-12-30)
+          if (/^\d{4,5}$/.test(trimmed) && Number(trimmed) > 1000) {
+            const excelEpoch = new Date(1899, 11, 30);
+            d = new Date(excelEpoch.getTime() + Number(trimmed) * 86400000);
+          } else {
+            d = new Date(trimmed);
+          }
+          if (!isNaN(d.getTime())) followup = d.toISOString(); // full ISO → Timestamp.fromDate() in leadToDoc
         } catch(e) { followup = ''; }
       }
     }
@@ -3947,8 +3963,8 @@ function renderImportPreview(fileName, rows, skipped, detectedFields) {
     </button>`;
 
   /* Preview table — show first 6 rows */
-  const previewCols = ['leadId','name','email','phone','company','status','service','industry','jobtitle','source','dealvalue','followup','date','message'].filter(f => detectedFields.includes(f));
-  const colLabels   = { leadId:'Lead ID', name:'Name', email:'Email', phone:'Phone', company:'Company', status:'Status', service:'Service', industry:'Industry', jobtitle:'Job Title', source:'Source', dealvalue:'Deal Value', followup:'Follow-Up Date', date:'Created Date', message:'Message / Enquiry' };
+  const previewCols = ['leadId','name','email','phone','company','status','service','industry','jobtitle','source','dealvalue','date'].filter(f => detectedFields.includes(f));
+  const colLabels   = { leadId:'Lead ID', name:'Name', email:'Email', phone:'Phone', company:'Company', status:'Status', service:'Service', industry:'Industry', jobtitle:'Job Title', source:'Source', dealvalue:'Deal Value', date:'Created Date' };
 
   const thead = `<thead><tr>${previewCols.map(c => `<th>${colLabels[c]||c}</th>`).join('')}<th style="text-align:right;">Row</th></tr></thead>`;
   const preview = rows.slice(0, 6);
