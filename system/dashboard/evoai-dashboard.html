@@ -131,18 +131,9 @@
       ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
     };
     if (isNew) {
-      // Prefer the imported date from the file; fall back to server timestamp
+      // lead.date is a pre-validated ISO string from parseImportDate(), or '' for new manual leads
       if (lead.date) {
-        try {
-          const d = new Date(lead.date);
-          if (!isNaN(d.getTime())) {
-            docData.createdAt = Timestamp.fromDate(d);
-          } else {
-            docData.createdAt = serverTimestamp();
-          }
-        } catch(e) {
-          docData.createdAt = serverTimestamp();
-        }
+        docData.createdAt = Timestamp.fromDate(new Date(lead.date));
       } else {
         docData.createdAt = serverTimestamp();
       }
@@ -3667,6 +3658,64 @@ function parseCSVToRows(text) {
   return rows;
 }
 
+/* ── Robust date parser — handles the most common CSV date formats ──
+   Supported formats (examples):
+     ISO:          2024-03-15  /  2024-03-15T10:30:00Z  /  2024-03-15T10:30:00.000Z
+     US:           03/15/2024  /  3/15/2024  /  03-15-2024
+     EU/IN:        15/03/2024  /  15-03-2024  /  15.03.2024
+     Long:         March 15, 2024  /  15 March 2024  /  Mar 15 2024
+     Compact:      20240315
+   Returns a JS Date or null.
+*/
+function parseImportDate(raw) {
+  if (!raw && raw !== 0) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+
+  // 1. ISO / native formats — let the engine try first (reliable for YYYY-MM-DD*)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 2. Compact YYYYMMDD
+  if (/^\d{8}$/.test(s)) {
+    const d = new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (day ≤ 31, month ≤ 12 heuristic)
+  const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmy) {
+    const [, dd, mm, yyyy] = dmy;
+    if (Number(mm) <= 12 && Number(dd) > 12) {
+      // Unambiguous: day > 12 means it can only be DD/MM/YYYY
+      const d = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+    // Ambiguous (both parts ≤ 12): treat as DD/MM/YYYY (EU/IN convention)
+    const d = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 4. MM/DD/YYYY or MM-DD-YYYY (US format — only when first part ≤ 12 and second > 12)
+  const mdy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    if (Number(mm) <= 12 && Number(dd) > 12) {
+      const d = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+  }
+
+  // 5. Long English formats: "March 15, 2024" / "15 March 2024" / "Mar 15 2024"
+  const longDate = new Date(s);
+  if (!isNaN(longDate.getTime())) return longDate.toISOString();
+
+  // Could not parse — return empty (server timestamp will be used)
+  return '';
+}
+
 function parseImportSheet(fileName, raw) {
   if (!raw || raw.length < 2) {
     toast('File appears empty or has no data rows', 'warn');
@@ -3727,17 +3776,8 @@ function parseImportSheet(fileName, raw) {
       }
     }
 
-    /* Sanitise date (createdAt) — use file value if present, otherwise blank (server will fill) */
-    let importedDate = '';
-    if (colIdx['date'] !== undefined) {
-      const rawDate = row[colIdx['date']];
-      if (rawDate && String(rawDate).trim()) {
-        try {
-          const d = new Date(String(rawDate).trim());
-          if (!isNaN(d.getTime())) importedDate = d.toISOString();
-        } catch(e) { importedDate = ''; }
-      }
-    }
+    /* Sanitise date (createdAt) — parse robustly, store as ISO string or '' */
+    const importedDate = parseImportDate(colIdx['date'] !== undefined ? row[colIdx['date']] : '');
 
     validRows.push({
       leadId:     get('leadId'),
