@@ -2923,25 +2923,40 @@ async function bulkAssignToMe() {
   if (!entries.length) return;
   const name  = window._currentUserName  || '';
   const email = window._currentUserEmail || '';
-  if (!name && !email) { toast('No user info available','warn'); return; }
-  toast(`Assigning ${entries.length} leads to ${name}…`, 'success');
-  const user = document.getElementById('sideUserName').textContent||'Team';
+  if (!name && !email) { toast('No user info — please sign in again', 'warn'); return; }
+
+  const user = document.getElementById('sideUserName').textContent || 'Team';
+  let succeeded = 0, failed = 0;
+
+  toast(`Assigning ${entries.length} lead${entries.length > 1 ? 's' : ''} to ${name}…`, 'success');
+
   for (const lead of entries) {
     try {
       const updated = { ...lead, assignedTo: name, assignedToEmail: email, _setAssignedAt: true };
       await window.dbUpdateLead(lead._docId, updated);
       await window.dbAddActivity(lead._docId, {
         type: 'assign',
-        text: `Assigned to ${name}${email ? ' ('+email+')' : ''}`,
+        text: `Assigned to ${name}${email ? ' (' + email + ')' : ''}`,
         user,
       });
-    } catch(e) { console.error('bulk assign', e); }
+      succeeded++;
+    } catch(e) {
+      console.error('bulk assign failed for', lead.leadId, e);
+      failed++;
+    }
   }
+
   clearSelection();
   await refreshAll();
-  toast(`${entries.length} leads assigned to ${name}`, 'success');
-}
 
+  if (failed === 0) {
+    toast(`${succeeded} lead${succeeded > 1 ? 's' : ''} assigned to ${name}`, 'success');
+  } else if (succeeded === 0) {
+    toast(`Assignment failed for all ${failed} lead${failed > 1 ? 's' : ''} — check Firestore permissions`, 'error');
+  } else {
+    toast(`${succeeded} assigned ✓  •  ${failed} failed ✗ — check console for details`, 'warn');
+  }
+}
 async function applyBulkStatus() {
   const newStatus = document.getElementById('bulkStatusSelect').value;
   const entries   = [...selectedLeads.values()];
