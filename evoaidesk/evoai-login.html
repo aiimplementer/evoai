@@ -33,7 +33,7 @@
     clearError();
     try {
       const result = await signInWithPopup(auth, provider);
-      if (result?.user) window.location.href = "/evoaidesk/tenants-setup.html";
+      if (result?.user) window.location.href = "/evoaidesk/evoai-dashboard.html";
     } catch (err) {
       btn.disabled = false;
       btn.innerHTML = googleBtnInner;
