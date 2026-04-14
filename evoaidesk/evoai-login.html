@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
-<title>evoAI — Sign In</title>
+<title>evoAIDesk — Sign In</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 
 <script type="module">
@@ -33,7 +33,7 @@
     clearError();
     try {
       const result = await signInWithPopup(auth, provider);
-      if (result?.user) window.location.href = "/system/dashboard/evoai-dashboard.html";
+      if (result?.user) window.location.href = "/evoaidesk/tenants-setup.html";
     } catch (err) {
       btn.disabled = false;
       btn.innerHTML = googleBtnInner;
