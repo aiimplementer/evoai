@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>evoAI — Tenant Setup</title>
+<title>evoAI Desk — Tenant Setup</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
 
@@ -392,7 +392,7 @@
     <div class="aside-scroll">
       <div class="aside-section">
         <div class="aside-label">Settings</div>
-        <a class="aside-item active" href="#">
+        <a class="aside-item active" href="#" id="filterAll" onclick="setFilter('all');return false;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
           Tenants
           <span class="aside-count" id="cntTenants">—</span>
@@ -413,14 +413,14 @@
 
       <div class="aside-section">
         <div class="aside-label">Quick Stats</div>
-        <div class="aside-item" style="cursor:default;pointer-events:none;">
+        <a class="aside-item" href="#" id="filterActive" onclick="setFilter('active');return false;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           Active Tenants <span class="aside-count" id="cntActive">—</span>
-        </div>
-        <div class="aside-item" style="cursor:default;pointer-events:none;">
+        </a>
+        <a class="aside-item" href="#" id="filterSuspended" onclick="setFilter('suspended');return false;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           Suspended <span class="aside-count" id="cntSuspended">—</span>
-        </div>
+        </a>
       </div>
     </div>
     <div class="aside-user-footer">
@@ -477,6 +477,13 @@
         <div>
           <h3>All Tenants</h3>
           <p>Each row is a Firestore document at <span style="font-family:var(--mono);color:var(--accent);font-size:.68rem;">/tenants/{slug}</span></p>
+        </div>
+        <div id="filterPill" style="display:none; align-items:center; gap:8px; background:rgba(0,229,160,.07); border:1px solid rgba(0,229,160,.2); border-radius:20px; padding:4px 12px 4px 8px; font-size:.72rem; color:var(--accent); font-weight:600;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <span id="filterPillLabel">Active</span>
+          <button onclick="setFilter('all')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;padding:0;margin-left:2px;" title="Clear filter">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
       <table>
@@ -576,6 +583,28 @@
 <script>
   let _tenants  = [];
   let _editSlug = null; // null = create, else = editing slug
+  let _filter   = 'all'; // 'all' | 'active' | 'suspended'
+
+  /* ── FILTER ── */
+  function setFilter(f) {
+    _filter = f;
+    // Update sidebar active states
+    document.getElementById('filterAll').classList.toggle('active', f === 'all');
+    document.getElementById('filterActive').classList.toggle('active', f === 'active');
+    document.getElementById('filterSuspended').classList.toggle('active', f === 'suspended');
+    // Show/hide filter pill
+    const pill = document.getElementById('filterPill');
+    if (f === 'all') {
+      pill.style.display = 'none';
+    } else {
+      pill.style.display = 'flex';
+      document.getElementById('filterPillLabel').textContent = f.charAt(0).toUpperCase() + f.slice(1);
+      pill.style.borderColor = f === 'active' ? 'rgba(0,229,160,.2)' : 'rgba(255,77,109,.2)';
+      pill.style.background  = f === 'active' ? 'rgba(0,229,160,.07)' : 'rgba(255,77,109,.07)';
+      pill.style.color        = f === 'active' ? 'var(--accent)' : 'var(--danger)';
+    }
+    renderTable();
+  }
 
   /* ── SLUG HELPERS ── */
   function toSlug(str) {
@@ -702,18 +731,22 @@
   /* ── RENDER TABLE ── */
   function renderTable() {
     const tbody = document.getElementById('tenantsTableBody');
-    if (!_tenants.length) {
+    const rows  = _filter === 'all' ? _tenants : _tenants.filter(t => t.status === _filter);
+
+    if (!rows.length) {
+      const msg = _filter === 'all'
+        ? `<p>No tenants yet</p><p class="empty-sub">Click "New Tenant" to create your first workspace.</p>`
+        : `<p>No ${_filter} tenants</p><p class="empty-sub"><a href="#" onclick="setFilter('all');return false;" style="color:var(--accent);text-decoration:none;">Clear filter</a> to see all tenants.</p>`;
       tbody.innerHTML = `<tr><td colspan="6">
         <div class="empty-state">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          <p>No tenants yet</p>
-          <p class="empty-sub">Click "New Tenant" to create your first workspace.</p>
+          ${msg}
         </div>
       </td></tr>`;
       return;
     }
 
-    tbody.innerHTML = _tenants.map(t => {
+    tbody.innerHTML = rows.map(t => {
       const created = t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
       const planBadge   = `<span class="badge badge-${t.plan   || 'free'}">${(t.plan||'free').charAt(0).toUpperCase()+(t.plan||'free').slice(1)}</span>`;
       const statusBadge = `<span class="badge badge-${t.status || 'active'}">${(t.status||'active').charAt(0).toUpperCase()+(t.status||'active').slice(1)}</span>`;
