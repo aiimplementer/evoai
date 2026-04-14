@@ -9,16 +9,17 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-  import { getAuth, signInWithPopup, GoogleAuthProvider, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import { getAuth, signInWithPopup, GoogleAuthProvider, setPersistence, browserLocalPersistence }
+    from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
   const firebaseConfig = {
-	  apiKey: "AIzaSyAkwOQZ15O8-_GB9LYNKaAUPe9NYgGUMw4",
-	  authDomain: "evoaidesk.firebaseapp.com",
-	  projectId: "evoaidesk",
-	  storageBucket: "evoaidesk.firebasestorage.app",
-	  messagingSenderId: "904271339352",
-	  appId: "1:904271339352:web:06c777dd45b9051d8d8f2d",
-	  measurementId: "G-VGZHC96EYC"
+    apiKey: "AIzaSyAkwOQZ15O8-_GB9LYNKaAUPe9NYgGUMw4",
+    authDomain: "evoaidesk.firebaseapp.com",
+    projectId: "evoaidesk",
+    storageBucket: "evoaidesk.firebasestorage.app",
+    messagingSenderId: "904271339352",
+    appId: "1:904271339352:web:06c777dd45b9051d8d8f2d",
+    measurementId: "G-VGZHC96EYC"
   };
 
   const app      = initializeApp(firebaseConfig);
@@ -29,20 +30,43 @@
   window.googleLogin = async () => {
     const btn = document.getElementById('googleBtn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner"></span> Opening Google…';
+    btn.innerHTML = '<span class="btn-spinner"></span> Signing in…';
     clearError();
     try {
       const result = await signInWithPopup(auth, provider);
-      if (result?.user) window.location.href = "/evoaidesk/evoai-dashboard.html";
+      if (result?.user) {
+        const user = result.user;
+        // Populate greeting
+        const av = document.getElementById('userAvatar');
+        if (user.photoURL) { av.src = user.photoURL; av.style.display = 'block'; }
+        document.getElementById('userName').textContent = user.displayName || user.email;
+        // Animate transition
+        switchView('signin-view', 'destination-view');
+      }
     } catch (err) {
       btn.disabled = false;
-      btn.innerHTML = googleBtnInner;
+      btn.innerHTML = window._googleBtnInner;
       if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
         showError(friendlyError(err.code));
       }
       console.error(err);
     }
   };
+
+  window.goTo = (path) => { window.location.href = path; };
+
+  function switchView(hideId, showId) {
+    const hide = document.getElementById(hideId);
+    const show = document.getElementById(showId);
+    hide.classList.add('view-exit');
+    setTimeout(() => {
+      hide.style.display = 'none';
+      hide.classList.remove('view-exit');
+      show.style.display = 'block';
+      show.classList.add('view-enter');
+      setTimeout(() => show.classList.remove('view-enter'), 400);
+    }, 220);
+  }
 
   function friendlyError(code) {
     const map = {
@@ -71,6 +95,7 @@
     --surface2:#141c2a;
     --border:  #1e2d42;
     --accent:  #00e5a0;
+    --accent2: #00b8ff;
     --danger:  #ff4d6d;
     --text:    #e8f0fe;
     --muted:   #6b7fa3;
@@ -101,10 +126,11 @@
   .orb-2 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(0,184,255,.10), transparent 70%); bottom: -100px; right: -80px; animation-delay: -6s; }
   @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.06); } }
 
+  /* ── Card ── */
   .card {
     position: relative; z-index: 1;
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    padding: 52px 44px 44px; width: 100%; max-width: 420px;
+    padding: 52px 44px 44px; width: 100%; max-width: 440px;
     box-shadow: 0 32px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(0,229,160,.05);
     animation: cardIn .4s cubic-bezier(.22,1,.36,1); text-align: center;
     margin-bottom: 80px;
@@ -114,8 +140,15 @@
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
 
+  /* ── View transitions ── */
+  .view-exit  { animation: viewExit  .22s ease forwards; }
+  .view-enter { animation: viewEnter .36s cubic-bezier(.22,1,.36,1) forwards; }
+  @keyframes viewExit  { to   { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes viewEnter { from { opacity: 0; transform: translateY(14px)  scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+  /* ── Logo ── */
   .logo-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 36px; }
-  .logo-wrap img { height: 56px; width: auto; }
+  .logo-wrap img.logo-img { height: 56px; width: auto; }
   .logo-badge {
     font-family: var(--mono); font-size: .68rem; letter-spacing: .12em;
     background: var(--surface2); border: 1px solid var(--border);
@@ -126,6 +159,7 @@
   .card-sub   { font-size: .9rem; color: var(--muted); margin-bottom: 36px; line-height: 1.6; }
   .divider    { height: 1px; background: var(--border); margin: 0 -44px 36px; }
 
+  /* ── Error ── */
   .msg {
     display: none; align-items: flex-start; gap: 10px;
     padding: 12px 14px; border-radius: 8px;
@@ -134,6 +168,7 @@
   .msg svg { flex-shrink: 0; margin-top: 1px; }
   .msg-error { background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.2); color: #ff8099; }
 
+  /* ── Google button ── */
   .google-btn {
     width: 100%; padding: 15px 20px;
     background: #fff; color: #3c4043;
@@ -158,60 +193,113 @@
     margin-top: 18px; font-size: .74rem; color: var(--muted); font-family: var(--mono); opacity: .7;
   }
 
-  /* ── FOOTER matching evoaiglobal.ai ── */
+  /* ── Destination view ── */
+  #destination-view { display: none; }
+
+  .user-greeting {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    margin-bottom: 28px;
+  }
+  .user-avatar {
+    display: none; width: 52px; height: 52px; border-radius: 50%;
+    border: 2px solid var(--accent); object-fit: cover;
+    box-shadow: 0 0 0 4px rgba(0,229,160,.10);
+  }
+  .user-name { font-size: .88rem; color: var(--muted); }
+  .user-name strong { color: var(--text); font-weight: 600; }
+
+  .dest-label {
+    font-size: .7rem; font-family: var(--mono); letter-spacing: .12em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 16px;
+  }
+
+  /* ── Two destination cards ── */
+  .dest-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+
+  .dest-btn {
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 26px 14px 22px;
+    background: var(--surface2); border-radius: 12px;
+    border: 1px solid var(--border);
+    cursor: pointer; transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s, box-shadow .22s;
+    text-align: center; text-decoration: none; color: var(--text);
+  }
+
+  /* Glow overlay */
+  .dest-btn::before {
+    content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .22s; pointer-events: none;
+  }
+  .dest-btn.leads::before   { background: radial-gradient(ellipse at 50% 0%, rgba(0,229,160,.12), transparent 70%); }
+  .dest-btn.tenants::before { background: radial-gradient(ellipse at 50% 0%, rgba(0,184,255,.12), transparent 70%); }
+
+  .dest-btn:hover { transform: translateY(-4px); }
+  .dest-btn.leads:hover   { border-color: rgba(0,229,160,.4);  box-shadow: 0 14px 36px rgba(0,229,160,.10); }
+  .dest-btn.tenants:hover { border-color: rgba(0,184,255,.4); box-shadow: 0 14px 36px rgba(0,184,255,.10); }
+  .dest-btn:hover::before { opacity: 1; }
+  .dest-btn:active { transform: translateY(-1px); }
+
+  .dest-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dest-btn.leads  .dest-icon { background: rgba(0,229,160,.12); color: var(--accent); }
+  .dest-btn.tenants .dest-icon { background: rgba(0,184,255,.12); color: var(--accent2); }
+  .dest-icon svg { width: 24px; height: 24px; }
+
+  .dest-title {
+    font-size: .92rem; font-weight: 600; letter-spacing: -.01em; display: block;
+  }
+  .dest-btn.leads  .dest-title { color: var(--accent); }
+  .dest-btn.tenants .dest-title { color: var(--accent2); }
+
+  .dest-desc {
+    font-size: .73rem; color: var(--muted); line-height: 1.45; display: block;
+  }
+
+  /* Arrow */
+  .dest-arrow {
+    position: absolute; bottom: 10px; right: 12px;
+    opacity: 0; transform: translateX(-5px);
+    transition: opacity .2s, transform .2s; color: var(--muted);
+  }
+  .dest-btn:hover .dest-arrow { opacity: 1; transform: translateX(0); }
+
+  /* ── Footer ── */
   .site-footer {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-    background: #0b1020;
-    border-top: 1px solid #1a2540;
-    padding: 14px 40px;
+    background: #0b1020; border-top: 1px solid #1a2540; padding: 14px 40px;
   }
-
-  .footer-top {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
-  }
-
+  .footer-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .footer-logo img { height: 26px; width: auto; }
-
   .footer-social { display: flex; align-items: center; gap: 8px; }
   .social-icon {
-    width: 30px; height: 30px; border-radius: 6px;
-    border: 1px solid #1e2d42;
+    width: 30px; height: 30px; border-radius: 6px; border: 1px solid #1e2d42;
     display: flex; align-items: center; justify-content: center;
-    color: var(--accent); text-decoration: none; transition: all .18s;
-    background: #0e1420;
+    color: var(--accent); text-decoration: none; transition: all .18s; background: #0e1420;
   }
   .social-icon:hover { border-color: var(--accent); background: rgba(0,229,160,.08); }
   .social-icon svg { width: 13px; height: 13px; }
-
-  .footer-middle {
-    text-align: center; margin-bottom: 8px;
-    font-size: .72rem; color: var(--muted);
-  }
+  .footer-middle { text-align: center; margin-bottom: 8px; font-size: .72rem; color: var(--muted); }
   .footer-middle .evoai-link {
     background: linear-gradient(90deg, #00e5a0, #00b8ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text; font-weight: 700; text-decoration: none;
   }
-
-  .footer-bottom {
-    display: flex; align-items: center; justify-content: space-between;
-  }
-
-  .footer-tagline {
-    font-size: .7rem; color: var(--muted); letter-spacing: .01em;
-  }
-
-  .footer-links {
-    display: flex; align-items: center; gap: 6px; font-size: .68rem; color: var(--muted);
-  }
+  .footer-bottom { display: flex; align-items: center; justify-content: space-between; }
+  .footer-tagline { font-size: .7rem; color: var(--muted); letter-spacing: .01em; }
+  .footer-links { display: flex; align-items: center; gap: 6px; font-size: .68rem; color: var(--muted); }
   .footer-links a { color: var(--muted); text-decoration: none; transition: color .15s; }
   .footer-links a:hover { color: var(--accent); }
   .footer-links span { opacity: .4; }
 
   @media (max-width: 480px) {
-    .card { padding: 40px 28px 32px; margin: 16px; margin-bottom: 90px; }
-    .divider { margin: 0 -28px 32px; }
+    .card { padding: 40px 24px 32px; margin: 16px; margin-bottom: 100px; max-width: 100%; }
+    .divider { margin: 0 -24px 32px; }
     .site-footer { padding: 12px 20px; }
+    .dest-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -221,53 +309,114 @@
 <div class="orb orb-2"></div>
 
 <div class="card">
-  <div class="logo-wrap">
-    <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
-    <span class="logo-badge">evoAI Desk</span>
+
+  <!-- ══ VIEW 1 — Sign In ══ -->
+  <div id="signin-view">
+    <div class="logo-wrap">
+      <img class="logo-img" src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
+      <span class="logo-badge">evoAI Desk</span>
+    </div>
+
+    <div class="card-title">Welcome</div>
+    <div class="card-sub">Evolve your Opportunities with AI</div>
+
+    <div class="divider"></div>
+
+    <div class="msg msg-error" id="errorMsg">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span></span>
+    </div>
+
+    <button class="google-btn" id="googleBtn" onclick="googleLogin()">
+      <svg width="20" height="20" viewBox="0 0 48 48" style="flex-shrink:0">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      Sign in with Google
+    </button>
+
+    <div class="secure-note">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      Secured by Google OAuth 2.0
+    </div>
   </div>
 
-  <div class="card-title">Welcome</div>
-  <div class="card-sub">Evolve your Opportunities with AI</div>
+  <!-- ══ VIEW 2 — Destination Picker ══ -->
+  <div id="destination-view">
+    <div class="logo-wrap">
+      <img class="logo-img" src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
+      <span class="logo-badge">evoAI Desk</span>
+    </div>
 
-  <div class="divider"></div>
+    <div class="user-greeting">
+      <img class="user-avatar" id="userAvatar" src="" alt="Profile"/>
+      <div class="user-name">Signed in as <strong id="userName"></strong></div>
+    </div>
 
-  <div class="msg msg-error" id="errorMsg">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-    <span></span>
+    <div class="divider" style="margin-bottom:22px;"></div>
+
+    <p class="dest-label">Where would you like to go?</p>
+
+    <div class="dest-grid">
+
+      <!-- Leads Dashboard -->
+      <a class="dest-btn leads" onclick="goTo('/evoaidesk/evoai-dashboard.html')">
+        <div class="dest-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="12" width="4" height="9" rx="1"/>
+            <rect x="10" y="7" width="4" height="14" rx="1"/>
+            <rect x="17" y="3" width="4" height="18" rx="1"/>
+          </svg>
+        </div>
+        <span class="dest-title">Leads Dashboard</span>
+        <span class="dest-desc">Manage &amp; track your sales leads</span>
+        <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
+
+      <!-- Tenant Setup -->
+      <a class="dest-btn tenants" onclick="goTo('/evoaidesk/tenants-setup.html')">
+        <div class="dest-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <span class="dest-title">Tenant Setup</span>
+        <span class="dest-desc">Configure users &amp; tenants</span>
+        <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
+
+    </div>
   </div>
 
-  <button class="google-btn" id="googleBtn" onclick="googleLogin()">
-    <svg width="20" height="20" viewBox="0 0 48 48" style="flex-shrink:0">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
-    Sign in with Google
-  </button>
-
-  <div class="secure-note">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-    Secured by Google OAuth 2.0
-  </div>
 </div>
 
-<!-- ── Footer matching evoaiglobal.ai ── -->
+<!-- ── Footer ── -->
 <footer class="site-footer">
   <div class="footer-top">
     <a href="https://evoaiglobal.ai" target="_blank" class="footer-logo">
       <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
     </a>
     <div class="footer-social">
-      <!-- LinkedIn -->
       <a onclick="return false;" href="https://linkedin.com/company/evoaiglobal" target="_blank" class="social-icon" aria-label="LinkedIn">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
       </a>
-      <!-- Facebook -->
       <a onclick="return false;" href="https://facebook.com/evoaiglobal" target="_blank" class="social-icon" aria-label="Facebook">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
       </a>
-      <!-- X / Twitter -->
       <a onclick="return false;" href="https://x.com/evoaiglobal" target="_blank" class="social-icon" aria-label="X">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.259 5.631 5.905-5.631zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
       </a>
@@ -289,7 +438,7 @@
 </footer>
 
 <script>
-  const googleBtnInner = document.getElementById('googleBtn').innerHTML;
+  window._googleBtnInner = document.getElementById('googleBtn').innerHTML;
 </script>
 
 </body>
