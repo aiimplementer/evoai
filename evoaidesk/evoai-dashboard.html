@@ -342,11 +342,15 @@
     // Store tenant_id globally for use in all queries and writes
     window._currentTenantId = tenantId;
 
+    // Format tenant name for display (e.g. "annex-cloud-inc" → "Annex Cloud Inc")
+    const tenantDisplay = tenantId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
     document.getElementById('authShell').style.display = 'contents';
     document.getElementById('authLoading').style.display = 'none';
     document.getElementById('userInitials').textContent     = initials;
     document.getElementById('userName').textContent         = name;
-    document.getElementById('userEmail').textContent        = email;
+    document.getElementById('userTenantName').textContent   = tenantDisplay;
+    document.getElementById('userChipWrap').title           = email;
     document.getElementById('sideUserInitials').textContent = initials;
     document.getElementById('sideUserName').textContent     = name;
     document.getElementById('sideUserEmail').textContent    = email;
@@ -441,8 +445,8 @@
     font-family: var(--mono);
   }
   .user-info { line-height: 1.2; }
-  .user-info-name  { font-size: .75rem; font-weight: 600; color: var(--text); }
-  .user-info-email { font-size: .65rem; color: var(--muted); }
+  .user-info-name   { font-size: .75rem; font-weight: 600; color: var(--text); }
+  .user-info-tenant { font-size: .63rem; color: var(--accent); font-family: var(--mono); letter-spacing: .04em; opacity: .85; }
 
   .signout-btn {
     display: flex; align-items: center; gap: 6px;
@@ -1261,11 +1265,11 @@
     </button>
     <button class="pill-btn outline" onclick="refreshAll()">↻ Refresh</button>
     <button class="pill-btn primary" onclick="openCreate()">+ New Lead</button>
-    <div class="user-chip">
+    <div class="user-chip" id="userChipWrap" title="">
       <div class="user-avatar" id="userInitials">—</div>
       <div class="user-info">
-        <div class="user-info-name"  id="userName">—</div>
-        <div class="user-info-email" id="userEmail">—</div>
+        <div class="user-info-name" id="userName">—</div>
+        <div class="user-info-tenant" id="userTenantName">—</div>
       </div>
     </div>
     <button class="pill-btn outline" onclick="toggleHelpPanel()" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
