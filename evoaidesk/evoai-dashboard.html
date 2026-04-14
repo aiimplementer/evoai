@@ -125,6 +125,8 @@
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
       followupDate:        lead.followup        || '',
       lastUpdateTimestamp: serverTimestamp(),
+      // ── Tenant isolation ──
+      tenant_id:           lead.tenant_id || window._currentTenantId || '',
       // ── Assignment fields ──
       assignedTo:          lead.assignedTo      || 'Unassigned',
       assignedToEmail:     lead.assignedToEmail || '',
@@ -146,7 +148,8 @@
 
   window.buildLeadsQuery = (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
     const ref = collection(db, 'leads');
-    const constraints = [ orderBy('createdAt', 'desc') ];
+    const tenantId = window._currentTenantId || '';
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -165,7 +168,8 @@
 
   window.dbCountLeads = async (filters = {}) => {
     const ref = collection(db, 'leads');
-    const constraints = [];
+    const tenantId = window._currentTenantId || '';
+    const constraints = [ where('tenant_id', '==', tenantId) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -177,10 +181,12 @@
 
   window.dbCountAllStatuses = async () => {
     const ref = collection(db, 'leads');
+    const tenantId = window._currentTenantId || '';
+    const tenantQuery = query(ref, where('tenant_id', '==', tenantId));
     const statuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost'];
     const [totalSnap, ...statusSnaps] = await Promise.all([
-      getCountFromServer(ref),
-      ...statuses.map(s => getCountFromServer(query(ref, where('status','==',s))))
+      getCountFromServer(tenantQuery),
+      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tenantId), where('status','==',s))))
     ]);
     const result = { ALL: totalSnap.data().count };
     statuses.forEach((s,i) => { result[s] = statusSnaps[i].data().count; });
@@ -191,7 +197,8 @@
     try {
       if (lastPage) {
         const ref = collection(db, 'leads');
-        const constraints = [ orderBy('createdAt', 'desc') ];
+        const tenantId = window._currentTenantId || '';
+        const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId) ];
         if (filters.status)   constraints.push(where('status',      '==', filters.status));
         if (filters.service)  constraints.push(where('service',     '==', filters.service));
         if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -212,8 +219,10 @@
   };
 
   window.dbLoadStage = async (status) => {
+    const tenantId = window._currentTenantId || '';
     const q = query(
       collection(db, 'leads'),
+      where('tenant_id', '==', tenantId),
       where('status', '==', status),
       orderBy('createdAt', 'desc'),
       limit(200)
@@ -224,7 +233,8 @@
 
   window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
     const ref = collection(db, 'leads');
-    const constraints = [ orderBy('createdAt', 'desc'), limit(maxDocs) ];
+    const tenantId = window._currentTenantId || '';
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), limit(maxDocs) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -255,7 +265,8 @@
   };
 
   window.dbLoadAll = async () => {
-    const snap = await getDocs(query(collection(db, 'leads'), orderBy('createdAt', 'desc')));
+    const tenantId = window._currentTenantId || '';
+    const snap = await getDocs(query(collection(db, 'leads'), where('tenant_id', '==', tenantId), orderBy('createdAt', 'desc')));
     return snap.docs.map(d => window.docToLead(d));
   };
 
@@ -290,18 +301,49 @@
   };
 
   /* ─── AUTH GUARD ─── */
-  onAuthStateChanged(auth, user => {
+  onAuthStateChanged(auth, async user => {
     if (authChecked) return;
     authChecked = true;
     if (!user) {
       window.location.replace("evoai-login.html");
       return;
     }
-    document.getElementById('authShell').style.display = 'contents';
-    document.getElementById('authLoading').style.display = 'none';
     const name     = user.displayName || user.email.split('@')[0];
     const email    = user.email;
+    const googleId = user.email; // google_id stored as email in users collection
     const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+    // ── Fetch tenant_id from users collection using google_id ──
+    let tenantId = null;
+    try {
+      const usersSnap = await getDocs(query(
+        collection(db, 'users'),
+        where('google_id', '==', googleId),
+        limit(1)
+      ));
+      if (!usersSnap.empty) {
+        tenantId = usersSnap.docs[0].data().tenant_id || null;
+      }
+    } catch(e) {
+      console.error('Failed to fetch tenant_id for user:', googleId, e);
+    }
+
+    if (!tenantId) {
+      console.error('No tenant_id found for user:', googleId, '— access denied.');
+      document.getElementById('authLoading').innerHTML = `
+        <img src="https://evoaiglobal.ai/images/favicon.ico" style="height:38px;opacity:.85;" />
+        <div style="color:#ff4d6d;font-size:.9rem;text-align:center;max-width:320px;">
+          <strong>Access Denied</strong><br>
+          <span style="color:#6b7fa3;font-size:.78rem;">Your account is not linked to a tenant. Please contact your administrator.</span>
+        </div>`;
+      return;
+    }
+
+    // Store tenant_id globally for use in all queries and writes
+    window._currentTenantId = tenantId;
+
+    document.getElementById('authShell').style.display = 'contents';
+    document.getElementById('authLoading').style.display = 'none';
     document.getElementById('userInitials').textContent     = initials;
     document.getElementById('userName').textContent         = name;
     document.getElementById('userEmail').textContent        = email;
