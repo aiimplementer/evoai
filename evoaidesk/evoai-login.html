@@ -135,7 +135,6 @@
 
         document.getElementById('userName').textContent      = displayName;
         document.getElementById('userRoleBadge').textContent = 'super-admin';
-        document.querySelector('.card').classList.add('wide');
         switchView('signin-view', 'destination-view');
         return;
       }
@@ -226,9 +225,7 @@
   body {
     background: var(--bg); color: var(--text); font-family: var(--font);
     min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    overflow-x: hidden; overflow-y: auto; position: relative;
-    padding: 20px 16px 100px;
+    align-items: center; justify-content: center; overflow-x: hidden; overflow-y: auto; position: relative;
   }
 
   /* Grid bg */
@@ -248,17 +245,14 @@
   .orb-2 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(0,184,255,.10), transparent 70%); bottom: -100px; right: -80px; animation-delay: -6s; }
   @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.06); } }
 
-  /* Card — sign-in view stays narrow, destination view goes wide */
+  /* Card */
   .card {
     position: relative; z-index: 1;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-    padding: 44px 44px 40px; width: 100%; max-width: 440px;
+    padding: 52px 44px 44px; width: 100%; max-width: 460px;
     box-shadow: 0 32px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(0,229,160,.05);
     animation: cardIn .4s cubic-bezier(.22,1,.36,1); text-align: center;
-    margin: 0; transition: max-width .3s ease;
-  }
-  .card.wide {
-    max-width: 780px;
+    margin: 24px 0 100px;
   }
   @keyframes cardIn {
     from { opacity: 0; transform: translateY(28px) scale(.98); }
@@ -326,70 +320,54 @@
     margin-top: 18px; font-size: .74rem; color: var(--muted); font-family: var(--mono); opacity: .7;
   }
 
-  /* ── Destination picker — wide two-column layout ── */
+  /* ── Destination picker ── */
   #destination-view { display: none; }
-
-  /* Two-column wrapper */
-  .dest-layout {
-    display: flex; align-items: center; gap: 0;
-    text-align: left;
-  }
-
-  /* Left column: identity */
-  .dest-left {
-    flex: 0 0 220px; padding: 8px 32px 8px 0;
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-  }
-
-  /* Vertical divider */
-  .dest-vdivider {
-    width: 1px; align-self: stretch; background: var(--border);
-    flex-shrink: 0; margin: 0;
-  }
-
-  /* Right column: cards */
-  .dest-right {
-    flex: 1; padding: 8px 0 8px 32px;
-  }
 
   .user-greeting {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
+    margin-bottom: 28px;
   }
 
-  /* Avatar */
-  .avatar-wrap { position: relative; width: 64px; height: 64px; }
+  /* Avatar wrapper — holds either <img> or the initials fallback */
+  .avatar-wrap {
+    position: relative; width: 60px; height: 60px;
+  }
   .user-avatar {
-    width: 64px; height: 64px; border-radius: 50%;
+    width: 60px; height: 60px; border-radius: 50%;
     border: 2px solid var(--accent); object-fit: cover;
-    box-shadow: 0 0 0 4px rgba(0,229,160,.12); display: block;
+    box-shadow: 0 0 0 4px rgba(0,229,160,.12);
+    display: block;
   }
+  /* Initials circle shown when no photo URL */
   .avatar-initials {
-    display: none; width: 64px; height: 64px; border-radius: 50%;
-    background: linear-gradient(135deg, rgba(0,229,160,.20), rgba(0,184,255,.20));
+    display: none;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: linear-gradient(135deg, rgba(0,229,160,.25), rgba(0,184,255,.25));
     border: 2px solid var(--accent);
-    box-shadow: 0 0 0 4px rgba(0,229,160,.10);
+    box-shadow: 0 0 0 4px rgba(0,229,160,.12);
     align-items: center; justify-content: center;
-    font-size: 1.5rem; font-weight: 700; color: var(--accent);
+    font-size: 1.35rem; font-weight: 700; color: var(--accent);
+    letter-spacing: -.01em;
   }
 
-  .user-name { font-size: .82rem; color: var(--muted); line-height: 1.5; text-align: center; }
-  .user-name strong { color: var(--text); font-weight: 600; display: block; margin-top: 2px; font-size: .88rem; }
+  .user-name { font-size: .88rem; color: var(--muted); line-height: 1.4; }
+  .user-name strong { color: var(--text); font-weight: 600; }
 
   .role-badge {
     display: inline-flex; align-items: center; gap: 5px;
-    font-family: var(--mono); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase;
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
     background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.22);
     color: var(--accent); padding: 3px 10px; border-radius: 4px;
   }
   .role-badge svg { width: 10px; height: 10px; }
 
   .dest-label {
-    font-size: .68rem; font-family: var(--mono); letter-spacing: .12em;
+    font-size: .7rem; font-family: var(--mono); letter-spacing: .12em;
     color: var(--muted); text-transform: uppercase; margin-bottom: 14px;
   }
 
-  /* Destination cards — stack vertically on the right */
-  .dest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* Destination cards */
+  .dest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 4px; }
 
   .dest-btn {
     position: relative; overflow: hidden;
@@ -399,7 +377,7 @@
     border: 1px solid var(--border);
     cursor: pointer; transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s, box-shadow .22s;
     text-align: center; text-decoration: none; color: var(--text);
-    min-height: 160px; justify-content: center;
+    min-height: 170px; justify-content: center;
   }
   .dest-btn::before {
     content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .22s; pointer-events: none;
@@ -414,24 +392,17 @@
   .dest-btn:active { transform: translateY(-1px); }
 
   .dest-icon {
-    width: 54px; height: 54px; border-radius: 13px;
+    width: 48px; height: 48px; border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
   }
   .dest-btn.leads   .dest-icon { background: rgba(0,229,160,.12); color: var(--accent); }
   .dest-btn.tenants .dest-icon { background: rgba(0,184,255,.12); color: var(--accent2); }
-  .dest-icon svg { width: 26px; height: 26px; }
+  .dest-icon svg { width: 24px; height: 24px; }
 
-  .dest-title { font-size: .94rem; font-weight: 600; letter-spacing: -.01em; display: block; }
+  .dest-title { font-size: .92rem; font-weight: 600; letter-spacing: -.01em; display: block; }
   .dest-btn.leads   .dest-title { color: var(--accent); }
   .dest-btn.tenants .dest-title { color: var(--accent2); }
-  .dest-desc { font-size: .74rem; color: var(--muted); line-height: 1.45; display: block; }
-
-  .dest-arrow {
-    position: absolute; bottom: 10px; right: 12px;
-    opacity: 0; transform: translateX(-5px);
-    transition: opacity .2s, transform .2s; color: var(--muted);
-  }
-  .dest-btn:hover .dest-arrow { opacity: 1; transform: translateX(0); }
+  .dest-desc { font-size: .73rem; color: var(--muted); line-height: 1.45; display: block; }
 
   .dest-arrow {
     position: absolute; bottom: 10px; right: 12px;
@@ -468,17 +439,11 @@
   .footer-links a:hover { color: var(--accent); }
   .footer-links span { opacity: .4; }
 
-  @media (max-width: 640px) {
-    body { padding: 20px 12px 100px; }
-    .card { padding: 36px 24px 32px; max-width: 100%; }
-    .card.wide { max-width: 100%; }
+  @media (max-width: 480px) {
+    .card { padding: 40px 24px 32px; margin: 16px; margin-bottom: 100px; max-width: 100%; }
     .divider { margin: 0 -24px 28px; }
     .site-footer { padding: 12px 20px; }
-    .dest-layout { flex-direction: column; gap: 24px; }
-    .dest-left { flex: none; width: 100%; padding: 0 0 20px; border-bottom: 1px solid var(--border); }
-    .dest-vdivider { display: none; }
-    .dest-right { padding: 0; width: 100%; }
-    .dest-grid { grid-template-columns: 1fr 1fr; }
+    .dest-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -532,74 +497,63 @@
 
   <!-- ══ VIEW 2 — Destination Picker (super-admin only) ══ -->
   <div id="destination-view">
+    <div class="logo-wrap">
+      <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
+      <span class="logo-badge">evoAI Desk</span>
+    </div>
 
-    <!-- Wide inner layout: left = identity, right = cards -->
-    <div class="dest-layout">
-
-      <!-- LEFT: logo + user info -->
-      <div class="dest-left">
-        <div class="logo-wrap" style="margin-bottom:28px;">
-          <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
-          <span class="logo-badge">evoAI Desk</span>
-        </div>
-        <div class="user-greeting">
-          <div class="avatar-wrap">
-            <img class="user-avatar" id="userAvatar" src="" alt="Profile"/>
-            <div class="avatar-initials" id="userInitials"></div>
-          </div>
-          <div class="user-name">Signed in as<br/><strong id="userName"></strong></div>
-          <span class="role-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-            <span id="userRoleBadge"></span>
-          </span>
-        </div>
+    <div class="user-greeting">
+      <div class="avatar-wrap">
+        <img class="user-avatar" id="userAvatar" src="" alt="Profile"/>
+        <div class="avatar-initials" id="userInitials"></div>
       </div>
+      <div class="user-name">Signed in as <strong id="userName"></strong></div>
+      <span class="role-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <span id="userRoleBadge"></span>
+      </span>
+    </div>
 
-      <!-- DIVIDER -->
-      <div class="dest-vdivider"></div>
+    <div class="divider" style="margin-bottom:20px;"></div>
 
-      <!-- RIGHT: destination cards -->
-      <div class="dest-right">
-        <p class="dest-label">Where would you like to go?</p>
-        <div class="dest-grid">
+    <p class="dest-label">Where would you like to go?</p>
 
-          <!-- Leads Dashboard -->
-          <a class="dest-btn leads" onclick="goTo('/evoaidesk/evoai-dashboard.html')">
-            <div class="dest-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="12" width="4" height="9" rx="1"/>
-                <rect x="10" y="7" width="4" height="14" rx="1"/>
-                <rect x="17" y="3" width="4" height="18" rx="1"/>
-              </svg>
-            </div>
-            <span class="dest-title">Leads Dashboard</span>
-            <span class="dest-desc">Manage &amp; track your sales leads</span>
-            <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </a>
+    <div class="dest-grid">
 
-          <!-- Tenant Setup -->
-          <a class="dest-btn tenants" onclick="goTo('/evoaidesk/tenants-setup.html')">
-            <div class="dest-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-            </div>
-            <span class="dest-title">Tenant Setup</span>
-            <span class="dest-desc">Configure users &amp; tenants</span>
-            <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </a>
-
+      <!-- Leads Dashboard -->
+      <a class="dest-btn leads" onclick="goTo('/evoaidesk/evoai-dashboard.html')">
+        <div class="dest-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="12" width="4" height="9" rx="1"/>
+            <rect x="10" y="7" width="4" height="14" rx="1"/>
+            <rect x="17" y="3" width="4" height="18" rx="1"/>
+          </svg>
         </div>
-      </div>
+        <span class="dest-title">Leads Dashboard</span>
+        <span class="dest-desc">Manage &amp; track your sales leads</span>
+        <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
+
+      <!-- Tenant Setup -->
+      <a class="dest-btn tenants" onclick="goTo('/evoaidesk/tenants-setup.html')">
+        <div class="dest-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <span class="dest-title">Tenant Setup</span>
+        <span class="dest-desc">Configure users &amp; tenants</span>
+        <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
 
     </div>
   </div>
