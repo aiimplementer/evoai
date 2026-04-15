@@ -125,7 +125,7 @@
       comments:            lead.comments        || '',
       userAgent:           lead.userAgent        || '',
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
-      followupDate:        lead.followup        || '',
+      followupDate: 	   lead.followup  ? Timestamp.fromDate(new Date(lead.followup)) : null,
       lastUpdateTimestamp: serverTimestamp(),
       // ── Tenant isolation ──
       tenant_id:           lead.tenant_id || window._currentTenantId || '',
