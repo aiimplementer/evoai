@@ -458,13 +458,10 @@
           Users
           <span class="aside-count" id="cntUsers">—</span>
         </a>
-        <a class="aside-item" href="#">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Leads
-        </a>
-        <a class="aside-item" href="#">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Invites
+        <a class="aside-item" href="#" onclick="filterSuspendedUsers();return false;" id="sideSuspendedUsersLink">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Suspended Users
+          <span class="aside-count" id="cntSuspendedUsers">—</span>
         </a>
       </div>
 
@@ -804,13 +801,15 @@
   let _tenants  = [];
   let _users    = [];
   let _editTenantSlug = null;
-  let _editUserId     = null;
+  let _suspendedFilter = false;
   let _filter   = 'all';
   let _activeTab = 'tenants';
 
   /* ══════════════ TAB SWITCHING ══════════════ */
   function switchTab(tab) {
     _activeTab = tab;
+    _suspendedFilter = false;
+    document.getElementById('sideSuspendedUsersLink').classList.remove('active');
     document.getElementById('panelTenants').classList.toggle('active', tab === 'tenants');
     document.getElementById('panelUsers').classList.toggle('active', tab === 'users');
     document.getElementById('tabBtnTenants').classList.toggle('active', tab === 'tenants');
@@ -999,15 +998,21 @@
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       const db = window._db;
-      // Use the doc ID: if editing use existing _id, else auto-generate
+      // Always use google_id (email) as the Firestore document ID
       let ref;
       if (_editUserId) {
         ref = window._doc(db, 'users', _editUserId);
       } else {
-        // Generate a readable ID from the email prefix
-        const base = google_id.split('@')[0].replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,12);
-        const uid  = google_id //base + '_' + Math.random().toString(36).slice(2,8);
-        ref = window._doc(db, 'users', uid);
+        // Use the full email as doc ID (it is unique per user)
+        ref = window._doc(db, 'users', google_id);
+        // Check for duplicate — if a doc with this email already exists, reject
+        const existing = await window._getDoc(ref);
+        if (existing.exists()) {
+          toast(`User "${google_id}" already exists`, 'error');
+          btn.disabled = false;
+          document.getElementById('saveUserBtn').innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Save User';
+          return;
+        }
       }
       const data = {
         google_id, name, role, status, tenant_id,
@@ -1130,6 +1135,7 @@
     const tenantFilt = document.getElementById('userTenantFilter').value;
     const search     = (document.getElementById('userSearch').value || '').toLowerCase();
     let rows = _users;
+    if (_suspendedFilter) rows = rows.filter(u => u.status === 'suspended');
     if (tenantFilt) rows = rows.filter(u => u.tenant_id === tenantFilt);
     if (search)     rows = rows.filter(u =>
       (u.google_id||'').toLowerCase().includes(search) ||
@@ -1209,12 +1215,25 @@
     const active   = _users.filter(u => u.status === 'active').length;
     const admins   = _users.filter(u => u.role === 'admin').length;
     const tenants  = new Set(_users.map(u => u.tenant_id).filter(Boolean)).size;
+    const suspended = _users.filter(u => u.status === 'suspended').length;
     document.getElementById('uStatTotal').textContent   = total;
     document.getElementById('uStatActive').textContent  = active;
     document.getElementById('uStatAdmins').textContent  = admins;
     document.getElementById('uStatTenants').textContent = tenants;
     document.getElementById('cntUsers').textContent     = total;
     document.getElementById('tabCntUsers').textContent  = total;
+    document.getElementById('cntSuspendedUsers').textContent = suspended;
+  }
+
+  /* ══════════════ SUSPENDED USERS FILTER ══════════════ */
+  function filterSuspendedUsers() {
+    switchTab('users');
+    setTimeout(() => {
+      // Temporarily filter for suspended status by patching renderUsersTable
+      _suspendedFilter = true;
+      renderUsersTable();
+      document.getElementById('sideSuspendedUsersLink').classList.add('active');
+    }, 50);
   }
 
   /* ══════════════ HELPERS ══════════════ */
