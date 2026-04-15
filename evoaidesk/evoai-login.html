@@ -8,53 +8,103 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-  import { getAuth, signInWithPopup, GoogleAuthProvider, setPersistence, browserLocalPersistence }
+  import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, signInWithPopup, signOut, GoogleAuthProvider, setPersistence, browserLocalPersistence }
     from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import { getFirestore, collection, query, where, getDocs }
+    from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
   const firebaseConfig = {
-    apiKey: "AIzaSyAkwOQZ15O8-_GB9LYNKaAUPe9NYgGUMw4",
-    authDomain: "evoaidesk.firebaseapp.com",
-    projectId: "evoaidesk",
-    storageBucket: "evoaidesk.firebasestorage.app",
+    apiKey:            "AIzaSyAkwOQZ15O8-_GB9LYNKaAUPe9NYgGUMw4",
+    authDomain:        "evoaidesk.firebaseapp.com",
+    projectId:         "evoaidesk",
+    storageBucket:     "evoaidesk.firebasestorage.app",
     messagingSenderId: "904271339352",
-    appId: "1:904271339352:web:06c777dd45b9051d8d8f2d",
-    measurementId: "G-VGZHC96EYC"
+    appId:             "1:904271339352:web:06c777dd45b9051d8d8f2d",
+    measurementId:     "G-VGZHC96EYC"
   };
 
   const app      = initializeApp(firebaseConfig);
   const auth     = getAuth(app);
+  const db       = getFirestore(app);
   const provider = new GoogleAuthProvider();
   await setPersistence(auth, browserLocalPersistence);
 
+  /* ─────────────────────────────────────────────
+     Look up the signed-in user's record in the
+     Firestore `users` collection by google_id (email).
+     Returns { role, status, tenant_id } or null.
+  ───────────────────────────────────────────── */
+  async function fetchUserRecord(email) {
+    const q    = query(collection(db, 'users'), where('google_id', '==', email));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return snap.docs[0].data();   // { google_id, role, status, tenant_id, … }
+  }
+
+  /* ─────────────────────────────────────────────
+     Main sign-in handler
+  ───────────────────────────────────────────── */
   window.googleLogin = async () => {
     const btn = document.getElementById('googleBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-spinner"></span> Signing in…';
-    clearError();
+    clearMsg();
+
     try {
       const result = await signInWithPopup(auth, provider);
-      if (result?.user) {
-        const user = result.user;
-        // Populate greeting
-        const av = document.getElementById('userAvatar');
-        if (user.photoURL) { av.src = user.photoURL; av.style.display = 'block'; }
-        document.getElementById('userName').textContent = user.displayName || user.email;
-        // Animate transition
-        switchView('signin-view', 'destination-view');
+      const user   = result?.user;
+      if (!user) throw new Error('No user returned from Google.');
+
+      // ── Show checking state ──
+      btn.innerHTML = '<span class="btn-spinner"></span> Checking access…';
+
+      const record = await fetchUserRecord(user.email);
+
+      /* ── NOT IN DATABASE ── */
+      if (!record) {
+        await signOut(auth);
+        resetBtn();
+        showMsg('error', 'Access denied',
+          `<strong>${escHtml(user.email)}</strong> is not registered in evoAI Desk. Please contact your administrator.`);
+        return;
       }
+
+      /* ── SUSPENDED ── */
+      if (record.status === 'suspended') {
+        await signOut(auth);
+        resetBtn();
+        showMsg('error', 'Account suspended',
+          `Your account has been suspended. Please contact your administrator.`);
+        return;
+      }
+
+      /* ── SUPER-ADMIN → destination picker ── */
+      if (record.role === 'super-admin') {
+        document.getElementById('userAvatar').src              = user.photoURL || '';
+        document.getElementById('userAvatar').style.display   = user.photoURL ? 'block' : 'none';
+        document.getElementById('userName').textContent        = user.displayName || user.email;
+        document.getElementById('userRoleBadge').textContent   = 'super-admin';
+        switchView('signin-view', 'destination-view');
+        return;
+      }
+
+      /* ── ALL OTHER ROLES → straight to Leads Dashboard ── */
+      window.location.href = '/evoaidesk/evoai-dashboard.html';
+
     } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = window._googleBtnInner;
+      resetBtn();
       if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
-        showError(friendlyError(err.code));
+        showMsg('error', 'Sign-in failed', friendlyError(err.code));
       }
       console.error(err);
     }
   };
 
+  /* ── Navigation helpers ── */
   window.goTo = (path) => { window.location.href = path; };
 
+  /* ── View transition ── */
   function switchView(hideId, showId) {
     const hide = document.getElementById(hideId);
     const show = document.getElementById(showId);
@@ -68,23 +118,39 @@
     }, 220);
   }
 
+  /* ── Button helpers ── */
+  function resetBtn() {
+    const btn = document.getElementById('googleBtn');
+    btn.disabled = false;
+    btn.innerHTML = window._googleBtnInner;
+  }
+
+  /* ── Message helpers ── */
+  function clearMsg() {
+    document.getElementById('msgBox').style.display = 'none';
+  }
+  function showMsg(type, title, body) {
+    const box = document.getElementById('msgBox');
+    box.className = 'msg msg-' + type;
+    box.querySelector('.msg-title').textContent  = title;
+    box.querySelector('.msg-body').innerHTML     = body;
+    box.style.display = 'flex';
+  }
+
+  /* ── Friendly errors ── */
   function friendlyError(code) {
     const map = {
-      'auth/popup-blocked':          'Popup was blocked — please allow popups for this site and try again.',
+      'auth/popup-blocked':          'Popup was blocked. Please allow popups for this site and try again.',
       'auth/user-disabled':          'This Google account has been disabled.',
       'auth/too-many-requests':      'Too many attempts. Please try again later.',
       'auth/network-request-failed': 'Network error. Check your connection and try again.',
       'auth/unauthorized-domain':    'This domain is not authorised in Firebase. Contact the admin.',
-      'auth/internal-error':         'An internal error occurred. Please try again.',
     };
     return map[code] || 'Something went wrong. Please try again.';
   }
 
-  function clearError() { document.getElementById('errorMsg').style.display = 'none'; }
-  function showError(msg) {
-    const el = document.getElementById('errorMsg');
-    el.querySelector('span').textContent = msg;
-    el.style.display = 'flex';
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
 
@@ -97,6 +163,7 @@
     --accent:  #00e5a0;
     --accent2: #00b8ff;
     --danger:  #ff4d6d;
+    --warn:    #ffb730;
     --text:    #e8f0fe;
     --muted:   #6b7fa3;
     --font:    'Sora', sans-serif;
@@ -111,6 +178,7 @@
     align-items: center; justify-content: center; overflow: hidden; position: relative;
   }
 
+  /* Grid bg */
   body::before {
     content: ''; position: fixed; inset: 0; z-index: 0;
     background-image:
@@ -121,12 +189,13 @@
     pointer-events: none;
   }
 
+  /* Orbs */
   .orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; animation: drift 12s ease-in-out infinite alternate; }
   .orb-1 { width: 420px; height: 420px; background: radial-gradient(circle, rgba(0,229,160,.13), transparent 70%); top: -120px; left: -80px; }
   .orb-2 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(0,184,255,.10), transparent 70%); bottom: -100px; right: -80px; animation-delay: -6s; }
   @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.06); } }
 
-  /* ── Card ── */
+  /* Card */
   .card {
     position: relative; z-index: 1;
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
@@ -137,18 +206,18 @@
   }
   @keyframes cardIn {
     from { opacity: 0; transform: translateY(28px) scale(.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);   }
   }
 
-  /* ── View transitions ── */
-  .view-exit  { animation: viewExit  .22s ease forwards; }
-  .view-enter { animation: viewEnter .36s cubic-bezier(.22,1,.36,1) forwards; }
-  @keyframes viewExit  { to   { opacity: 0; transform: translateY(-10px) scale(.97); } }
-  @keyframes viewEnter { from { opacity: 0; transform: translateY(14px)  scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  /* View transitions */
+  .view-exit  { animation: vExit  .22s ease forwards; }
+  .view-enter { animation: vEnter .36s cubic-bezier(.22,1,.36,1) forwards; }
+  @keyframes vExit  { to   { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes vEnter { from { opacity: 0; transform: translateY(14px)  scale(.98); } to { opacity: 1; transform: none; } }
 
-  /* ── Logo ── */
+  /* Logo */
   .logo-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 36px; }
-  .logo-wrap img.logo-img { height: 56px; width: auto; }
+  .logo-wrap img { height: 56px; width: auto; }
   .logo-badge {
     font-family: var(--mono); font-size: .68rem; letter-spacing: .12em;
     background: var(--surface2); border: 1px solid var(--border);
@@ -157,18 +226,26 @@
 
   .card-title { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; }
   .card-sub   { font-size: .9rem; color: var(--muted); margin-bottom: 36px; line-height: 1.6; }
-  .divider    { height: 1px; background: var(--border); margin: 0 -44px 36px; }
+  .divider    { height: 1px; background: var(--border); margin: 0 -44px 32px; }
 
-  /* ── Error ── */
+  /* Message box */
   .msg {
-    display: none; align-items: flex-start; gap: 10px;
-    padding: 12px 14px; border-radius: 8px;
-    font-size: .84rem; margin-bottom: 20px; line-height: 1.45; text-align: left;
+    display: none; flex-direction: column; gap: 4px;
+    padding: 13px 15px; border-radius: 8px;
+    font-size: .84rem; margin-bottom: 20px; line-height: 1.5; text-align: left;
   }
-  .msg svg { flex-shrink: 0; margin-top: 1px; }
-  .msg-error { background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.2); color: #ff8099; }
+  .msg-title { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+  .msg-title svg { flex-shrink: 0; }
+  .msg-body  { font-size: .8rem; padding-left: 22px; }
 
-  /* ── Google button ── */
+  .msg-error {
+    background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.2); color: #ff8099;
+  }
+  .msg-warn {
+    background: rgba(255,183,48,.07); border: 1px solid rgba(255,183,48,.2); color: #ffcf6b;
+  }
+
+  /* Google button */
   .google-btn {
     width: 100%; padding: 15px 20px;
     background: #fff; color: #3c4043;
@@ -179,7 +256,7 @@
   }
   .google-btn:hover:not(:disabled) { background: #f8f9fa; box-shadow: 0 4px 16px rgba(0,0,0,.18); transform: translateY(-1px); }
   .google-btn:active:not(:disabled) { transform: translateY(0); }
-  .google-btn:disabled { opacity: .7; cursor: not-allowed; }
+  .google-btn:disabled { opacity: .65; cursor: not-allowed; }
 
   .btn-spinner {
     display: inline-block; width: 15px; height: 15px;
@@ -193,12 +270,12 @@
     margin-top: 18px; font-size: .74rem; color: var(--muted); font-family: var(--mono); opacity: .7;
   }
 
-  /* ── Destination view ── */
+  /* ── Destination picker ── */
   #destination-view { display: none; }
 
   .user-greeting {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    margin-bottom: 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    margin-bottom: 24px;
   }
   .user-avatar {
     display: none; width: 52px; height: 52px; border-radius: 50%;
@@ -208,15 +285,21 @@
   .user-name { font-size: .88rem; color: var(--muted); }
   .user-name strong { color: var(--text); font-weight: 600; }
 
+  .role-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
+    background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.22);
+    color: var(--accent); padding: 3px 10px; border-radius: 4px;
+  }
+  .role-badge svg { width: 10px; height: 10px; }
+
   .dest-label {
     font-size: .7rem; font-family: var(--mono); letter-spacing: .12em;
-    color: var(--muted); text-transform: uppercase; margin-bottom: 16px;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 14px;
   }
 
-  /* ── Two destination cards ── */
-  .dest-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-  }
+  /* Destination cards */
+  .dest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
   .dest-btn {
     position: relative; overflow: hidden;
@@ -227,8 +310,6 @@
     cursor: pointer; transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s, box-shadow .22s;
     text-align: center; text-decoration: none; color: var(--text);
   }
-
-  /* Glow overlay */
   .dest-btn::before {
     content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .22s; pointer-events: none;
   }
@@ -245,21 +326,15 @@
     width: 48px; height: 48px; border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
   }
-  .dest-btn.leads  .dest-icon { background: rgba(0,229,160,.12); color: var(--accent); }
+  .dest-btn.leads   .dest-icon { background: rgba(0,229,160,.12); color: var(--accent); }
   .dest-btn.tenants .dest-icon { background: rgba(0,184,255,.12); color: var(--accent2); }
   .dest-icon svg { width: 24px; height: 24px; }
 
-  .dest-title {
-    font-size: .92rem; font-weight: 600; letter-spacing: -.01em; display: block;
-  }
-  .dest-btn.leads  .dest-title { color: var(--accent); }
+  .dest-title { font-size: .92rem; font-weight: 600; letter-spacing: -.01em; display: block; }
+  .dest-btn.leads   .dest-title { color: var(--accent); }
   .dest-btn.tenants .dest-title { color: var(--accent2); }
+  .dest-desc { font-size: .73rem; color: var(--muted); line-height: 1.45; display: block; }
 
-  .dest-desc {
-    font-size: .73rem; color: var(--muted); line-height: 1.45; display: block;
-  }
-
-  /* Arrow */
   .dest-arrow {
     position: absolute; bottom: 10px; right: 12px;
     opacity: 0; transform: translateX(-5px);
@@ -297,7 +372,7 @@
 
   @media (max-width: 480px) {
     .card { padding: 40px 24px 32px; margin: 16px; margin-bottom: 100px; max-width: 100%; }
-    .divider { margin: 0 -24px 32px; }
+    .divider { margin: 0 -24px 28px; }
     .site-footer { padding: 12px 20px; }
     .dest-grid { grid-template-columns: 1fr; }
   }
@@ -313,7 +388,7 @@
   <!-- ══ VIEW 1 — Sign In ══ -->
   <div id="signin-view">
     <div class="logo-wrap">
-      <img class="logo-img" src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
+      <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
       <span class="logo-badge">evoAI Desk</span>
     </div>
 
@@ -322,12 +397,15 @@
 
     <div class="divider"></div>
 
-    <div class="msg msg-error" id="errorMsg">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
-        <line x1="12" y1="16" x2="12.01" y2="16"/>
-      </svg>
-      <span></span>
+    <!-- Message box (error / warning) -->
+    <div class="msg" id="msgBox">
+      <div class="msg-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span class="msg-title-text" id="msgTitle"></span>
+      </div>
+      <div class="msg-body" id="msgBody"></div>
     </div>
 
     <button class="google-btn" id="googleBtn" onclick="googleLogin()">
@@ -348,19 +426,25 @@
     </div>
   </div>
 
-  <!-- ══ VIEW 2 — Destination Picker ══ -->
+  <!-- ══ VIEW 2 — Destination Picker (super-admin only) ══ -->
   <div id="destination-view">
     <div class="logo-wrap">
-      <img class="logo-img" src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
+      <img src="https://www.evoaiglobal.ai/images/logo.png" alt="evoAI"/>
       <span class="logo-badge">evoAI Desk</span>
     </div>
 
     <div class="user-greeting">
       <img class="user-avatar" id="userAvatar" src="" alt="Profile"/>
       <div class="user-name">Signed in as <strong id="userName"></strong></div>
+      <span class="role-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <span id="userRoleBadge"></span>
+      </span>
     </div>
 
-    <div class="divider" style="margin-bottom:22px;"></div>
+    <div class="divider" style="margin-bottom:20px;"></div>
 
     <p class="dest-label">Where would you like to go?</p>
 
@@ -439,6 +523,17 @@
 
 <script>
   window._googleBtnInner = document.getElementById('googleBtn').innerHTML;
+
+  /* Wire up message box elements that JS module needs */
+  (function() {
+    const box   = document.getElementById('msgBox');
+    const title = document.getElementById('msgTitle');
+    const body  = document.getElementById('msgBody');
+    // patch showMsg to also update the title text node inside .msg-title span
+    const _orig = window.showMsg;
+    // Already defined in module via closure — the getElementById calls inside the
+    // module reference elements by ID so they work fine after DOM is ready.
+  })();
 </script>
 
 </body>
