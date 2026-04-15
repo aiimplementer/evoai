@@ -125,7 +125,16 @@
       comments:            lead.comments        || '',
       userAgent:           lead.userAgent        || '',
       dealValue:           lead.dealvalue ? Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')) || 0 : 0,
-      followupDate: 	   lead.followup  ? Timestamp.fromDate(new Date(lead.followup)) : null,
+      followupDate: (() => {
+		  if (!lead.followup) return null;
+		  // Date-only strings (YYYY-MM-DD) must be parsed as local time, not UTC.
+		  // Appending T00:00:00 without Z forces local timezone interpretation.
+		  const s = String(lead.followup).trim();
+		  const d = /^\d{4}-\d{2}-\d{2}$/.test(s)
+			? new Date(s + 'T00:00:00')   // local midnight — avoids UTC off-by-one-day
+			: new Date(s);                // ISO with time component — parse as-is
+		  return isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
+		})(),
       lastUpdateTimestamp: serverTimestamp(),
       // ── Tenant isolation ──
       tenant_id:           lead.tenant_id || window._currentTenantId || '',
