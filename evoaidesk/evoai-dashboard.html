@@ -2980,6 +2980,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
     section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
+    section('System IDs', [['Lead ID',lead.leadId],['Reference Lead ID',lead.reference_lead_id]]) +
     section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
 
   document.getElementById('timelineBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
