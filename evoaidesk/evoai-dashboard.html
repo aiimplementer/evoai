@@ -3161,9 +3161,9 @@ async function fetchReport(reportType, btnEl) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        reportType,
-		tenantId:        lead.tenantId        || '',
+        reportType,		
         leadId:          lead.leadId          || '',
+		tenantId:        lead.tenantId        || '',
         name:            lead.name            || '',
         email:           lead.email           || '',
         company:         lead.company         || '',
