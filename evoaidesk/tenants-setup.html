@@ -453,10 +453,15 @@
           Tenants
           <span class="aside-count" id="cntTenants">—</span>
         </a>
-        <a class="aside-item" href="#" onclick="switchTab('users');return false;" id="sideUsersLink">
+        <a class="aside-item" href="#" onclick="switchTab('users', true);renderUsersTable();return false;" id="sideUsersLink">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Users
           <span class="aside-count" id="cntUsers">—</span>
+        </a>
+        <a class="aside-item" href="#" onclick="filterActiveUsers();return false;" id="sideActiveUsersLink">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Active Users
+          <span class="aside-count" id="cntActiveUsers">—</span>
         </a>
         <a class="aside-item" href="#" onclick="filterSuspendedUsers();return false;" id="sideSuspendedUsersLink">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
@@ -801,21 +806,28 @@
   let _tenants  = [];
   let _users    = [];
   let _editTenantSlug = null;
-  let _suspendedFilter = false;
+  let _userStatusFilter = 'all'; // 'all' | 'active' | 'suspended'
   let _filter   = 'all';
   let _activeTab = 'tenants';
 
   /* ══════════════ TAB SWITCHING ══════════════ */
-  function switchTab(tab) {
+  function switchTab(tab, resetUserFilter) {
     _activeTab = tab;
-    _suspendedFilter = false;
-    document.getElementById('sideSuspendedUsersLink').classList.remove('active');
+    if (resetUserFilter || tab !== 'users') {
+      _userStatusFilter = 'all';
+    }
+    updateSidebarUserHighlights();
     document.getElementById('panelTenants').classList.toggle('active', tab === 'tenants');
     document.getElementById('panelUsers').classList.toggle('active', tab === 'users');
     document.getElementById('tabBtnTenants').classList.toggle('active', tab === 'tenants');
     document.getElementById('tabBtnUsers').classList.toggle('active', tab === 'users');
     document.getElementById('sideTenantsLink').classList.toggle('active', tab === 'tenants');
-    document.getElementById('sideUsersLink').classList.toggle('active', tab === 'users');
+  }
+
+  function updateSidebarUserHighlights() {
+    document.getElementById('sideUsersLink').classList.toggle('active', _activeTab === 'users' && _userStatusFilter === 'all');
+    document.getElementById('sideActiveUsersLink').classList.toggle('active', _activeTab === 'users' && _userStatusFilter === 'active');
+    document.getElementById('sideSuspendedUsersLink').classList.toggle('active', _activeTab === 'users' && _userStatusFilter === 'suspended');
   }
 
   /* ══════════════ FILTER (tenants) ══════════════ */
@@ -1122,7 +1134,8 @@
 
   /* Filter users tab by tenant */
   function filterUsersByTenant(slug) {
-    switchTab('users');
+    _userStatusFilter = 'all';
+    switchTab('users', true);
     setTimeout(() => {
       document.getElementById('userTenantFilter').value = slug;
       renderUsersTable();
@@ -1135,7 +1148,8 @@
     const tenantFilt = document.getElementById('userTenantFilter').value;
     const search     = (document.getElementById('userSearch').value || '').toLowerCase();
     let rows = _users;
-    if (_suspendedFilter) rows = rows.filter(u => u.status === 'suspended');
+    if (_userStatusFilter === 'active')    rows = rows.filter(u => u.status === 'active');
+    if (_userStatusFilter === 'suspended') rows = rows.filter(u => u.status === 'suspended');
     if (tenantFilt) rows = rows.filter(u => u.tenant_id === tenantFilt);
     if (search)     rows = rows.filter(u =>
       (u.google_id||'').toLowerCase().includes(search) ||
@@ -1223,17 +1237,32 @@
     document.getElementById('cntUsers').textContent     = total;
     document.getElementById('tabCntUsers').textContent  = total;
     document.getElementById('cntSuspendedUsers').textContent = suspended;
+    document.getElementById('cntActiveUsers').textContent    = active;
   }
 
-  /* ══════════════ SUSPENDED USERS FILTER ══════════════ */
+  /* ══════════════ USER STATUS FILTERS ══════════════ */
+  function filterActiveUsers() {
+    _userStatusFilter = 'active';
+    _activeTab = 'users';
+    document.getElementById('panelTenants').classList.remove('active');
+    document.getElementById('panelUsers').classList.add('active');
+    document.getElementById('tabBtnTenants').classList.remove('active');
+    document.getElementById('tabBtnUsers').classList.add('active');
+    document.getElementById('sideTenantsLink').classList.remove('active');
+    updateSidebarUserHighlights();
+    renderUsersTable();
+  }
+
   function filterSuspendedUsers() {
-    switchTab('users');
-    setTimeout(() => {
-      // Temporarily filter for suspended status by patching renderUsersTable
-      _suspendedFilter = true;
-      renderUsersTable();
-      document.getElementById('sideSuspendedUsersLink').classList.add('active');
-    }, 50);
+    _userStatusFilter = 'suspended';
+    _activeTab = 'users';
+    document.getElementById('panelTenants').classList.remove('active');
+    document.getElementById('panelUsers').classList.add('active');
+    document.getElementById('tabBtnTenants').classList.remove('active');
+    document.getElementById('tabBtnUsers').classList.add('active');
+    document.getElementById('sideTenantsLink').classList.remove('active');
+    updateSidebarUserHighlights();
+    renderUsersTable();
   }
 
   /* ══════════════ HELPERS ══════════════ */
