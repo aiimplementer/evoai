@@ -103,9 +103,6 @@
       assignedToEmail: d.assignedToEmail || '',
       assignedAt:      toISO(d.assignedAt),
       reference_lead_id: d.reference_lead_id || '',
-      // ── Tenant locale (inherited at read-time from global settings) ──
-      timezone:        window._tenantTimezone || d.timezone || '',
-      currency:        window._tenantCurrency || d.currency || '',
     };
   };
 
@@ -141,9 +138,6 @@
       lastUpdateTimestamp: serverTimestamp(),
       // ── Tenant isolation ──
       tenant_id:           lead.tenant_id || window._currentTenantId || '',
-      // ── Tenant locale ──
-      timezone:            window._tenantTimezone || lead.timezone || '',
-      currency:            window._tenantCurrency || lead.currency || '',
       // ── Assignment fields ──
       assignedTo:          lead.assignedTo      || 'Unassigned',
       assignedToEmail:     lead.assignedToEmail || '',
@@ -365,24 +359,6 @@
     // Store tenant_id globally for use in all queries and writes
     window._currentTenantId = tenantId;
 
-    // ── Fetch tenant settings (timezone, currency) from tenants collection ──
-    window._tenantTimezone = 'UTC';
-    window._tenantCurrency = 'USD';
-    try {
-      const tenantSnap = await getDocs(query(
-        collection(db, 'tenants'),
-        where('tenant_id', '==', tenantId),
-        limit(1)
-      ));
-      if (!tenantSnap.empty) {
-        const td = tenantSnap.docs[0].data();
-        if (td.timezone) window._tenantTimezone = td.timezone;
-        if (td.currency) window._tenantCurrency = td.currency;
-      }
-    } catch(e) {
-      console.warn('Could not load tenant settings (timezone/currency):', e);
-    }
-
     // Format tenant name for display (e.g. "annex-cloud-inc" → "Annex Cloud Inc")
     const tenantDisplay = tenantId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -398,47 +374,6 @@
     // Pre-fill "Assign to Me" with the logged-in user
     window._currentUserName  = name;
     window._currentUserEmail = email;
-
-    // ── Tenant-aware formatting helpers ──
-    window.formatTenantCurrency = (amount) => {
-      const num = Number(String(amount||'').replace(/[^0-9.]/g,'')) || 0;
-      const currency = window._tenantCurrency || 'USD';
-      try {
-        return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(num);
-      } catch(e) { return '$' + num.toLocaleString(); }
-    };
-
-    window.formatTenantCurrencyCompact = (num) => {
-      const currency = window._tenantCurrency || 'USD';
-      let sym = '$';
-      try {
-        sym = new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 })
-          .formatToParts(0).find(p => p.type === 'currency')?.value || '$';
-      } catch(e) {}
-      if (num >= 1_000_000)  return sym + (num/1_000_000).toFixed(1) + 'M';
-      if (num >= 1_000)      return sym + (num/1_000).toFixed(0) + 'k';
-      if (num > 0)           return sym + num.toLocaleString();
-      return '—';
-    };
-
-    window.formatTenantDate = (dateStr) => {
-      if (!dateStr) return '';
-      const tz = window._tenantTimezone || 'UTC';
-      try {
-        const d = new Date(String(dateStr).includes('T') ? dateStr : dateStr + 'T00:00:00');
-        if (isNaN(d.getTime())) return String(dateStr).slice(0,10);
-        return d.toLocaleDateString(undefined, { timeZone: tz, year: 'numeric', month: 'short', day: 'numeric' });
-      } catch(e) { return String(dateStr).slice(0,10); }
-    };
-
-    window.formatTenantDateTime = (isoStr) => {
-      if (!isoStr) return '—';
-      const tz = window._tenantTimezone || 'UTC';
-      try {
-        return new Date(isoStr).toLocaleString(undefined, { timeZone: tz });
-      } catch(e) { return new Date(isoStr).toLocaleString(); }
-    };
-
     window.initApp();
   });
 
@@ -2272,9 +2207,9 @@ async function refreshCounts() {
         .reduce((sum, l) => sum + (Number(String(l.dealvalue||'').replace(/[^0-9.]/g,''))||0), 0);
 
       let formatted;
-      if (total >= 1_000_000)  formatted = window.formatTenantCurrencyCompact(total);
-      else if (total >= 1_000) formatted = window.formatTenantCurrencyCompact(total);
-      else if (total > 0)      formatted = window.formatTenantCurrencyCompact(total);
+      if (total >= 1_000_000)  formatted = '$' + (total/1_000_000).toFixed(1) + 'M';
+      else if (total >= 1_000) formatted = '$' + (total/1_000).toFixed(0) + 'k';
+      else if (total > 0)      formatted = '$' + total.toLocaleString();
       else                     formatted = '—';
 
       document.getElementById('s-pipeline').textContent     = formatted;
@@ -2599,7 +2534,7 @@ function renderTable(leads) {
     const scoreDotColor = score>=60 ? 'var(--danger)' : score>=35 ? 'var(--warn)' : 'var(--accent2)';
     // Follow-up cell
     const followupCell = l.followup
-      ? `<span style="font-size:.73rem;font-family:var(--mono);color:${overdue?'var(--danger)':'var(--muted)'};">⏰ ${esc(window.formatTenantDate(l.followup))}</span>`
+      ? `<span style="font-size:.73rem;font-family:var(--mono);color:${overdue?'var(--danger)':'var(--muted)'};">⏰ ${esc(String(l.followup).slice(0,10))}</span>`
       : '';
     return `
     <tr class="${sel ? 'selected-row' : ''}">
@@ -2665,7 +2600,7 @@ function renderBoard() {
     head.innerHTML = `
       <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
       <div style="display:flex;align-items:center;gap:5px;">
-        ${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">${window.formatTenantCurrencyCompact(stageValue)}</span>`:''}
+        ${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">$${stageValue>=1000?(stageValue/1000).toFixed(0)+'k':stageValue}</span>`:''}
         <span class="board-col-count">${stageLeads.length}</span>
       </div>`;
     col.appendChild(head);
@@ -2726,9 +2661,9 @@ function createBoardCard(l) {
     <div class="board-card-footer">
       <span class="board-card-service">${esc(l.service||'—')}</span>
       <div style="display:flex;align-items:center;gap:5px;">
-        ${l.dealvalue?`<span class="board-card-value">${window.formatTenantCurrency(l.dealvalue)}</span>`:''}
+        ${l.dealvalue?`<span class="board-card-value">$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}</span>`:''}
         ${isOverdue(l)?`<span style="font-size:.6rem;color:var(--danger);">⏰</span>`:''}
-        <span class="board-card-date">${esc(window.formatTenantDate(l.date)||'')}</span>
+        <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
       </div>
     </div>`;
 
@@ -2792,7 +2727,7 @@ function renderList(leads) {
   }
   listBody.innerHTML = leads.map(l => {
     const score   = computeScore(l);
-    const dealStr = l.dealvalue ? window.formatTenantCurrency(l.dealvalue) : '—';
+    const dealStr = l.dealvalue ? `$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
     return `
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
       <div class="list-item-contact">
@@ -3010,12 +2945,12 @@ async function viewLead(leadId, docId, preloadedLead = null) {
     ? `<span class="overdue-tag">⏰ Follow-up overdue</span>` : '';
 
   const qb = document.getElementById('viewQuickBar');
-  const dealVal = lead.dealvalue ? window.formatTenantCurrency(lead.dealvalue) : '—';
+  const dealVal = lead.dealvalue ? `$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
   qb.innerHTML = [
     ['💼 Service',     lead.service||'—'],
     ['📊 Status',      lead.status||'—'],
     ['💰 Deal Value',  dealVal],
-    ['📅 Follow-up',   lead.followup ? window.formatTenantDate(lead.followup) : '—'],
+    ['📅 Follow-up',   lead.followup||'—'],
     ['👤 Assigned To', lead.assignedTo||'Unassigned'],
   ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:${k==='👤 Assigned To'&&v!=='Unassigned'?'var(--accent2)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
 
@@ -3033,7 +2968,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
   if (lead.assignedTo) {
     const aInitials = lead.assignedTo.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     const assignedAtStr = lead.assignedAt
-      ? window.formatTenantDateTime(lead.assignedAt)
+      ? new Date(lead.assignedAt).toLocaleString()
       : '—';
     assignmentHtml = `
       <div class="assignment-card">
@@ -3064,7 +2999,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
     assignmentHtml +
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
-    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date', window.formatTenantDate(lead.date)]]) +
+    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
     section('System IDs', [['Lead ID',lead.leadId],['Reference Lead ID',lead.reference_lead_id]]) +
     section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
 
@@ -3083,7 +3018,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
 
   const na = document.getElementById('viewNextAction');
   if (lead.followup) {
-    na.innerHTML = `<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${window.formatTenantDate(lead.followup)}</span>`;
+    na.innerHTML = `<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${new Date(lead.followup).toLocaleDateString()}</span>`;
   } else {
     na.innerHTML = `<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
   }
@@ -3158,7 +3093,7 @@ function renderTimeline(acts) {
       <div class="tl-icon ${iconMap[a.type]||'tl-icon-note'}">${emojiMap[a.type]||'📝'}</div>
       <div class="tl-body">
         <div class="tl-title">${esc(a.text)}</div>
-        <div class="tl-meta">${esc(a.user||'Team')} · ${window.formatTenantDateTime(a.ts)}</div>
+        <div class="tl-meta">${esc(a.user||'Team')} · ${new Date(a.ts).toLocaleString()}</div>
       </div>
     </div>`).join('');
 }
@@ -3187,6 +3122,11 @@ async function triggerN8n(actionId, lead, btnEl) {
   if (!activeActions.includes(actionId)) { toast('Automation to be configured!', 'warn'); return; }
   btnEl.classList.add('running');
   btnEl.innerHTML = `<div class="spinner" style="width:13px;height:13px;"></div> Running…`;
+  
+  const evo_username  = window._currentUserName  || '';
+  const evo_useremail = window._currentUserEmail || '';
+
+  
   try {
     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -3194,8 +3134,7 @@ async function triggerN8n(actionId, lead, btnEl) {
         phone: lead.phone, company: lead.company, status: lead.status,
         service: lead.service, actId: actionId, followup_date: lead.followup,
         assignedTo: lead.assignedTo, assignedToEmail: lead.assignedToEmail,
-        timezone: window._tenantTimezone || lead.timezone || '',
-        currency: window._tenantCurrency || lead.currency || '',
+		evoUserName: evo_username, evoUserEmail: evo_useremail,
         triggeredAt: new Date().toISOString(),
       })});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
@@ -3248,8 +3187,6 @@ async function fetchReport(reportType, btnEl) {
         service:         lead.service         || '',
         assignedTo:      lead.assignedTo      || '',
         assignedToEmail: lead.assignedToEmail || '',
-        timezone:        window._tenantTimezone || lead.timezone || '',
-        currency:        window._tenantCurrency || lead.currency || '',
         requestedAt:     new Date().toISOString(),
       }),
     });
