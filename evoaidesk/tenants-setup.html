@@ -1006,7 +1006,7 @@
       } else {
         // Generate a readable ID from the email prefix
         const base = google_id.split('@')[0].replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,12);
-        const uid  = base + '_' + Math.random().toString(36).slice(2,8);
+        const uid  = google_id //base + '_' + Math.random().toString(36).slice(2,8);
         ref = window._doc(db, 'users', uid);
       }
       const data = {
