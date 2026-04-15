@@ -11,7 +11,7 @@
   import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
   import { getAuth, signInWithPopup, signOut, GoogleAuthProvider, setPersistence, browserLocalPersistence }
     from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-  import { getFirestore, collection, query, where, getDocs }
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc }
     from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -40,6 +40,16 @@
     const snap = await getDocs(q);
     if (snap.empty) return null;
     return snap.docs[0].data();   // { google_id, role, status, tenant_id, … }
+  }
+
+  /* ─────────────────────────────────────────────
+     Look up a tenant document by its slug (doc ID).
+     Returns { name, status, plan, … } or null.
+  ───────────────────────────────────────────── */
+  async function fetchTenantRecord(tenantId) {
+    if (!tenantId) return null;
+    const snap = await getDoc(doc(db, 'tenants', tenantId));
+    return snap.exists() ? snap.data() : null;
   }
 
   /* ─────────────────────────────────────────────
@@ -77,6 +87,33 @@
         showMsg('error', 'Account suspended',
           `Your account has been suspended. Please contact your administrator.`);
         return;
+      }
+
+      /* ── TENANT CHECK (skip for super-admin — they have no tenant) ── */
+      if (record.role !== 'super-admin') {
+        btn.innerHTML = '<span class="btn-spinner"></span> Verifying workspace…';
+        const tenant = await fetchTenantRecord(record.tenant_id);
+
+        if (!tenant) {
+          await signOut(auth);
+          resetBtn();
+          showMsg('error', 'Workspace not found',
+            `Your account is not linked to a valid workspace. Please contact your administrator.`);
+          return;
+        }
+
+        if (tenant.status !== 'active') {
+          await signOut(auth);
+          resetBtn();
+          const statusLabel = tenant.status
+            ? tenant.status.charAt(0).toUpperCase() + tenant.status.slice(1)
+            : 'Inactive';
+          showMsg('error', 'Workspace ' + statusLabel,
+            `Access to <strong>${escHtml(tenant.name || record.tenant_id)}</strong> is currently 
+            <strong>${statusLabel.toLowerCase()}</strong>. 
+            Please contact your administrator to restore access.`);
+          return;
+        }
       }
 
       /* ── SUPER-ADMIN → destination picker ── */
