@@ -3205,7 +3205,7 @@ async function fetchReport(reportType, btnEl) {
 }
 /* ── Shared CSV builder ── */
 function buildCSV(leads) {
-  const cols = ['leadId','name','email','phone','company','jobtitle','industry','service','status',
+  const cols = ['leadId','reference_lead_id','name','email','phone','company','jobtitle','industry','service','status',
                 'source','page','userAgent','date','dealvalue','followup','assignedTo','assignedToEmail','assignedAt',
                 'message','comments','linkedin'];
   return [cols.join(','), ...leads.map(l => cols.map(c => `"${String(l[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
