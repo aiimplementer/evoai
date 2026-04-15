@@ -101,6 +101,7 @@
       assignedTo:      d.assignedTo      || 'Unassigned',
       assignedToEmail: d.assignedToEmail || '',
       assignedAt:      toISO(d.assignedAt),
+      reference_lead_id: d.reference_lead_id || '',
     };
   };
 
@@ -130,6 +131,7 @@
       // ── Assignment fields ──
       assignedTo:          lead.assignedTo      || 'Unassigned',
       assignedToEmail:     lead.assignedToEmail || '',
+      reference_lead_id:   lead.reference_lead_id || '',
       // assignedAt: only write when actually assigning
       ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
     };
@@ -249,8 +251,11 @@
 
   /* ─── CRUD ─── */
   window.dbAddLead = async (lead) => {
-    // Preserve source leadId if provided (import), otherwise generate a new one
-    const id = (lead.leadId && String(lead.leadId).trim()) ? String(lead.leadId).trim() : window.generateLeadId();
+    // Store any incoming leadId as reference_lead_id (from import/external source)
+    const incomingLeadId = (lead.leadId && String(lead.leadId).trim()) ? String(lead.leadId).trim() : '';
+    if (incomingLeadId) lead.reference_lead_id = incomingLeadId;
+    // Always generate a fresh internal leadId
+    const id = window.generateLeadId();
     lead.leadId = id;
     // If assignedTo is set on create, stamp assignedAt
     if (lead.assignedTo) lead._setAssignedAt = true;
@@ -1726,6 +1731,18 @@
         <div class="field"><label>Deal Value (USD)</label><input type="text" id="f-dealvalue" placeholder="e.g. 12000"/></div>
         <div class="field"><label>Next Follow-Up</label><input type="date" id="f-followup"/></div>
 
+        <div class="form-section-title">System IDs</div>
+        <div class="field">
+          <label>Lead ID</label>
+          <input type="text" id="f-leadId" readonly placeholder="Auto-generated on save" style="opacity:.6;cursor:default;"/>
+          <div style="font-size:.68rem;color:var(--muted);margin-top:4px;font-family:var(--mono);">Auto-generated unique identifier</div>
+        </div>
+        <div class="field">
+          <label>Reference Lead ID</label>
+          <input type="text" id="f-reference_lead_id" placeholder="e.g. original CRM ID or import ID"/>
+          <div style="font-size:.68rem;color:var(--muted);margin-top:4px;font-family:var(--mono);">Maps to <span style="color:var(--accent);">reference_lead_id</span> in Firestore</div>
+        </div>
+
         <!-- ── ASSIGNMENT SECTION ── -->
         <div class="form-section-title">Assignment</div>
         <div class="field">
@@ -2721,10 +2738,12 @@ function openCreate() {
   document.getElementById('formModalTitle').textContent = 'New Lead';
   document.getElementById('formSubmitBtn').textContent  = 'Create Lead';
   ['name','email','phone','linkedin','company','jobtitle','industry','service','status','source','page',
-   'message','comments','dealvalue','followup','assignedTo','assignedToEmail'].forEach(f => {
+   'message','comments','dealvalue','followup','assignedTo','assignedToEmail','reference_lead_id'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if(el) el.value = f === 'status' ? 'New' : '';
   });
+  const leadIdEl = document.getElementById('f-leadId');
+  if(leadIdEl) leadIdEl.value = '';
   document.getElementById('formOverlay').classList.add('open');
 }
 
@@ -2746,10 +2765,12 @@ async function editLeadById(leadId, docId) {
   document.getElementById('formSubmitBtn').textContent  = 'Save Changes';
 
   ['name','email','phone','linkedin','company','jobtitle','service','status','source','page',
-   'message','comments','dealvalue','followup','assignedTo','assignedToEmail'].forEach(f => {
+   'message','comments','dealvalue','followup','assignedTo','assignedToEmail','reference_lead_id'].forEach(f => {
     const el = document.getElementById('f-'+f);
     if(el) el.value = lead[f] || '';
   });
+  const leadIdEl = document.getElementById('f-leadId');
+  if(leadIdEl) leadIdEl.value = lead.leadId || '';
   const industryEl = document.getElementById('f-industry');
   const iv = (lead.industry||'').trim();
   industryEl.value = '';
@@ -2801,6 +2822,7 @@ async function submitForm() {
     comments:        document.getElementById('f-comments').value.trim(),
     dealvalue:       document.getElementById('f-dealvalue').value.trim(),
     followup:        document.getElementById('f-followup').value,
+    reference_lead_id: document.getElementById('f-reference_lead_id').value.trim(),
     assignedTo:      newAssignedTo,
     assignedToEmail: newAssignedToEmail,
     _setAssignedAt,
@@ -3566,6 +3588,19 @@ const IMPORT_COL_MAP = {
   'id':                'leadId',
   'ref':               'leadId',
   'reference':         'leadId',
+  // Reference Lead ID — maps external/import ID to reference_lead_id
+  'reference_lead_id':         'reference_lead_id',
+  'reference lead id':         'reference_lead_id',
+  'ref lead id':               'reference_lead_id',
+  'ref_lead_id':               'reference_lead_id',
+  'external lead id':          'reference_lead_id',
+  'external_lead_id':          'reference_lead_id',
+  'crm id':                    'reference_lead_id',
+  'crm_id':                    'reference_lead_id',
+  'original id':               'reference_lead_id',
+  'original_id':               'reference_lead_id',
+  'customer id':               'reference_lead_id',
+  'customer_id':               'reference_lead_id',
   // Name
   'name':              'name',
   'full name':         'name',
@@ -3948,7 +3983,8 @@ function parseImportSheet(fileName, raw) {
     const importedDate = parseImportDate(colIdx['date'] !== undefined ? row[colIdx['date']] : '');
 
     validRows.push({
-      leadId:     get('leadId'),
+      leadId:           get('leadId'),
+      reference_lead_id: get('reference_lead_id'),
       name,
       email,
       phone:      get('phone'),
