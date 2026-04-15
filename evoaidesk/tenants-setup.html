@@ -314,7 +314,7 @@
   /* MODAL */
   .overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.82); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
   .overlay.open { display: flex; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: 0 40px 100px rgba(0,0,0,.6); animation: slideUp .22s ease; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: 0 40px 100px rgba(0,0,0,.6); animation: slideUp .22s ease; }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
   .modal-title { font-size: .95rem; font-weight: 700; }
@@ -712,6 +712,65 @@
             <option value="suspended">Suspended</option>
           </select>
         </div>
+
+        <div class="form-section-title">Contact &amp; Locale</div>
+        <div class="field">
+          <label>Timezone</label>
+          <select id="fTimezone">
+            <option value="">— Select timezone —</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">America/New_York (EST/EDT)</option>
+            <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+            <option value="America/Denver">America/Denver (MST/MDT)</option>
+            <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+            <option value="America/Sao_Paulo">America/Sao_Paulo (BRT)</option>
+            <option value="Europe/London">Europe/London (GMT/BST)</option>
+            <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+            <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+            <option value="Europe/Moscow">Europe/Moscow (MSK)</option>
+            <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+            <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+            <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+            <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+            <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+            <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+            <option value="Pacific/Auckland">Pacific/Auckland (NZST/NZDT)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Currency</label>
+          <select id="fCurrency">
+            <option value="">— Select currency —</option>
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="INR">INR — Indian Rupee</option>
+            <option value="AED">AED — UAE Dirham</option>
+            <option value="AUD">AUD — Australian Dollar</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="SGD">SGD — Singapore Dollar</option>
+            <option value="JPY">JPY — Japanese Yen</option>
+            <option value="CNY">CNY — Chinese Yuan</option>
+            <option value="BRL">BRL — Brazilian Real</option>
+            <option value="MXN">MXN — Mexican Peso</option>
+            <option value="ZAR">ZAR — South African Rand</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Contact Email</label>
+          <input type="email" id="fContactEmail" placeholder="e.g. contact@company.ai" autocomplete="off"/>
+          <div class="field-hint">Maps to <span style="color:var(--accent);">tenant_contact_email</span> in Firestore</div>
+        </div>
+        <div class="field">
+          <label>Contact Phone</label>
+          <input type="text" id="fContactPhone" placeholder="e.g. +1 555 000 0000" autocomplete="off"/>
+          <div class="field-hint">Maps to <span style="color:var(--accent);">tenant_contact_phone</span></div>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" id="fLocation" placeholder="e.g. New York, USA" autocomplete="off"/>
+          <div class="field-hint">City / Country of the tenant</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -876,6 +935,11 @@
     document.getElementById('fStatus').value = 'active';
     document.getElementById('slugVal').textContent = '…';
     document.getElementById('fSlug').disabled = false;
+    document.getElementById('fTimezone').value     = '';
+    document.getElementById('fCurrency').value     = '';
+    document.getElementById('fContactEmail').value = '';
+    document.getElementById('fContactPhone').value = '';
+    document.getElementById('fLocation').value     = '';
     document.getElementById('tenantModal').classList.add('open');
     setTimeout(() => document.getElementById('fName').focus(), 100);
   }
@@ -890,6 +954,11 @@
     document.getElementById('fStatus').value = t.status || 'active';
     document.getElementById('slugVal').textContent = t.slug;
     document.getElementById('fSlug').disabled = true;
+    document.getElementById('fTimezone').value     = t.timezone             || '';
+    document.getElementById('fCurrency').value     = t.currency             || '';
+    document.getElementById('fContactEmail').value = t.tenant_contact_email || '';
+    document.getElementById('fContactPhone').value = t.tenant_contact_phone || '';
+    document.getElementById('fLocation').value     = t.location             || '';
     document.getElementById('tenantModal').classList.add('open');
   }
   function closeTenantModal() { document.getElementById('tenantModal').classList.remove('open'); }
@@ -900,6 +969,11 @@
     const slug   = document.getElementById('fSlug').value.trim();
     const plan   = document.getElementById('fPlan').value;
     const status = document.getElementById('fStatus').value;
+    const timezone             = document.getElementById('fTimezone').value;
+    const currency             = document.getElementById('fCurrency').value;
+    const tenant_contact_email = document.getElementById('fContactEmail').value.trim();
+    const tenant_contact_phone = document.getElementById('fContactPhone').value.trim();
+    const location             = document.getElementById('fLocation').value.trim();
     if (!name) { toast('Company name is required', 'error'); return; }
     if (!slug)  { toast('Slug is required', 'error'); return; }
     if (!/^[a-z0-9-]+$/.test(slug)) { toast('Slug: lowercase letters, numbers and hyphens only', 'error'); return; }
@@ -913,6 +987,7 @@
         if (existing.exists()) { toast(`Slug "${slug}" already exists`, 'error'); btn.disabled=false; resetSaveTenantBtn(); return; }
       }
       const data = { id: slug, name, slug, plan, status,
+        timezone, currency, tenant_contact_email, tenant_contact_phone, location,
         ..._editTenantSlug
           ? { updatedAt: window._serverTimestamp() }
           : { createdAt: window._serverTimestamp(), updatedAt: window._serverTimestamp() }
