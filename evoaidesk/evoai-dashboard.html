@@ -2344,6 +2344,8 @@ function updatePaginationControls() {
 function toggleOverdueFilter(el) {
   if (isOverdueMode) { clearOverdueFilter(); return; }
   if (isMyLeadsMode) clearMyLeadsFilter();
+  // Clear status filter so overdue searches ALL statuses
+  activeFilters.status = '';
   document.querySelectorAll('.aside-item').forEach(i => { i.classList.remove('active','active-danger'); });
   el.classList.add('active-danger');
   isOverdueMode = true;
@@ -2356,14 +2358,15 @@ async function runOverdueFilter() {
   setLoadingState(true);
   try {
     const today = new Date().toISOString().slice(0,10);
-    const all = await window.dbSearchLeads('', activeFilters, 500);
+    // Always search with empty filters so status filter never contaminates overdue results
+    const all = await window.dbSearchLeads('', { service: activeFilters.service, industry: activeFilters.industry }, 500);
     const overdue = all.filter(l => l.followup && l.followup < today && l.status !== 'Won' && l.status !== 'Lost');
     searchResults = overdue; currentLeads = overdue;
-    document.getElementById('cnt-overdue').textContent     = overdue.length;
+    document.getElementById('cnt-overdue').textContent        = overdue.length;
     document.getElementById('overdueModeBanner').classList.add('show');
     document.getElementById('overdueResultCount').textContent = overdue.length;
-    document.getElementById('pagination').style.display     = 'none';
-    document.getElementById('listPagination').style.display = 'none';
+    document.getElementById('pagination').style.display       = 'none';
+    document.getElementById('listPagination').style.display   = 'none';
     renderCurrentView();
   } catch(e) { toast('Failed to load overdue leads: ' + e.message, 'error'); }
   finally { setLoadingState(false); }
@@ -2371,9 +2374,16 @@ async function runOverdueFilter() {
 
 function clearOverdueFilter() {
   isOverdueMode = false; searchResults = [];
+  // Reset status filter so going back to All Leads is clean
+  activeFilters.status = '';
   document.getElementById('overdueModeBanner').classList.remove('show');
   document.getElementById('overdueFilterItem').classList.remove('active-danger');
-  document.querySelector('.aside-item')?.classList.add('active');
+  // Explicitly activate the All Leads sidebar item
+  const allLeadsItem = document.querySelector('.aside-item[onclick*="setStatusFilter(\'\',"]') 
+    || document.querySelector('.aside-item');
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
+  if (allLeadsItem) allLeadsItem.classList.add('active');
+  resetPagination();
   updatePaginationControls();
   loadPage('first');
 }
