@@ -1154,6 +1154,7 @@
       _users = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
       renderUsersTable();
       renderUserStats();
+      renderTenantsTable(); // refresh user counts in tenants table
     } catch(e) { console.error('loadUsers', e); }
   }
 
