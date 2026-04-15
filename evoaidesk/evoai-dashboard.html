@@ -3367,9 +3367,9 @@ function bulkExport() {
 
 // ── Configure your n8n webhook URLs here ──
 const DASH_REPORT_HOOKS = {
-  daily:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/daily_report',
-  weekly:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/weekly_report',
-  summary: 'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/summary_report',
+  daily:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook-test/evoAIDesk_daily_report',
+  weekly:  'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook-test/evoAIDesk_weekly_report',
+  summary: 'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook-test/evoAIDesk_summary_report',
 };
 
 const DASH_REPORT_META = {
@@ -3416,7 +3416,7 @@ async function openDashReport(type, btnEl) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reportType: type, requestedAt: new Date().toISOString() }),
+      body: JSON.stringify({ reportType: type, tenantId: window._currentTenantId, requestedAt: new Date().toISOString() }),
     });
 
     if (!resp.ok) throw new Error(`n8n returned HTTP ${resp.status}`);
