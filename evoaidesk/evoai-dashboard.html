@@ -3162,7 +3162,7 @@ async function fetchReport(reportType, btnEl) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         reportType,
-		tenantId:        lead.tenant_id       || '',
+		tenantId:        lead.tenantId        || '',
         leadId:          lead.leadId          || '',
         name:            lead.name            || '',
         email:           lead.email           || '',
