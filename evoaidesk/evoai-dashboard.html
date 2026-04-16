@@ -3260,7 +3260,7 @@ async function triggerN8n(actionId, lead, btnEl) {
         phone: lead.phone, company: lead.company, status: lead.status,
         service: lead.service, actId: actionId, followup_date: lead.followup,
         assignedTo: lead.assignedTo, assignedToEmail: lead.assignedToEmail,
-		evoUserName: evo_username, evoUserEmail: evo_useremail, tenantId: window._currentTenantId,
+		evoUserName: evo_username, evoUserEmail: evo_useremail, tenantId: lead.tenantId,
         triggeredAt: new Date().toISOString(),
       })});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
