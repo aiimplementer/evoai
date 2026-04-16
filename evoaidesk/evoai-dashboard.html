@@ -3254,7 +3254,7 @@ async function triggerN8n(actionId, lead, btnEl) {
 
   
   try {
-     const res = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
+     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         leadId: lead.leadId, name: lead.name, email: lead.email,
         phone: lead.phone, company: lead.company, status: lead.status,
@@ -3263,11 +3263,6 @@ async function triggerN8n(actionId, lead, btnEl) {
 		evoUserName: evo_username, evoUserEmail: evo_useremail, tenantId: lead.tenantId,
         triggeredAt: new Date().toISOString(),
       })});
-	  
-	if (!res.ok) {
-       throw new Error(`HTTP ${res.status}`);
-    }
-  
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
     toast(`Automation: ${actionId.replace(/_/g,' ')} completed successfully`,'success');
     if(_viewingDocId) {
