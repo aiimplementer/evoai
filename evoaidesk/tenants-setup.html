@@ -337,16 +337,26 @@
   }
   .field label .req { color: var(--accent); margin-left: 2px; }
   .field input, .field select { width: 100%; padding: 9px 11px; }
-  input[type="text"], input[type="email"], select {
+  input[type="text"], input[type="email"], input[type="password"], select {
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--text); font-family: var(--font); font-size: .82rem;
     border-radius: 7px; outline: none; transition: border-color .18s;
   }
-  input[type="text"]:focus, input[type="email"]:focus, select:focus { border-color: var(--accent); }
+  input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus, select:focus { border-color: var(--accent); }
   select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
   select option { background: var(--surface2); }
   .field-hint { font-size: .68rem; color: var(--muted); margin-top: 5px; font-family: var(--mono); }
   .field-hint.accent { color: var(--accent); }
+
+  /* PASSWORD FIELD WRAPPER */
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 38px; }
+  .pw-toggle {
+    position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: var(--muted);
+    display: flex; align-items: center; padding: 0; transition: color .14s;
+  }
+  .pw-toggle:hover { color: var(--accent); }
 
   /* SLUG PREVIEW */
   .slug-preview {
@@ -771,6 +781,27 @@
           <input type="text" id="fLocation" placeholder="e.g. New York, USA" autocomplete="off"/>
           <div class="field-hint">City / Country of the tenant</div>
         </div>
+
+        <!-- ── NEW: Email / SMTP section ── -->
+        <div class="form-section-title">Email &amp; SMTP</div>
+        <div class="field full">
+          <label>From Email</label>
+          <input type="email" id="fFromEmail" placeholder="e.g. noreply@company.ai" autocomplete="off"/>
+          <div class="field-hint">Maps to <span style="color:var(--accent);">from_email</span> — used as the sender address for outgoing emails</div>
+        </div>
+        <div class="field full">
+          <label>SMTP App Password</label>
+          <div class="pw-wrap">
+            <input type="password" id="fSmtpAppPassword" placeholder="e.g. xxxx xxxx xxxx xxxx" autocomplete="new-password"/>
+            <button type="button" class="pw-toggle" onclick="toggleSmtpPw(this)" title="Show / hide password">
+              <svg id="smtpEyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="field-hint">Maps to <span style="color:var(--accent);">smtp_app_password</span> — use a Google / provider app password, not your account password</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -865,9 +896,19 @@
   let _tenants  = [];
   let _users    = [];
   let _editTenantSlug = null;
-  let _userStatusFilter = 'all'; // 'all' | 'active' | 'suspended'
+  let _userStatusFilter = 'all';
   let _filter   = 'all';
   let _activeTab = 'tenants';
+
+  /* ══════════════ SMTP PASSWORD TOGGLE ══════════════ */
+  function toggleSmtpPw(btn) {
+    const input = document.getElementById('fSmtpAppPassword');
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.querySelector('svg').innerHTML = isHidden
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  }
 
   /* ══════════════ TAB SWITCHING ══════════════ */
   function switchTab(tab, resetUserFilter) {
@@ -940,9 +981,13 @@
     document.getElementById('fContactEmail').value = '';
     document.getElementById('fContactPhone').value = '';
     document.getElementById('fLocation').value     = '';
+    document.getElementById('fFromEmail').value       = '';
+    document.getElementById('fSmtpAppPassword').value = '';
+    document.getElementById('fSmtpAppPassword').type  = 'password';
     document.getElementById('tenantModal').classList.add('open');
     setTimeout(() => document.getElementById('fName').focus(), 100);
   }
+
   function openEditTenantModal(slug) {
     const t = _tenants.find(x => x.slug === slug);
     if (!t) return;
@@ -959,8 +1004,12 @@
     document.getElementById('fContactEmail').value = t.tenant_contact_email || '';
     document.getElementById('fContactPhone').value = t.tenant_contact_phone || '';
     document.getElementById('fLocation').value     = t.location             || '';
+    document.getElementById('fFromEmail').value       = t.from_email         || '';
+    document.getElementById('fSmtpAppPassword').value = t.smtp_app_password  || '';
+    document.getElementById('fSmtpAppPassword').type  = 'password';
     document.getElementById('tenantModal').classList.add('open');
   }
+
   function closeTenantModal() { document.getElementById('tenantModal').classList.remove('open'); }
 
   /* ══════════════ SAVE TENANT ══════════════ */
@@ -974,9 +1023,13 @@
     const tenant_contact_email = document.getElementById('fContactEmail').value.trim();
     const tenant_contact_phone = document.getElementById('fContactPhone').value.trim();
     const location             = document.getElementById('fLocation').value.trim();
+    const from_email           = document.getElementById('fFromEmail').value.trim();
+    const smtp_app_password    = document.getElementById('fSmtpAppPassword').value;
+
     if (!name) { toast('Company name is required', 'error'); return; }
     if (!slug)  { toast('Slug is required', 'error'); return; }
     if (!/^[a-z0-9-]+$/.test(slug)) { toast('Slug: lowercase letters, numbers and hyphens only', 'error'); return; }
+
     const btn = document.getElementById('saveTenantBtn');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
@@ -986,8 +1039,10 @@
         const existing = await window._getDoc(ref);
         if (existing.exists()) { toast(`Slug "${slug}" already exists`, 'error'); btn.disabled=false; resetSaveTenantBtn(); return; }
       }
-      const data = { id: slug, name, slug, plan, status,
+      const data = {
+        id: slug, name, slug, plan, status,
         timezone, currency, tenant_contact_email, tenant_contact_phone, location,
+        from_email, smtp_app_password,
         ..._editTenantSlug
           ? { updatedAt: window._serverTimestamp() }
           : { createdAt: window._serverTimestamp(), updatedAt: window._serverTimestamp() }
@@ -999,6 +1054,7 @@
     } catch(e) { console.error(e); toast('Error: ' + e.message, 'error'); }
     btn.disabled = false; resetSaveTenantBtn();
   }
+
   function resetSaveTenantBtn() {
     document.getElementById('saveTenantBtn').innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Save Tenant';
   }
@@ -1007,7 +1063,6 @@
   function nameFromEmail(email) {
     if (!email) return '';
     const prefix = email.split('@')[0];
-    // Replace dots, underscores, hyphens, digits with spaces; title-case each word
     return prefix
       .replace(/[._\-]+/g, ' ')
       .replace(/\d+/g, '')
@@ -1020,7 +1075,6 @@
   function autoFillName() {
     const emailEl = document.getElementById('uGoogleId');
     const nameEl  = document.getElementById('uName');
-    // Only auto-fill if the name field is still empty or was previously auto-filled
     if (!nameEl.dataset.manuallyEdited) {
       nameEl.value = nameFromEmail(emailEl.value.trim());
     }
@@ -1029,10 +1083,8 @@
   /* ══════════════ USER MODAL ══════════════ */
   function populateTenantDropdowns() {
     const opts = _tenants.map(t => `<option value="${esc(t.slug)}">${esc(t.name)} (${esc(t.slug)})</option>`).join('');
-    // User modal tenant select
     const uSel = document.getElementById('uTenantId');
     uSel.innerHTML = '<option value="">— Select a tenant —</option>' + opts;
-    // Users tab filter
     const fSel = document.getElementById('userTenantFilter');
     fSel.innerHTML = '<option value="">All Tenants</option>' + opts;
   }
@@ -1067,7 +1119,7 @@
     document.getElementById('uStatus').value    = u.status    || 'active';
     populateTenantDropdowns();
     document.getElementById('uTenantId').value  = u.tenant_id || '';
-    document.getElementById('uGoogleId').disabled = true; // immutable – it's the doc ID seed
+    document.getElementById('uGoogleId').disabled = true;
     document.getElementById('userModal').classList.add('open');
   }
   function closeUserModal() { document.getElementById('userModal').classList.remove('open'); }
@@ -1085,14 +1137,11 @@
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       const db = window._db;
-      // Always use google_id (email) as the Firestore document ID
       let ref;
       if (_editUserId) {
         ref = window._doc(db, 'users', _editUserId);
       } else {
-        // Use the full email as doc ID (it is unique per user)
         ref = window._doc(db, 'users', google_id);
-        // Check for duplicate — if a doc with this email already exists, reject
         const existing = await window._getDoc(ref);
         if (existing.exists()) {
           toast(`User "${google_id}" already exists`, 'error');
@@ -1154,7 +1203,7 @@
       _users = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
       renderUsersTable();
       renderUserStats();
-      renderTenantsTable(); // refresh user counts in tenants table
+      renderTenantsTable();
     } catch(e) { console.error('loadUsers', e); }
   }
 
@@ -1199,16 +1248,13 @@
     }).join('');
   }
 
-  /* Quick open user modal pre-selected to a tenant */
   function openCreateUserForTenant(slug) {
     openCreateUserModal();
     setTimeout(() => { document.getElementById('uTenantId').value = slug; }, 80);
     switchTab('users');
-    // Re-open after tab switch to keep modal
     setTimeout(() => { document.getElementById('userModal').classList.add('open'); }, 90);
   }
 
-  /* Filter users tab by tenant */
   function filterUsersByTenant(slug) {
     _userStatusFilter = 'all';
     switchTab('users', true);
