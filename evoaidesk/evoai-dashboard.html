@@ -2159,7 +2159,7 @@ function fmtDate(value, dateOnly = false) {
     d = new Date(value);
   }
   if (isNaN(d.getTime())) return String(value).slice(0, 10) || '—';
-  const tz = window._tenantTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = window._tenantTimezone || window._browserTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     if (dateOnly) {
       return new Intl.DateTimeFormat('en-GB', {
