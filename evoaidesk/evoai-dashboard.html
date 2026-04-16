@@ -2206,14 +2206,11 @@ function fmtDate(value, dateOnly = false) {
 	  }
 
 	  const locale = localeMap[currency] || 'en-US';
-	  
-	  console.log('Currency:', currency);
 
 	  try {
 		return new Intl.NumberFormat(locale, {
 			  style: 'currency',
 			  currency,
-			  currencyDisplay: 'code',
 			  notation: 'compact',
 			  maximumFractionDigits: 1
 			}).format(num);
