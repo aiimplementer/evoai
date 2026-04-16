@@ -2159,7 +2159,7 @@ function fmtDate(value, dateOnly = false) {
     d = new Date(value);
   }
   if (isNaN(d.getTime())) return String(value).slice(0, 10) || '—';
-  const tz = window._tenantTimezone || window._browserTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = window._tenantTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     if (dateOnly) {
       return new Intl.DateTimeFormat('en-GB', {
@@ -2924,10 +2924,22 @@ async function submitForm() {
 
   try {
     const user = document.getElementById('sideUserName').textContent||'Team';
-    if (editingLeadId) {
+    if (editingLeadId) {	
       await window.dbUpdateLead(editingDocId, lead);
       const idx = currentLeads.findIndex(l => l.leadId === editingLeadId);
       if(idx !== -1) currentLeads[idx] = { ...currentLeads[idx], ...lead };
+	  
+	 // ── Patch board cache ──
+     for (const stage of BOARD_STAGES) {
+		  const arr = boardLeads[stage.key] || [];
+		  const bidx = arr.findIndex(l => l.leadId === editingLeadId);
+		  if (bidx !== -1) {
+			arr[bidx] = { ...arr[bidx], ...lead };
+			boardLeads[stage.key] = arr;
+		  }
+	  }
+	  if (currentView === 'board') renderBoard();
+
       toast('Lead updated!', 'success');
       await window.dbAddActivity(editingDocId, { type:'note', text:'Lead details updated', user });
       if (_setAssignedAt && newAssignedTo) {
