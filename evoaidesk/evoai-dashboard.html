@@ -2211,11 +2211,12 @@ function fmtDate(value, dateOnly = false) {
 
 	  try {
 		return new Intl.NumberFormat(locale, {
-		  style: 'currency',
-		  currency,
-		  notation: 'compact',
-		  maximumFractionDigits: 1
-		}).format(num);
+			  style: 'currency',
+			  currency,
+			  currencyDisplay: 'code',
+			  notation: 'compact',
+			  maximumFractionDigits: 1
+			}).format(num);
 	  } catch (e) {
 		return `${currency} ${num.toLocaleString(locale)}`;
 	  }
