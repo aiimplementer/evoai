@@ -2183,18 +2183,34 @@ function fmtDate(value, dateOnly = false) {
 ──────────────────────────────────────────────────────────────────────── */
 function fmtCurrency(rawValue) {
   if (rawValue == null || rawValue === '') return '—';
-  const num = Number(String(rawValue).replace(/[^0-9.]/g, ''));
-  if (isNaN(num) || num === 0) return '—';
+
+  const num = Number(String(rawValue).replace(/[^0-9.-]/g, ''));
+  if (isNaN(num)) return '—';
+
   const currency = window._tenantCurrency || 'USD';
+
+  // Locale mapping
+  const localeMap = {
+    USD: 'en-US',
+    CAD: 'en-CA',
+    INR: 'en-IN',
+    EUR: 'de-DE',
+    AED: 'en-AE'
+  };
+
+  const locale = localeMap[currency] || 'en-US';
+
   try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency', currency, maximumFractionDigits: 0,
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0
     }).format(num);
-  } catch(e) {
-    // Fallback for unknown currency codes
-    return currency + ' ' + num.toLocaleString();
+  } catch (e) {
+    return `${currency} ${num.toLocaleString(locale)}`;
   }
 }
+
 let editingLeadId = null;
 let editingDocId  = null;
 let searchTimer   = null;
