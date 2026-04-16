@@ -2672,7 +2672,7 @@ function renderBoard() {
     head.innerHTML = `
       <span class="board-col-label" style="color:${stage.color}">${esc(stage.label)}</span>
       <div style="display:flex;align-items:center;gap:5px;">
-        ${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">$${stageValue>=1000?(stageValue/1000).toFixed(0)+'k':stageValue}</span>`:''}
+        ${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">$${stageValue>0?`<span style="font-family:var(--mono);font-size:.6rem;color:#c084fc;font-weight:700;">${esc(fmtCurrency(stageValue))}</span>`:''}
         <span class="board-col-count">${stageLeads.length}</span>
       </div>`;
     col.appendChild(head);
