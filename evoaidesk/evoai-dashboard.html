@@ -2208,12 +2208,19 @@ function fmtDate(value, dateOnly = false) {
 	  const locale = localeMap[currency] || 'en-US';
 
 	  try {
-		return new Intl.NumberFormat(locale, {
+	  let formatted = new Intl.NumberFormat(locale, {
 			  style: 'currency',
 			  currency,
 			  notation: 'compact',
 			  maximumFractionDigits: 1
 			}).format(num);
+
+			// Robust CAD fix
+			if (currency === 'CAD' && formatted.includes('$')) {
+			  formatted = formatted.replace('$', 'CA$');
+			}
+
+			return formatted;
 	  } catch (e) {
 		return `${currency} ${num.toLocaleString(locale)}`;
 	  }
