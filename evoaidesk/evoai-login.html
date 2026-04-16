@@ -35,11 +35,11 @@
      Firestore `users` collection by google_id (email).
      Returns { role, status, tenant_id } or null.
   ───────────────────────────────────────────── */
-  async function fetchUserRecord(email) {
-    const q    = query(collection(db, 'users'), where('google_id', '==', email));
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    return snap.docs[0].data();   // { google_id, role, status, tenant_id, … }
+   async function fetchUserRecord(email) {
+	  // Direct doc read — matches the rule: request.auth.token.email == userId
+	  const snap = await getDoc(doc(db, 'users', email));
+	  if (!snap.exists()) return null;
+	  return snap.data();
   }
 
   /* ─────────────────────────────────────────────
