@@ -333,6 +333,15 @@
     // ── Fetch tenant_id from users collection using google_id ──
     let tenantId = null;
     try {
+	    const userDocSnap = await getDoc(
+			doc(db, 'users', user.email)  // ← direct lookup by email
+		);
+		
+		if (userDocSnap.exists()) {
+		tenantId = userDocSnap.data().tenant_id || null;
+		}
+		
+	 /**
       const usersSnap = await getDocs(query(
         collection(db, 'users'),
         where('google_id', '==', googleId),
@@ -340,7 +349,7 @@
       ));
       if (!usersSnap.empty) {
         tenantId = usersSnap.docs[0].data().tenant_id || null;
-      }
+      }**/
     } catch(e) {
       console.error('Failed to fetch tenant_id for user:', googleId, e);
     }
