@@ -333,23 +333,25 @@
     // ── Fetch tenant_id from users collection using google_id ──
     let tenantId = null;
     try {
-	    const userDocSnap = await getDoc(
+		// Replace the getDocs query with a direct doc read
+		// since your doc ID IS the email
+		const userDocSnap = await getDoc(
 			doc(db, 'users', user.email)  // ← direct lookup by email
 		);
 		
 		if (userDocSnap.exists()) {
 		tenantId = userDocSnap.data().tenant_id || null;
 		}
-		
-	 /**
+	  /**
       const usersSnap = await getDocs(query(
-        collection(db, 'users'),
+        collection(db, 'users', user.email),
         where('google_id', '==', googleId),
         limit(1)
       ));
       if (!usersSnap.empty) {
         tenantId = usersSnap.docs[0].data().tenant_id || null;
-      }**/
+      }
+	  **/
     } catch(e) {
       console.error('Failed to fetch tenant_id for user:', googleId, e);
     }
@@ -3252,13 +3254,13 @@ async function triggerN8n(actionId, lead, btnEl) {
 
   
   try {
-    await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
+     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         leadId: lead.leadId, name: lead.name, email: lead.email,
         phone: lead.phone, company: lead.company, status: lead.status,
         service: lead.service, actId: actionId, followup_date: lead.followup,
         assignedTo: lead.assignedTo, assignedToEmail: lead.assignedToEmail,
-		evoUserName: evo_username, evoUserEmail: evo_useremail, tenantId: window._currentTenantId,
+		evoUserName: evo_username, evoUserEmail: evo_useremail, tenantId: lead.tenantId,
         triggeredAt: new Date().toISOString(),
       })});
     btnEl.classList.remove('running'); btnEl.classList.add('done'); btnEl.textContent = '✓ Triggered';
