@@ -334,7 +334,7 @@
     let tenantId = null;
     try {
       const usersSnap = await getDocs(query(
-        collection(db, 'users'),
+        collection(db, 'users', user.email),
         where('google_id', '==', googleId),
         limit(1)
       ));
