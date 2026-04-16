@@ -3271,6 +3271,7 @@ async function triggerN8n(actionId, lead, btnEl) {
     }
   } catch(e) {
     btnEl.classList.remove('running'); btnEl.textContent = '⚠ Failed';
+	console.error('n8n trigger error:', e);
     toast('n8n webhook failed — check URL config','error');
   }
 }
