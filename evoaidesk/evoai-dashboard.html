@@ -359,6 +359,20 @@
     // Store tenant_id globally for use in all queries and writes
     window._currentTenantId = tenantId;
 
+    // ── Fetch tenant doc for currency + timezone ──
+    window._tenantCurrency = 'USD';   // default
+    window._tenantTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone; // browser default
+    try {
+      const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
+      if (tenantSnap.exists()) {
+        const td = tenantSnap.data();
+        if (td.currency)  window._tenantCurrency = td.currency;
+        if (td.timezone)  window._tenantTimezone = td.timezone;
+      }
+    } catch(e) {
+      console.warn('Could not fetch tenant doc for currency/timezone:', e);
+    }
+
     // Format tenant name for display (e.g. "annex-cloud-inc" → "Annex Cloud Inc")
     const tenantDisplay = tenantId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -1740,7 +1754,7 @@
         </div>
 
         <div class="form-section-title">Pipeline Details</div>
-        <div class="field"><label>Deal Value (USD)</label><input type="text" id="f-dealvalue" placeholder="e.g. 12000"/></div>
+        <div class="field"><label>Deal Value (<span id="dealValueCurrencyLabel">USD</span>)</label><input type="text" id="f-dealvalue" placeholder="e.g. 12000"/></div>
         <div class="field"><label>Next Follow-Up</label><input type="date" id="f-followup"/></div>
 
         <div class="form-section-title">System IDs</div>
@@ -2124,6 +2138,63 @@
 
 const PAGE_SIZE   = 15;
 let currentView   = 'table';
+
+/* ── Tenant-aware date formatter ──────────────────────────────────────────
+   Accepts an ISO string, Firestore Timestamp, or YYYY-MM-DD string.
+   Returns a human-readable date+time string in the tenant's timezone,
+   e.g. "12 Apr 2025, 09:41 AM IST"
+   If dateOnly is true → returns just the date part (no time), e.g. "12 Apr 2025"
+──────────────────────────────────────────────────────────────────────── */
+function fmtDate(value, dateOnly = false) {
+  if (!value) return '—';
+  let d;
+  if (typeof value === 'string') {
+    // YYYY-MM-DD strings: treat as local midnight to avoid UTC shift
+    d = /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
+      ? new Date(value.trim() + 'T00:00:00')
+      : new Date(value);
+  } else if (value?.toDate) {
+    d = value.toDate();
+  } else {
+    d = new Date(value);
+  }
+  if (isNaN(d.getTime())) return String(value).slice(0, 10) || '—';
+  const tz = window._tenantTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  try {
+    if (dateOnly) {
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', timeZone: tz,
+      }).format(d);
+    }
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: tz, timeZoneName: 'short',
+    }).format(d);
+  } catch(e) {
+    // Fallback if timezone string is invalid
+    return d.toLocaleString();
+  }
+}
+
+/* ── Tenant-aware currency formatter ──────────────────────────────────────
+   Formats a numeric deal value using the tenant's currency code (e.g. INR).
+   Falls back to USD if currency is unknown to Intl.
+──────────────────────────────────────────────────────────────────────── */
+function fmtCurrency(rawValue) {
+  if (rawValue == null || rawValue === '') return '—';
+  const num = Number(String(rawValue).replace(/[^0-9.]/g, ''));
+  if (isNaN(num) || num === 0) return '—';
+  const currency = window._tenantCurrency || 'USD';
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency, maximumFractionDigits: 0,
+    }).format(num);
+  } catch(e) {
+    // Fallback for unknown currency codes
+    return currency + ' ' + num.toLocaleString();
+  }
+}
 let editingLeadId = null;
 let editingDocId  = null;
 let searchTimer   = null;
@@ -2167,6 +2238,9 @@ const BOARD_STAGES = [
    INIT
 ════════════════════════════════════════════════════ */
 window.initApp = async function() {
+  // Update Deal Value label to show tenant currency
+  const currLabel = document.getElementById('dealValueCurrencyLabel');
+  if (currLabel) currLabel.textContent = window._tenantCurrency || 'USD';
   await refreshAll();
 };
 
@@ -2207,10 +2281,8 @@ async function refreshCounts() {
         .reduce((sum, l) => sum + (Number(String(l.dealvalue||'').replace(/[^0-9.]/g,''))||0), 0);
 
       let formatted;
-      if (total >= 1_000_000)  formatted = '$' + (total/1_000_000).toFixed(1) + 'M';
-      else if (total >= 1_000) formatted = '$' + (total/1_000).toFixed(0) + 'k';
-      else if (total > 0)      formatted = '$' + total.toLocaleString();
-      else                     formatted = '—';
+      if (total > 0) formatted = fmtCurrency(total);
+      else           formatted = '—';
 
       document.getElementById('s-pipeline').textContent     = formatted;
       document.getElementById('s-pipeline').title           = 'Sampled from first 500 active leads (excl. Won / Lost)';
@@ -2534,7 +2606,7 @@ function renderTable(leads) {
     const scoreDotColor = score>=60 ? 'var(--danger)' : score>=35 ? 'var(--warn)' : 'var(--accent2)';
     // Follow-up cell
     const followupCell = l.followup
-      ? `<span style="font-size:.73rem;font-family:var(--mono);color:${overdue?'var(--danger)':'var(--muted)'};">⏰ ${esc(String(l.followup).slice(0,10))}</span>`
+      ? `<span style="font-size:.73rem;font-family:var(--mono);color:${overdue?'var(--danger)':'var(--muted)'};">⏰ ${esc(fmtDate(l.followup, true))}</span>`
       : '';
     return `
     <tr class="${sel ? 'selected-row' : ''}">
@@ -2661,9 +2733,9 @@ function createBoardCard(l) {
     <div class="board-card-footer">
       <span class="board-card-service">${esc(l.service||'—')}</span>
       <div style="display:flex;align-items:center;gap:5px;">
-        ${l.dealvalue?`<span class="board-card-value">$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}</span>`:''}
+        ${l.dealvalue?`<span class="board-card-value">${esc(fmtCurrency(l.dealvalue))}</span>`:''}
         ${isOverdue(l)?`<span style="font-size:.6rem;color:var(--danger);">⏰</span>`:''}
-        <span class="board-card-date">${esc(String(l.date||'').slice(0,10))}</span>
+        <span class="board-card-date">${esc(fmtDate(l.date, true))}</span>
       </div>
     </div>`;
 
@@ -2727,7 +2799,7 @@ function renderList(leads) {
   }
   listBody.innerHTML = leads.map(l => {
     const score   = computeScore(l);
-    const dealStr = l.dealvalue ? `$${Number(String(l.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
+    const dealStr = l.dealvalue ? fmtCurrency(l.dealvalue) : '—';
     return `
     <div class="list-item" onclick="viewLead('${esc(l.leadId)}','${esc(l._docId)}')">
       <div class="list-item-contact">
@@ -2945,12 +3017,12 @@ async function viewLead(leadId, docId, preloadedLead = null) {
     ? `<span class="overdue-tag">⏰ Follow-up overdue</span>` : '';
 
   const qb = document.getElementById('viewQuickBar');
-  const dealVal = lead.dealvalue ? `$${Number(String(lead.dealvalue).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
+  const dealVal = lead.dealvalue ? fmtCurrency(lead.dealvalue) : '—';
   qb.innerHTML = [
     ['💼 Service',     lead.service||'—'],
     ['📊 Status',      lead.status||'—'],
     ['💰 Deal Value',  dealVal],
-    ['📅 Follow-up',   lead.followup||'—'],
+    ['📅 Follow-up',   lead.followup ? fmtDate(lead.followup, true) : '—'],
     ['👤 Assigned To', lead.assignedTo||'Unassigned'],
   ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:${k==='👤 Assigned To'&&v!=='Unassigned'?'var(--accent2)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
 
@@ -2968,7 +3040,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
   if (lead.assignedTo) {
     const aInitials = lead.assignedTo.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     const assignedAtStr = lead.assignedAt
-      ? new Date(lead.assignedAt).toLocaleString()
+      ? fmtDate(lead.assignedAt)
       : '—';
     assignmentHtml = `
       <div class="assignment-card">
@@ -2999,7 +3071,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
     assignmentHtml +
     section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
     section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
-    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Date',lead.date]]) +
+    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Created At', fmtDate(lead.date)]]) +
     section('System IDs', [['Lead ID',lead.leadId],['Reference Lead ID',lead.reference_lead_id]]) +
     section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
 
@@ -3018,7 +3090,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
 
   const na = document.getElementById('viewNextAction');
   if (lead.followup) {
-    na.innerHTML = `<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${new Date(lead.followup).toLocaleDateString()}</span>`;
+    na.innerHTML = `<span class="next-action-chip">${isOverdue(lead)?'⏰ Overdue':'📅 Follow-up'}: ${fmtDate(lead.followup, true)}</span>`;
   } else {
     na.innerHTML = `<span style="font-size:.73rem;color:var(--muted);">No follow-up scheduled</span>`;
   }
@@ -3093,7 +3165,7 @@ function renderTimeline(acts) {
       <div class="tl-icon ${iconMap[a.type]||'tl-icon-note'}">${emojiMap[a.type]||'📝'}</div>
       <div class="tl-body">
         <div class="tl-title">${esc(a.text)}</div>
-        <div class="tl-meta">${esc(a.user||'Team')} · ${new Date(a.ts).toLocaleString()}</div>
+        <div class="tl-meta">${esc(a.user||'Team')} · ${fmtDate(a.ts)}</div>
       </div>
     </div>`).join('');
 }
