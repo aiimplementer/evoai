@@ -2201,11 +2201,12 @@ function fmtCurrency(rawValue) {
   const locale = localeMap[currency] || 'en-US';
 
   try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0
-    }).format(num);
+		return new Intl.NumberFormat(locale, {
+			style: 'currency',
+			currency,
+			notation: 'compact',
+			maximumFractionDigits: 1
+		}).format(num);
   } catch (e) {
     return `${currency} ${num.toLocaleString(locale)}`;
   }
