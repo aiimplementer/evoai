@@ -2967,16 +2967,31 @@ async function submitForm() {
       const idx = currentLeads.findIndex(l => l.leadId === editingLeadId);
       if(idx !== -1) currentLeads[idx] = { ...currentLeads[idx], ...lead };
 	  
-	 // ── Patch board cache ──
-     for (const stage of BOARD_STAGES) {
-		  const arr = boardLeads[stage.key] || [];
-		  const bidx = arr.findIndex(l => l.leadId === editingLeadId);
-		  if (bidx !== -1) {
-			arr[bidx] = { ...arr[bidx], ...lead };
-			boardLeads[stage.key] = arr;
-		  }
-	  }
-	  if (currentView === 'board') renderBoard();
+	 // ── Patch board cache — handle status change (move between columns) ──
+	const prevStatus = (() => {
+		for (const stage of BOARD_STAGES) {
+			const arr = boardLeads[stage.key] || [];
+			if (arr.some(l => l.leadId === editingLeadId)) return stage.key;
+		}
+		return null;
+	})();
+
+	if (prevStatus && prevStatus !== lead.status) {
+		// Remove from old stage
+		boardLeads[prevStatus] = (boardLeads[prevStatus] || [])
+			.filter(l => l.leadId !== editingLeadId);
+		// Add to new stage (prepend so it appears at top)
+		const updatedLead = { ...lead, _docId: editingDocId };
+		boardLeads[lead.status] = [updatedLead, ...(boardLeads[lead.status] || [])];
+	} else if (prevStatus) {
+		// Same stage — just update in place
+		const arr = boardLeads[prevStatus] || [];
+		const bidx = arr.findIndex(l => l.leadId === editingLeadId);
+		if (bidx !== -1) arr[bidx] = { ...arr[bidx], ...lead };
+		boardLeads[prevStatus] = arr;
+	}
+
+	if (currentView === 'board') renderBoard();
 
       toast('Lead updated!', 'success');
       await window.dbAddActivity(editingDocId, { type:'note', text:'Lead details updated', user });
