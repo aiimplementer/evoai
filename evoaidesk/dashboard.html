@@ -4255,6 +4255,7 @@ async function runImport() {
   const total = _importRows.length;
   let done    = 0;
   let failed  = 0;
+  const importErrors = []; // collect per-row errors to surface in UI
 
   const setProgress = (n, label) => {
     const pct = Math.round((n / total) * 100);
@@ -4280,7 +4281,16 @@ async function runImport() {
       done++;
     } catch(e) {
       failed++;
-      console.warn('Import row failed:', e, row);
+      // Build a human-readable error label: prefer name, fall back to email, then row number
+      const rowLabel = row.name || row.email || `Row ${i + 2}`;
+      // Extract meaningful message: Firestore errors have .message; permission errors may say "Missing or insufficient permissions"
+      let errMsg = (e && e.message) ? e.message : String(e);
+      // Shorten common Firestore permission error for readability
+      if (/missing or insufficient permissions/i.test(errMsg)) {
+        errMsg = 'Insufficient permissions — check Firestore rules';
+      }
+      importErrors.push({ rowNum: i + 2, label: rowLabel, message: errMsg });
+      console.warn(`Import row ${i + 2} failed:`, errMsg, row);
     }
     setProgress(done + failed, `${row.name || row.email || 'Row ' + (i+2)}`);
 
@@ -4293,12 +4303,34 @@ async function runImport() {
   setProgress(total, '');
   document.getElementById('importProgressSub').textContent = '';
 
+  /* Build error list HTML if any rows failed */
+  const errorListHtml = importErrors.length > 0
+    ? `<div style="margin-top:14px;border:1px solid rgba(255,183,48,.25);border-radius:8px;overflow:hidden;">
+        <div style="background:rgba(255,183,48,.08);padding:8px 12px;font-size:.72rem;font-weight:700;color:var(--warn);letter-spacing:.05em;text-transform:uppercase;display:flex;align-items:center;gap:6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Failed rows (${importErrors.length})
+        </div>
+        <div style="max-height:160px;overflow-y:auto;padding:6px 0;">
+          ${importErrors.map(err =>
+            `<div style="display:grid;grid-template-columns:2.5rem 1fr;gap:0 10px;align-items:baseline;padding:5px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.72rem;">
+              <span style="font-family:var(--mono);color:var(--muted);">R${err.rowNum}</span>
+              <div>
+                <span style="color:var(--text);font-weight:600;">${esc(err.label)}</span>
+                <span style="color:var(--warn);margin-left:8px;">${esc(err.message)}</span>
+              </div>
+            </div>`
+          ).join('')}
+        </div>
+      </div>`
+    : '';
+
   document.getElementById('importStep3').innerHTML = `
     <div class="import-done-banner">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-      <div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${failed > 0 && done === 0 ? 'var(--danger)' : 'var(--accent)'}" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      <div style="flex:1;">
         <div style="font-weight:700;">${done} lead${done !== 1 ? 's' : ''} imported successfully${failed > 0 ? ` · <span style="color:var(--warn)">${failed} failed</span>` : ''}</div>
-        <div style="font-size:.73rem;color:var(--muted);margin-top:2px;">The leads table will refresh automatically.</div>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:2px;">${done > 0 ? 'The leads table will refresh automatically.' : 'No leads were written — check the errors below.'}</div>
+        ${errorListHtml}
       </div>
     </div>`;
 
