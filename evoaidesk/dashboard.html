@@ -4246,15 +4246,15 @@ function resetImport() {
 async function runImport() {
   if (!_importRows.length) return;
 
+  /* Switch to progress step */
   document.getElementById('importStep2').style.display = 'none';
   document.getElementById('importStep3').style.display = '';
   document.getElementById('importConfirmBtn').style.display = 'none';
   document.getElementById('importCancelBtn').disabled = true;
 
-  const total   = _importRows.length;
-  let done      = 0;
-  let failed    = 0;
-  const errors  = [];   // ← collect failure details
+  const total = _importRows.length;
+  let done    = 0;
+  let failed  = 0;
 
   const setProgress = (n, label) => {
     const pct = Math.round((n / total) * 100);
@@ -4266,93 +4266,27 @@ async function runImport() {
   document.getElementById('importProgressLabel').textContent = 'Importing leads…';
   setProgress(0, 'Starting…');
 
+  /* Write rows one at a time — 1ms gap ensures each generateLeadId() call
+     gets a unique millisecond, preventing ID collisions on bulk import     */
   for (let i = 0; i < _importRows.length; i++) {
     const row = _importRows[i];
     try {
-      await window.dbAddLead({ ...row, assignedToEmail: '', _setAssignedAt: false });
+      const lead = {
+        ...row,
+        assignedToEmail: '',
+        _setAssignedAt:  false,
+      };
+      await window.dbAddLead(lead);
       done++;
     } catch(e) {
       failed++;
-      // ── Friendly error classification ──
-      let reason = e.message || 'Unknown error';
-      if (e.code === 'permission-denied' || reason.toLowerCase().includes('permission') || reason.toLowerCase().includes('insufficient')) {
-        reason = 'Insufficient Firestore permissions — check security rules for your tenant';
-      } else if (e.code === 'unavailable' || reason.toLowerCase().includes('network')) {
-        reason = 'Network error — check your connection';
-      } else if (e.code === 'quota-exceeded') {
-        reason = 'Firestore quota exceeded — try again later';
-      } else if (e.code === 'invalid-argument') {
-        reason = 'Invalid data in row — check date/number fields';
-      }
-      errors.push({ row: i + 2, name: row.name || row.email || `Row ${i+2}`, reason });
-      console.warn(`Import row ${i+2} failed [${e.code||'?'}]:`, e.message, row);
+      console.warn('Import row failed:', e, row);
     }
     setProgress(done + failed, `${row.name || row.email || 'Row ' + (i+2)}`);
+
+    /* 2ms gap: guarantees unique ms timestamp in ID + keeps UI responsive */
     await new Promise(r => setTimeout(r, 2));
   }
-
-  // ── Build done banner ──
-  let bannerHtml = `
-    <div class="import-done-banner" style="margin-bottom:${errors.length ? '14px' : '0'};">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
-      <div>
-        <div style="font-weight:700;">${done} lead${done !== 1 ? 's' : ''} imported successfully${failed > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--warn)">${failed} failed</span>` : ''}</div>
-        <div style="font-size:.73rem;color:var(--muted);margin-top:2px;">The leads table will refresh automatically.</div>
-      </div>
-    </div>`;
-
-  // ── Error detail table ──
-  if (errors.length) {
-    // Deduplicate reasons for a quick summary
-    const reasonCounts = {};
-    errors.forEach(e => { reasonCounts[e.reason] = (reasonCounts[e.reason] || 0) + 1; });
-    const summaryItems = Object.entries(reasonCounts)
-      .map(([r, c]) => `<li style="margin-bottom:4px;"><span style="color:var(--text);font-weight:600;">${c}×</span> ${esc(r)}</li>`)
-      .join('');
-
-    // Show first 10 failures in detail
-    const detailRows = errors.slice(0, 10).map(e => `
-      <tr>
-        <td style="font-family:var(--mono);font-size:.68rem;color:var(--muted);padding:5px 10px;border-bottom:1px solid rgba(30,45,66,.5);white-space:nowrap;">Row ${e.row}</td>
-        <td style="font-size:.73rem;color:var(--text);padding:5px 10px;border-bottom:1px solid rgba(30,45,66,.5);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.name)}">${esc(e.name)}</td>
-        <td style="font-size:.72rem;color:var(--danger);padding:5px 10px;border-bottom:1px solid rgba(30,45,66,.5);">${esc(e.reason)}</td>
-      </tr>`).join('');
-
-    bannerHtml += `
-      <div style="background:rgba(255,77,109,.06);border:1px solid rgba(255,77,109,.22);border-radius:9px;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,77,109,.18);">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span style="font-size:.75rem;font-weight:700;color:var(--danger);">Why ${failed} row${failed!==1?'s':''} failed</span>
-        </div>
-        <ul style="margin:10px 14px 10px 26px;padding:0;font-size:.76rem;color:var(--muted);line-height:1.7;">
-          ${summaryItems}
-        </ul>
-        ${errors.length > 0 ? `
-        <div style="overflow-x:auto;border-top:1px solid rgba(255,77,109,.18);">
-          <table style="width:100%;border-collapse:collapse;">
-            <thead>
-              <tr style="background:rgba(255,77,109,.08);">
-                <th style="text-align:left;padding:6px 10px;font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);">Row</th>
-                <th style="text-align:left;padding:6px 10px;font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);">Lead</th>
-                <th style="text-align:left;padding:6px 10px;font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);">Reason</th>
-              </tr>
-            </thead>
-            <tbody>${detailRows}</tbody>
-          </table>
-          ${errors.length > 10 ? `<div style="padding:8px 14px;font-size:.71rem;color:var(--muted);border-top:1px solid rgba(30,45,66,.5);">…and ${errors.length - 10} more failures — check the browser console for full details.</div>` : ''}
-        </div>` : ''}
-      </div>`;
-  }
-
-  document.getElementById('importStep3').innerHTML = bannerHtml;
-  document.getElementById('importCancelBtn').disabled  = false;
-  document.getElementById('importCancelBtn').textContent = 'Close';
-  document.getElementById('importFootNote').innerHTML   = '';
-
-  toast(failed === 0 ? `${done} leads imported successfully` : `${done} imported · ${failed} failed — see details above`, failed > 0 ? 'warn' : 'success');
-
-  await refreshAll();
-}
 
   /* Done */
   document.getElementById('importProgressLabel').textContent = 'Import complete';
