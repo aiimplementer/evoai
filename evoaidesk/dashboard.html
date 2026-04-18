@@ -2603,8 +2603,8 @@ function updatePaginationControls() {
 ════════════════════════════════════════════════════ */
 function toggleOverdueFilter(el) {
   if (isOverdueMode) { clearOverdueFilter(); return; }
-  clearTrashMode();
-  if (isMyLeadsMode) clearMyLeadsFilter();
+  clearTrashMode(true);
+  if (isMyLeadsMode) clearMyLeadsFilter(true);
   // Clear status filter so overdue searches ALL statuses
   activeFilters.status = '';
   document.querySelectorAll('.aside-item').forEach(i => { i.classList.remove('active','active-danger'); });
@@ -2633,7 +2633,7 @@ async function runOverdueFilter() {
   finally { setLoadingState(false); }
 }
 
-function clearOverdueFilter() {
+function clearOverdueFilter(skipReload = false) {
   isOverdueMode = false; searchResults = [];
   // Reset status filter so going back to All Leads is clean
   activeFilters.status = '';
@@ -2646,7 +2646,7 @@ function clearOverdueFilter() {
   if (allLeadsItem) allLeadsItem.classList.add('active');
   resetPagination();
   updatePaginationControls();
-  loadPage('first');
+  if (!skipReload) loadPage('first');
 }
 
 /* ════════════════════════════════════════════════════
@@ -2654,8 +2654,8 @@ function clearOverdueFilter() {
 ════════════════════════════════════════════════════ */
 function toggleMyLeadsFilter(el) {
   if (isMyLeadsMode) { clearMyLeadsFilter(); return; }
-  clearTrashMode();
-  if (isOverdueMode) clearOverdueFilter();
+  clearTrashMode(true);
+  if (isOverdueMode) clearOverdueFilter(true);
   document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
   el.classList.add('active');
   isMyLeadsMode = true;
@@ -2681,21 +2681,21 @@ async function runMyLeadsFilter() {
   finally { setLoadingState(false); }
 }
 
-function clearMyLeadsFilter() {
+function clearMyLeadsFilter(skipReload = false) {
   isMyLeadsMode = false; searchResults = [];
   document.getElementById('myLeadsFilterItem').classList.remove('active');
   document.querySelector('.aside-item')?.classList.add('active');
   updatePaginationControls();
-  loadPage('first');
+  if (!skipReload) loadPage('first');
 }
 
 /* ════════════════════════════════════════════════════
    FILTERS — sidebar status + dropdowns
 ════════════════════════════════════════════════════ */
 function setStatusFilter(status, el) {
-  clearTrashMode();
-  if (isOverdueMode) clearOverdueFilter();
-  if (isMyLeadsMode) clearMyLeadsFilter();
+  clearTrashMode(true);
+  if (isOverdueMode) clearOverdueFilter(true);
+  if (isMyLeadsMode) clearMyLeadsFilter(true);
   activeFilters.status = status;
   document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
   if (el) el.classList.add('active');
@@ -2705,7 +2705,7 @@ function setStatusFilter(status, el) {
 }
 
 function onFilterChange() {
-  clearTrashMode();
+  clearTrashMode(true);
   activeFilters.service  = document.getElementById('serviceFilter').value;
   activeFilters.industry = document.getElementById('industryFilter').value;
   clearSearch();
@@ -2721,9 +2721,9 @@ function onSearchInput(q) {
   searchTimer = setTimeout(() => {
     const term = q.trim();
     if (!term) { clearSearch(); return; }
-    if (isOverdueMode) clearOverdueFilter();
-    if (isMyLeadsMode) clearMyLeadsFilter();
-    if (isTrashMode)   clearTrashMode();
+    if (isOverdueMode) clearOverdueFilter(true);
+    if (isMyLeadsMode) clearMyLeadsFilter(true);
+    if (isTrashMode)   clearTrashMode(true);
     runSearch(term);
   }, 380);
 }
@@ -2755,7 +2755,7 @@ function clearSearch() {
    VIEW SWITCHING
 ════════════════════════════════════════════════════ */
 function setView(view, btn) {
-  clearTrashMode();
+  clearTrashMode(true);
   currentView = view;
   document.querySelectorAll('#viewToggle button').forEach(b => { b.style.background='transparent'; b.style.color='var(--muted)'; });
   btn.style.background = 'var(--surface)'; btn.style.color = 'var(--accent)';
@@ -3911,9 +3911,9 @@ let trashLeads  = [];
 /* Toggle trash mode from sidebar */
 function toggleTrashMode(el) {
   if (isTrashMode) { clearTrashMode(); return; }
-  // Clear competing modes
-  if (isOverdueMode)  clearOverdueFilter();
-  if (isMyLeadsMode)  clearMyLeadsFilter();
+  // Clear competing modes — pass true to suppress their loadPage, avoiding a race with loadTrashView
+  if (isOverdueMode)  clearOverdueFilter(true);
+  if (isMyLeadsMode)  clearMyLeadsFilter(true);
   isSearchMode = false;
   document.getElementById('searchInput').value = '';
   document.getElementById('searchModeBanner').classList.remove('show');
@@ -3932,7 +3932,7 @@ function toggleTrashMode(el) {
   loadTrashView();
 }
 
-function clearTrashMode() {
+function clearTrashMode(skipReload = false) {
   isTrashMode = false; trashLeads = [];
   document.getElementById('trashView').style.display = 'none';
   document.getElementById('trashFilterItem').classList.remove('active-danger');
@@ -3942,7 +3942,7 @@ function clearTrashMode() {
   if (allItem) allItem.classList.add('active');
   activeFilters.status = '';
   resetPagination();
-  loadPage('first');
+  if (!skipReload) loadPage('first');
 }
 
 async function loadTrashView() {
