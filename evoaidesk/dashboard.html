@@ -145,8 +145,8 @@
       assignedTo:          lead.assignedTo      || 'Unassigned',
       assignedToEmail:     lead.assignedToEmail || '',
       reference_lead_id:   lead.reference_lead_id || '',
-      // ── Soft-delete: always write deleted:false on create/update (trash sets it separately) ──
-      deleted:             false,
+      // ── Soft-delete: preserve the lead's existing deleted state on update; always false on create ──
+      deleted:             lead.deleted === true ? true : false,
       // assignedAt: only write when actually assigning
       ...(lead._setAssignedAt ? { assignedAt: serverTimestamp() } : {}),
     };
@@ -166,7 +166,7 @@
   window.buildLeadsQuery = (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '==', false) ];
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -186,7 +186,7 @@
   window.dbCountLeads = async (filters = {}) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ where('tenant_id', '==', tenantId), where('deleted', '==', false) ];
+    const constraints = [ where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -199,11 +199,11 @@
   window.dbCountAllStatuses = async () => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const tenantQuery = query(ref, where('tenant_id', '==', tenantId), where('deleted', '==', false));
+    const tenantQuery = query(ref, where('tenant_id', '==', tenantId), where('deleted', '!=', true));
     const statuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost'];
     const [totalSnap, ...statusSnaps] = await Promise.all([
       getCountFromServer(tenantQuery),
-      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tenantId), where('deleted','==',false), where('status','==',s))))
+      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tenantId), where('deleted','!=',true), where('status','==',s))))
     ]);
     const result = { ALL: totalSnap.data().count };
     statuses.forEach((s,i) => { result[s] = statusSnaps[i].data().count; });
@@ -215,7 +215,7 @@
       if (lastPage) {
         const ref = collection(db, 'leads');
         const tenantId = window._currentTenantId || '';
-        const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '==', false) ];
+        const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
         if (filters.status)   constraints.push(where('status',      '==', filters.status));
         if (filters.service)  constraints.push(where('service',     '==', filters.service));
         if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -240,7 +240,7 @@
     const q = query(
       collection(db, 'leads'),
       where('tenant_id', '==', tenantId),
-      where('deleted', '==', false),
+      where('deleted', '!=', true),
       where('status', '==', status),
       orderBy('createdAt', 'desc'),
       limit(200)
@@ -252,7 +252,7 @@
   window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '==', false), limit(maxDocs) ];
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true), limit(maxDocs) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -289,7 +289,7 @@
 
   window.dbLoadAll = async () => {
     const tenantId = window._currentTenantId || '';
-    const snap = await getDocs(query(collection(db, 'leads'), where('tenant_id', '==', tenantId), where('deleted', '==', false), orderBy('createdAt', 'desc')));
+    const snap = await getDocs(query(collection(db, 'leads'), where('tenant_id', '==', tenantId), where('deleted', '!=', true), orderBy('createdAt', 'desc')));
     return snap.docs.map(d => window.docToLead(d));
   };
 
@@ -2407,6 +2407,7 @@ window.initApp = async function() {
 };
 
 window.refreshAll = async function() {
+  if (isTrashMode) { await loadTrashView(); await refreshCounts(); return; }
   resetPagination();
   await Promise.all([loadPage('first'), refreshCounts()]);
 };
@@ -2479,7 +2480,7 @@ async function refreshCounts() {
    CORE PAGE LOADER
 ════════════════════════════════════════════════════ */
 async function loadPage(direction = 'first') {
-  if (isSearchMode || isOverdueMode || isMyLeadsMode) return;
+  if (isSearchMode || isOverdueMode || isMyLeadsMode || isTrashMode) return;
   setLoadingState(true);
   try {
     let afterSnap = null, beforeSnap = null, useLastPage = false;
@@ -2524,13 +2525,13 @@ function resetPagination() {
   totalCount = 0;
 }
 
-async function goNextPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('next'); }
-async function goPrevPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber > 1) await loadPage('prev'); }
-async function goFirstPage() { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber > 1) await loadPage('first'); }
-async function goLastPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('last'); }
+async function goNextPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && !isTrashMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('next'); }
+async function goPrevPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && !isTrashMode && pageNumber > 1) await loadPage('prev'); }
+async function goFirstPage() { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && !isTrashMode && pageNumber > 1) await loadPage('first'); }
+async function goLastPage()  { if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && !isTrashMode && pageNumber < Math.ceil(totalCount/PAGE_SIZE)) await loadPage('last'); }
 
 async function goJumpPage() {
-  if (isSearchMode || isOverdueMode || isMyLeadsMode) return;
+  if (isSearchMode || isOverdueMode || isMyLeadsMode || isTrashMode) return;
   const tableInput = document.getElementById('jumpInput');
   const listInput  = document.getElementById('listJumpInput');
   const raw = (tableInput && tableInput.value) || (listInput && listInput.value) || '';
@@ -2593,6 +2594,7 @@ function updatePaginationControls() {
 ════════════════════════════════════════════════════ */
 function toggleOverdueFilter(el) {
   if (isOverdueMode) { clearOverdueFilter(); return; }
+  clearTrashMode();
   if (isMyLeadsMode) clearMyLeadsFilter();
   // Clear status filter so overdue searches ALL statuses
   activeFilters.status = '';
@@ -2643,6 +2645,7 @@ function clearOverdueFilter() {
 ════════════════════════════════════════════════════ */
 function toggleMyLeadsFilter(el) {
   if (isMyLeadsMode) { clearMyLeadsFilter(); return; }
+  clearTrashMode();
   if (isOverdueMode) clearOverdueFilter();
   document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
   el.classList.add('active');
@@ -2681,6 +2684,7 @@ function clearMyLeadsFilter() {
    FILTERS — sidebar status + dropdowns
 ════════════════════════════════════════════════════ */
 function setStatusFilter(status, el) {
+  clearTrashMode();
   if (isOverdueMode) clearOverdueFilter();
   if (isMyLeadsMode) clearMyLeadsFilter();
   activeFilters.status = status;
@@ -2692,6 +2696,7 @@ function setStatusFilter(status, el) {
 }
 
 function onFilterChange() {
+  clearTrashMode();
   activeFilters.service  = document.getElementById('serviceFilter').value;
   activeFilters.industry = document.getElementById('industryFilter').value;
   clearSearch();
@@ -2709,6 +2714,7 @@ function onSearchInput(q) {
     if (!term) { clearSearch(); return; }
     if (isOverdueMode) clearOverdueFilter();
     if (isMyLeadsMode) clearMyLeadsFilter();
+    if (isTrashMode)   clearTrashMode();
     runSearch(term);
   }, 380);
 }
@@ -2740,6 +2746,7 @@ function clearSearch() {
    VIEW SWITCHING
 ════════════════════════════════════════════════════ */
 function setView(view, btn) {
+  clearTrashMode();
   currentView = view;
   document.querySelectorAll('#viewToggle button').forEach(b => { b.style.background='transparent'; b.style.color='var(--muted)'; });
   btn.style.background = 'var(--surface)'; btn.style.color = 'var(--accent)';
@@ -2748,6 +2755,7 @@ function setView(view, btn) {
 }
 
 function renderCurrentView() {
+  document.getElementById('trashView').style.display = 'none';
   document.getElementById('tableView').style.display = currentView === 'table' ? 'block' : 'none';
   document.getElementById('boardView').style.display = currentView === 'board' ? 'block' : 'none';
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
@@ -2818,6 +2826,7 @@ function renderTable(leads) {
    BOARD VIEW
 ════════════════════════════════════════════════════ */
 async function loadBoardView() {
+  document.getElementById('trashView').style.display  = 'none';
   document.getElementById('tableView').style.display = 'none';
   document.getElementById('listView').style.display  = 'none';
   document.getElementById('boardView').style.display = 'block';
@@ -3211,6 +3220,11 @@ async function viewLead(leadId, docId, preloadedLead = null) {
   document.getElementById('viewLeadId').textContent   = lead.leadId;
   document.getElementById('viewLeadName').textContent = lead.name || 'Lead Details';
   document.getElementById('viewEditBtn').onclick = () => editLeadById(lead.leadId, _viewingDocId);
+  // Hide destructive/edit actions for already-deleted leads (opened from Trash)
+  const isDeleted = lead.deleted === true;
+  document.getElementById('viewEditBtn').style.display = isDeleted ? 'none' : '';
+  const trashBtn = document.querySelector('#viewOverlay .modal-foot button[onclick="softDeleteFromModal()"]');
+  if (trashBtn) trashBtn.style.display = isDeleted ? 'none' : '';
 
   const score = computeScore(lead);
   document.getElementById('viewScoreBadge').innerHTML   = scoreBadge(score);
@@ -3521,7 +3535,9 @@ function downloadCSV(csv, filename) {
 
 /* Export current view / page */
 function exportCSV() {
-  const leads = (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults : currentLeads;
+  const leads = isTrashMode ? trashLeads
+              : (isSearchMode || isOverdueMode || isMyLeadsMode) ? searchResults
+              : currentLeads;
   if (!leads.length) { toast('No leads on this page to export', 'warn'); return; }
   downloadCSV(buildCSV(leads), 'leads-export.csv');
   toast(`Exported ${leads.length} leads as CSV`, 'success');
@@ -3823,7 +3839,7 @@ function statusBadge(s) {
   return `<span class="badge badge-${map[s]||'new'}">${esc(s||'New')}</span>`;
 }
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function switchViewTab(tab, btnEl) {
   ['details','timeline','automations','report'].forEach(t => { document.getElementById('vtab-'+t).style.display = t===tab ? '' : 'none'; });
@@ -4055,15 +4071,17 @@ async function emptyTrash() {
 
 This CANNOT be undone.`)) return;
   let done = 0, failed = 0;
+  const failedIds = new Set();
   for (const l of trashLeads) {
     try { await window.dbPermanentDeleteLead(l._docId); done++; }
-    catch(e) { failed++; console.warn('emptyTrash perm-delete failed:', l._docId, e); }
+    catch(e) { failed++; failedIds.add(l._docId); console.warn('emptyTrash perm-delete failed:', l._docId, e); }
   }
-  trashLeads = [];
-  renderTrash([]);
+  // Only wipe leads that were actually deleted — keep failed ones visible in Trash
+  trashLeads = failed > 0 ? trashLeads.filter(l => failedIds.has(l._docId)) : [];
+  renderTrash(trashLeads);
   refreshCounts();
   if (failed === 0) toast(`${done} lead${done!==1?'s':''} permanently deleted`, 'success');
-  else toast(`${done} deleted · ${failed} failed — check console`, 'warn');
+  else toast(`${done} deleted · ${failed} failed — remaining leads still shown in Trash`, 'warn');
 }
 
 /* ════════════════════════════════════════════════════
