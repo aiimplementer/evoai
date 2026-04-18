@@ -405,6 +405,13 @@
 		
 		if (userDocSnap.exists()) {
 		tenantId = userDocSnap.data().tenant_id || null;
+		// Show role badge if present
+		const role = userDocSnap.data().role || '';
+		if (role) {
+		  window._currentUserRole = role;
+		  const roleEl = document.getElementById('sideUserRole');
+		  if (roleEl) { roleEl.textContent = role; roleEl.style.display = 'inline-block'; }
+		}
 		}
 	  /**
       const usersSnap = await getDocs(query(
@@ -623,6 +630,12 @@
   .aside-user-email {
     font-size: .65rem; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .aside-user-role {
+    display: inline-block; margin-top: 3px;
+    font-size: .58rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--accent); background: rgba(0,229,160,.1); border: 1px solid rgba(0,229,160,.2);
+    padding: 1px 6px; border-radius: 4px; font-family: var(--mono);
   }
 
   /* ── MAIN ── */
@@ -1503,6 +1516,7 @@
       <div class="aside-user-text">
         <div class="aside-user-name"  id="sideUserName">—</div>
         <div class="aside-user-email" id="sideUserEmail">—</div>
+        <div class="aside-user-role"  id="sideUserRole" style="display:none;"></div>
       </div>
     </div>
   </aside>
