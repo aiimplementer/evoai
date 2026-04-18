@@ -323,8 +323,34 @@
 
   .secure-note {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    margin-top: 18px; font-size: .74rem; color: var(--muted); font-family: var(--mono); opacity: .7;
+    margin-top: 14px; font-size: .74rem; color: var(--muted); font-family: var(--mono); opacity: .7;
   }
+
+  .know-more-link {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 16px; white-space: nowrap;
+    font-size: .72rem; font-family: var(--mono); font-weight: 500; letter-spacing: .03em;
+    color: var(--accent); text-decoration: none;
+    background: rgba(0,229,160,.07); border: 1px solid rgba(0,229,160,.22);
+    border-radius: 8px; padding: 10px 16px;
+    transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
+  }
+  .know-more-link .km-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); flex-shrink: 0;
+    box-shadow: 0 0 6px rgba(0,229,160,.6);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: .5; transform: scale(.7); }
+  }
+  .know-more-link svg { transition: transform .18s; flex-shrink: 0; }
+  .know-more-link:hover {
+    background: rgba(0,229,160,.13); border-color: rgba(0,229,160,.45);
+    box-shadow: 0 0 20px rgba(0,229,160,.08); transform: translateY(-1px);
+  }
+  .know-more-link:hover svg { transform: translateX(3px); }
 
   /* ── Destination picker — wide two-column layout ── */
   #destination-view { display: none; }
@@ -520,6 +546,14 @@
       </svg>
       Sign in with Google
     </button>
+
+    <a class="know-more-link" href="evoAIDesk_product_document_18042026.html" target="_blank">
+      <span class="km-dot"></span>
+      New here? See what evoAIDesk can do
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </a>
 
     <div class="secure-note">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
