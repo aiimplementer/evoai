@@ -4081,16 +4081,22 @@ async function emptyTrash() {
 This CANNOT be undone.`)) return;
   let done = 0, failed = 0;
   const failedIds = new Set();
+  const firstError = { msg: null };
   for (const l of trashLeads) {
     try { await window.dbPermanentDeleteLead(l._docId); done++; }
-    catch(e) { failed++; failedIds.add(l._docId); console.warn('emptyTrash perm-delete failed:', l._docId, e); }
+    catch(e) {
+      failed++;
+      failedIds.add(l._docId);
+      if (!firstError.msg) firstError.msg = (e && e.message) ? e.message : String(e);
+      console.error('emptyTrash perm-delete failed:', l._docId, e);
+    }
   }
   // Only wipe leads that were actually deleted — keep failed ones visible in Trash
   trashLeads = failed > 0 ? trashLeads.filter(l => failedIds.has(l._docId)) : [];
   renderTrash(trashLeads);
   refreshCounts();
   if (failed === 0) toast(`${done} lead${done!==1?'s':''} permanently deleted`, 'success');
-  else toast(`${done} deleted · ${failed} failed — remaining leads still shown in Trash`, 'warn');
+  else toast(`${done} deleted · ${failed} failed: ${firstError.msg || 'unknown error'} — failed leads still shown in Trash`, 'error');
 }
 
 /* ════════════════════════════════════════════════════
