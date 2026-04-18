@@ -166,7 +166,8 @@
   window.buildLeadsQuery = (filters = {}, pageSize = PAGE_SIZE_DEFAULT, afterSnap = null, beforeSnap = null) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
+    const hasFilters1 = filters.status || filters.service || filters.industry || filters.assignedTo;
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), hasFilters1 ? where('deleted', '==', false) : where('deleted', '!=', true) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -186,7 +187,11 @@
   window.dbCountLeads = async (filters = {}) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
+    // Use != true (catches missing field) when no extra field filters exist — no composite index needed.
+    // With extra equality filters, fall back to == false to avoid composite index requirement.
+    const hasExtraFilters = filters.status || filters.service || filters.industry || filters.assignedTo;
+    const deletedFilter = hasExtraFilters ? where('deleted', '==', false) : where('deleted', '!=', true);
+    const constraints = [ where('tenant_id', '==', tenantId), deletedFilter ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -199,11 +204,13 @@
   window.dbCountAllStatuses = async () => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
+    // Total count: no extra field filter, safe to use != true (includes docs without the deleted field)
     const tenantQuery = query(ref, where('tenant_id', '==', tenantId), where('deleted', '!=', true));
     const statuses = ['New','Contacted','Discovery Call','Qualified','Proposal Sent','Negotiation','Won','Lost'];
     const [totalSnap, ...statusSnaps] = await Promise.all([
       getCountFromServer(tenantQuery),
-      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tenantId), where('deleted','!=',true), where('status','==',s))))
+      // Per-status: combined with status filter — use == false to avoid composite index requirement
+      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tenantId), where('deleted','==',false), where('status','==',s))))
     ]);
     const result = { ALL: totalSnap.data().count };
     statuses.forEach((s,i) => { result[s] = statusSnaps[i].data().count; });
@@ -215,7 +222,8 @@
       if (lastPage) {
         const ref = collection(db, 'leads');
         const tenantId = window._currentTenantId || '';
-        const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true) ];
+        const hasFilters2 = filters.status || filters.service || filters.industry || filters.assignedTo;
+        const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), hasFilters2 ? where('deleted', '==', false) : where('deleted', '!=', true) ];
         if (filters.status)   constraints.push(where('status',      '==', filters.status));
         if (filters.service)  constraints.push(where('service',     '==', filters.service));
         if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
@@ -240,7 +248,7 @@
     const q = query(
       collection(db, 'leads'),
       where('tenant_id', '==', tenantId),
-      where('deleted', '!=', true),
+      where('deleted', '==', false),  // combined with status filter — use == false to avoid composite index
       where('status', '==', status),
       orderBy('createdAt', 'desc'),
       limit(200)
@@ -252,7 +260,8 @@
   window.dbSearchLeads = async (searchTerm, filters = {}, maxDocs = 500) => {
     const ref = collection(db, 'leads');
     const tenantId = window._currentTenantId || '';
-    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '!=', true), limit(maxDocs) ];
+    // dbSearchLeads fetches a large batch client-side — always include extra filters so use == false
+    const constraints = [ orderBy('createdAt', 'desc'), where('tenant_id', '==', tenantId), where('deleted', '==', false), limit(maxDocs) ];
     if (filters.status)   constraints.push(where('status',      '==', filters.status));
     if (filters.service)  constraints.push(where('service',     '==', filters.service));
     if (filters.industry) constraints.push(where('industry',    '==', filters.industry));
