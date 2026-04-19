@@ -453,19 +453,61 @@
     // Store tenant_id globally for use in all queries and writes
     window._currentTenantId = tenantId;
 
-    // ── Fetch tenant doc for currency + timezone ──
-    window._tenantCurrency = 'USD';   // default
-    window._tenantTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone; // browser default
+    // ── Fetch tenant doc for currency + timezone ── starts
+	// ── Fetch tenant doc for currency + timezone ──
+    // Set safe defaults FIRST — before any async call that could fail
+    window._tenantCurrency = 'USD';
+    window._tenantTimezone = 'UTC';
+
+    // Helper: validate an IANA timezone string by testing it with Intl
+    const isValidTz = (tz) => {
+      if (!tz || typeof tz !== 'string' || !tz.trim()) return false;
+      try { new Intl.DateTimeFormat('en-GB', { timeZone: tz.trim() }); return true; }
+      catch(e) { return false; }
+    };
+
     try {
       const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
       if (tenantSnap.exists()) {
-        const td = tenantSnap.data();
-        if (td.currency)  window._tenantCurrency = td.currency;
-        if (td.timezone)  window._tenantTimezone = td.timezone;
+        const td = tenantSnap.data() || {};
+
+        // ── Currency ──
+        if (td.currency && typeof td.currency === 'string' && td.currency.trim()) {
+          window._tenantCurrency = td.currency.trim().toUpperCase();
+        }
+
+        // ── Timezone: tenant field → browser tz → UTC ──
+        if (isValidTz(td.timezone)) {
+          window._tenantTimezone = td.timezone.trim();
+        } else {
+          if (td.timezone) {
+            console.warn('[evoAIDesk] Invalid timezone in tenant doc:', td.timezone,
+              '— Add a valid IANA string (e.g. "Asia/Kolkata") to tenants/' + tenantId);
+          } else {
+            console.warn('[evoAIDesk] No timezone field in tenant doc — tenants/' + tenantId,
+              '— Add field: timezone: "Asia/Kolkata"');
+          }
+          // Try browser timezone as fallback
+          const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (isValidTz(browserTz)) {
+            window._tenantTimezone = browserTz;
+          }
+          // else stays 'UTC'
+        }
+      } else {
+        console.warn('[evoAIDesk] Tenant doc not found for:', tenantId, '— using UTC / USD');
       }
     } catch(e) {
-      console.warn('Could not fetch tenant doc for currency/timezone:', e);
+      console.warn('[evoAIDesk] Could not fetch tenant doc:', e.message || e, '— using UTC / USD');
+      // Safe defaults already set above — app continues normally
     }
+
+    console.log('[evoAIDesk] Tenant config →', {
+      id: tenantId,
+      currency: window._tenantCurrency,
+      timezone: window._tenantTimezone,
+    });
+    // ends
 
     // Format tenant name for display (e.g. "annex-cloud-inc" → "Annex Cloud Inc")
     const tenantDisplay = tenantId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -2312,49 +2354,38 @@ let currentView   = 'table';
    e.g. "12 Apr 2025, 09:41 AM IST"
    If dateOnly is true → returns just the date part (no time), e.g. "12 Apr 2025"
 ──────────────────────────────────────────────────────────────────────── */
-/* ── IANA timezone validator ──────────────────────────────────────────────
-   Tests whether a timezone string is valid before passing it to Intl.
-   Returns the tz string if valid, falls back to 'Asia/Kolkata' (IST) or
-   any other safe default you prefer.
+/* ── Safe timezone resolver ───────────────────────────────────────────────
+   Tries: tenant tz → browser tz → UTC. Never throws.
 ──────────────────────────────────────────────────────────────────────── */
 function getSafeTz() {
   const candidates = [
-    window._tenantTimezone,                                    // tenant Firestore field
-    Intl.DateTimeFormat().resolvedOptions().timeZone,          // browser timezone
-    'UTC',                                                     // absolute fallback
+    window._tenantTimezone,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    'UTC',
   ];
   for (const tz of candidates) {
     if (!tz || typeof tz !== 'string' || !tz.trim()) continue;
     try {
-      // Intl will throw a RangeError if the timezone string is invalid
       new Intl.DateTimeFormat('en-GB', { timeZone: tz.trim() });
       return tz.trim();
-    } catch (e) {
-      console.warn('getSafeTz: invalid timezone skipped →', tz);
+    } catch(e) {
+      console.warn('[evoAIDesk] getSafeTz: skipping invalid tz →', tz);
     }
   }
-  return 'UTC'; // should never reach here
+  return 'UTC';
 }
 
 /* ── Tenant-aware date formatter ──────────────────────────────────────────
-   Accepts:
-     • ISO string         "2025-04-11T14:30:00Z"
-     • Date-only string   "2025-04-11"            (treated as local midnight)
-     • Firestore Timestamp  { toDate() }
-     • JS Date object
-     • Unix ms number
-     • null / undefined / empty string → returns '—'
-
-   dateOnly = true  →  "11 Apr 2025"
-   dateOnly = false →  "11 Apr 2025, 02:30 PM IST"
-
-   Always renders in the tenant's configured IANA timezone.
-   Never crashes regardless of what value or timezone is passed in.
+   Accepts: ISO string · date-only string (YYYY-MM-DD) · Firestore Timestamp
+            · JS Date · Unix ms number · null / undefined → '—'
+   dateOnly = true  →  "11 Apr 2026"
+   dateOnly = false →  "11 Apr 2026, 02:30 PM IST"
+   Never crashes regardless of input or timezone state.
 ──────────────────────────────────────────────────────────────────────── */
 function fmtDate(value, dateOnly = false) {
   if (value === null || value === undefined || value === '') return '—';
 
-  /* ── 1. Coerce to a JS Date ── */
+  // ── 1. Coerce to JS Date ──
   let d;
   try {
     if (value instanceof Date) {
@@ -2362,73 +2393,56 @@ function fmtDate(value, dateOnly = false) {
     } else if (typeof value === 'number') {
       d = new Date(value);
     } else if (typeof value === 'object' && typeof value.toDate === 'function') {
-      // Firestore Timestamp
-      d = value.toDate();
+      d = value.toDate(); // Firestore Timestamp
     } else if (typeof value === 'string') {
       const s = value.trim();
       if (!s) return '—';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        // Date-only: parse as LOCAL midnight to avoid UTC off-by-one-day
-        d = new Date(s + 'T00:00:00');
-      } else {
-        d = new Date(s);
-      }
+      // Date-only: parse as local midnight to avoid UTC off-by-one-day
+      d = /^\d{4}-\d{2}-\d{2}$/.test(s)
+        ? new Date(s + 'T00:00:00')
+        : new Date(s);
     } else {
       d = new Date(String(value));
     }
-  } catch (e) {
-    console.warn('fmtDate: could not parse value →', value, e);
+  } catch(e) {
+    console.warn('[evoAIDesk] fmtDate: coercion failed for value →', value, e);
     return '—';
   }
 
-  /* ── 2. Validate the Date object ── */
+  // ── 2. Validate ──
   if (!d || isNaN(d.getTime())) {
-    console.warn('fmtDate: invalid date value →', value);
+    console.warn('[evoAIDesk] fmtDate: invalid date →', value);
     return '—';
   }
 
-  /* ── 3. Get a guaranteed-valid timezone ── */
+  // ── 3. Get guaranteed-valid timezone ──
   const tz = getSafeTz();
 
-  /* ── 4. Format ── */
+  // ── 4. Format ──
   try {
     if (dateOnly) {
       return new Intl.DateTimeFormat('en-GB', {
-        day:      '2-digit',
-        month:    'short',
-        year:     'numeric',
+        day: '2-digit', month: 'short', year: 'numeric',
         timeZone: tz,
       }).format(d);
     }
     return new Intl.DateTimeFormat('en-GB', {
-      day:          '2-digit',
-      month:        'short',
-      year:         'numeric',
-      hour:         '2-digit',
-      minute:       '2-digit',
-      hour12:       true,
-      timeZone:     tz,
-      timeZoneName: 'short',
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: tz, timeZoneName: 'short',
     }).format(d);
-  } catch (e) {
-    /* Last-resort: format with UTC so the user sees something correct,
-       just without timezone localisation. Never shows a JS error. */
-    console.warn('fmtDate: Intl.DateTimeFormat failed, falling back to UTC →', e);
+  } catch(e) {
+    console.warn('[evoAIDesk] fmtDate: Intl failed, falling back to UTC →', e);
     try {
       return new Intl.DateTimeFormat('en-GB', {
-        day:          '2-digit',
-        month:        'short',
-        year:         'numeric',
+        day: '2-digit', month: 'short', year: 'numeric',
         ...(dateOnly ? {} : {
-          hour:         '2-digit',
-          minute:       '2-digit',
-          hour12:       true,
-          timeZoneName: 'short',
+          hour: '2-digit', minute: '2-digit',
+          hour12: true, timeZoneName: 'short',
         }),
         timeZone: 'UTC',
       }).format(d);
-    } catch (e2) {
-      // Absolute last resort — native toString, at least it won't crash
+    } catch(e2) {
       return dateOnly ? d.toDateString() : d.toString();
     }
   }
