@@ -258,7 +258,7 @@
     }
 
     /* Role-based access: only support, admin, manager */
-    const allowed = ['admin','manager','support','agent'];
+    const allowed = ['super-admin','admin','manager','support','agent'];
     if (role && !allowed.includes(role.toLowerCase())) {
       document.getElementById('authLoading').innerHTML = `
         <img src="https://evoaiglobal.ai/images/favicon.ico" style="height:38px;opacity:.85;"/>
