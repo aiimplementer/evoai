@@ -64,18 +64,46 @@
   /* ─── Map Firestore doc → internal lead object ─── */
   window.docToLead = (docSnap) => {
     const d = docSnap.data();
+
+    /* toDate: converts Firestore Timestamp / string / null → YYYY-MM-DD string or '' */
     const toDate = (v) => {
       if (!v) return '';
-      if (typeof v === 'string') return v;
-      if (v?.toDate) return v.toDate().toISOString().slice(0,10);
-      return String(v);
+      try {
+        if (typeof v === 'string') return v.trim();
+        if (typeof v === 'object' && typeof v.toDate === 'function') {
+          const dt = v.toDate();
+          return isNaN(dt.getTime()) ? '' : dt.toISOString().slice(0, 10);
+        }
+        // Raw Firestore Timestamp shape {seconds, nanoseconds}
+        if (typeof v === 'object' && typeof v.seconds === 'number') {
+          const dt = new Date(v.seconds * 1000);
+          return isNaN(dt.getTime()) ? '' : dt.toISOString().slice(0, 10);
+        }
+      } catch(e) {
+        console.warn('[evoAIDesk] docToLead toDate: failed →', v, e);
+      }
+      return '';
     };
+
+    /* toISO: converts Firestore Timestamp / string / null → full ISO string or '' */
     const toISO = (v) => {
       if (!v) return '';
-      if (typeof v === 'string') return v;
-      if (v?.toDate) return v.toDate().toISOString();
-      return String(v);
+      try {
+        if (typeof v === 'string') return v.trim();
+        if (typeof v === 'object' && typeof v.toDate === 'function') {
+          const dt = v.toDate();
+          return isNaN(dt.getTime()) ? '' : dt.toISOString();
+        }
+        if (typeof v === 'object' && typeof v.seconds === 'number') {
+          const dt = new Date(v.seconds * 1000);
+          return isNaN(dt.getTime()) ? '' : dt.toISOString();
+        }
+      } catch(e) {
+        console.warn('[evoAIDesk] docToLead toISO: failed →', v, e);
+      }
+      return '';
     };
+
     return {
       _docId:          docSnap.id,
       _snap:           docSnap,
@@ -94,10 +122,10 @@
       page:            d.page            || '',
       message:         d.message         || '',
       comments:        d.comments        || '',
-      userAgent:       d.userAgent        || '',
+      userAgent:       d.userAgent       || '',
       dealvalue:       d.dealValue != null ? String(d.dealValue) : '',
-      followup:        toDate(d.followupDate),
-      date:            toDate(d.createdAt),
+      followup:        d.followupDate ? toDate(d.followupDate) : '',
+      date:            d.createdAt       ? toDate(d.createdAt)  : '',
       // ── Assignment fields ──
       assignedTo:      d.assignedTo      || 'Unassigned',
       assignedToEmail: d.assignedToEmail || '',
@@ -3382,12 +3410,26 @@ async function viewLead(leadId, docId, preloadedLead = null) {
   ].map(([k,v]) => `<div style="flex:1;padding:10px 14px;border-right:1px solid var(--border);min-width:0;"><div style="font-size:.62rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;">${k}</div><div style="font-size:.81rem;font-weight:700;color:${k==='👤 Assigned To'&&v!=='Unassigned'?'var(--accent2)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v)}</div></div>`).join('') + `<div style="width:14px;"></div>`;
 
   const section = (title, rows) => {
-    const filled = rows.filter(([,v]) => v && String(v).trim() && String(v) !== '—');
-    if(!filled.length) return '';
-    return `<div class="view-section"><div class="view-section-title">${title}</div>
-      ${filled.map(([k,v,link]) => `<div class="view-row"><span class="view-key">${k}</span><span class="view-val">${
-        k==='Status' ? statusBadge(v) : link ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>` : esc(String(v||'—'))
-      }</span></div>`).join('')}</div>`;
+    const filled = rows.filter(([, v]) => {
+      if (v === null || v === undefined || v === '') return false;
+      const s = String(v).trim();
+      return s !== '' && s !== '—';
+    });
+    if (!filled.length) return '';
+    return `<div class="view-section">
+      <div class="view-section-title">${esc(title)}</div>
+      ${filled.map(([k, v, link]) => `
+        <div class="view-row">
+          <span class="view-key">${esc(k)}</span>
+          <span class="view-val">${
+            k === 'Status'
+              ? statusBadge(v)
+              : link
+                ? `<a href="${esc(String(v))}" target="_blank" rel="noopener">${esc(String(v))}</a>`
+                : esc(String(v || '—'))
+          }</span>
+        </div>`).join('')}
+    </div>`;
   };
 
   // ── Assignment card ──
@@ -3424,11 +3466,32 @@ async function viewLead(leadId, docId, preloadedLead = null) {
 
   document.getElementById('viewBody').innerHTML =
     assignmentHtml +
-    section('Contact Information', [['Name',lead.name],['Email',lead.email],['Phone',lead.phone],['LinkedIn',lead.linkedin,true]]) +
-    section('Company', [['Company',lead.company],['Job Title',lead.jobtitle],['Industry',lead.industry]]) +
-    section('Lead Details', [['Status',lead.status],['Service',lead.service],['Source',lead.source],['Page',lead.page],['Created At', fmtDate(lead.date)]]) +
-    section('System IDs', [['Lead ID',lead.leadId],['Reference Lead ID',lead.reference_lead_id]]) +
-    section('Notes', [['Message',lead.message],['Comments',lead.comments]]);
+    section('Contact Information', [
+      ['Name',       lead.name],
+      ['Email',      lead.email],
+      ['Phone',      lead.phone],
+      ['LinkedIn',   lead.linkedin, true],
+    ]) +
+    section('Company', [
+      ['Company',    lead.company],
+      ['Job Title',  lead.jobtitle],
+      ['Industry',   lead.industry],
+    ]) +
+    section('Lead Details', [
+      ['Status',     lead.status],
+      ['Service',    lead.service],
+      ['Source',     lead.source],
+      ['Page / URL', lead.page],
+      ['Created At', lead.date ? fmtDate(lead.date) : '—'],
+    ]) +
+    section('System IDs', [
+      ['Lead ID',            lead.leadId],
+      ['Reference Lead ID',  lead.reference_lead_id],
+    ]) +
+    section('Notes', [
+      ['Message',  lead.message],
+      ['Comments', lead.comments],
+    ]);
 
   document.getElementById('timelineBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:.78rem;"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>`;
   await loadActivities(_viewingDocId);
