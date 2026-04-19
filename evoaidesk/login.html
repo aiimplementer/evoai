@@ -414,28 +414,30 @@
     color: var(--muted); text-transform: uppercase; margin-bottom: 14px;
   }
 
-  /* Destination cards — stack vertically on the right */
-  .dest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* Destination cards — 1 column: all three stack cleanly */
+  .dest-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
 
   .dest-btn {
     position: relative; overflow: hidden;
-    display: flex; flex-direction: column; align-items: center;
-    gap: 10px; padding: 28px 16px 24px;
+    display: flex; flex-direction: row; align-items: center;
+    gap: 16px; padding: 20px 20px;
     background: var(--surface2); border-radius: 14px;
     border: 1px solid var(--border);
     cursor: pointer; transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s, box-shadow .22s;
-    text-align: center; text-decoration: none; color: var(--text);
-    min-height: 160px; justify-content: center;
+    text-align: left; text-decoration: none; color: var(--text);
+    min-height: 80px; justify-content: flex-start;
   }
   .dest-btn::before {
     content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .22s; pointer-events: none;
   }
-  .dest-btn.leads::before   { background: radial-gradient(ellipse at 50% 0%, rgba(0,229,160,.12), transparent 70%); }
-  .dest-btn.tenants::before { background: radial-gradient(ellipse at 50% 0%, rgba(0,184,255,.12), transparent 70%); }
+  .dest-btn.leads::before    { background: radial-gradient(ellipse at 50% 0%, rgba(0,229,160,.12), transparent 70%); }
+  .dest-btn.tenants::before  { background: radial-gradient(ellipse at 50% 0%, rgba(0,184,255,.12), transparent 70%); }
+  .dest-btn.helpdesk::before { background: radial-gradient(ellipse at 50% 0%, rgba(167,139,250,.12), transparent 70%); }
 
   .dest-btn:hover { transform: translateY(-4px); }
-  .dest-btn.leads:hover   { border-color: rgba(0,229,160,.4);  box-shadow: 0 14px 36px rgba(0,229,160,.10); }
-  .dest-btn.tenants:hover { border-color: rgba(0,184,255,.4); box-shadow: 0 14px 36px rgba(0,184,255,.10); }
+  .dest-btn.leads:hover    { border-color: rgba(0,229,160,.4);   box-shadow: 0 14px 36px rgba(0,229,160,.10); }
+  .dest-btn.tenants:hover  { border-color: rgba(0,184,255,.4);   box-shadow: 0 14px 36px rgba(0,184,255,.10); }
+  .dest-btn.helpdesk:hover { border-color: rgba(167,139,250,.4); box-shadow: 0 14px 36px rgba(167,139,250,.10); }
   .dest-btn:hover::before { opacity: 1; }
   .dest-btn:active { transform: translateY(-1px); }
 
@@ -443,14 +445,19 @@
     width: 54px; height: 54px; border-radius: 13px;
     display: flex; align-items: center; justify-content: center;
   }
-  .dest-btn.leads   .dest-icon { background: rgba(0,229,160,.12); color: var(--accent); }
-  .dest-btn.tenants .dest-icon { background: rgba(0,184,255,.12); color: var(--accent2); }
+  .dest-btn.leads    .dest-icon { background: rgba(0,229,160,.12);   color: var(--accent); }
+  .dest-btn.tenants  .dest-icon { background: rgba(0,184,255,.12);   color: var(--accent2); }
+  .dest-btn.helpdesk .dest-icon { background: rgba(167,139,250,.12); color: #a78bfa; }
   .dest-icon svg { width: 26px; height: 26px; }
 
   .dest-title { font-size: .94rem; font-weight: 600; letter-spacing: -.01em; display: block; }
-  .dest-btn.leads   .dest-title { color: var(--accent); }
-  .dest-btn.tenants .dest-title { color: var(--accent2); }
+  .dest-btn.leads    .dest-title { color: var(--accent); }
+  .dest-btn.tenants  .dest-title { color: var(--accent2); }
+  .dest-btn.helpdesk .dest-title { color: #a78bfa; }
   .dest-desc { font-size: .74rem; color: var(--muted); line-height: 1.45; display: block; }
+
+  /* Text block inside horizontal card */
+  .dest-btn .dest-text { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 
   .dest-arrow {
     position: absolute; bottom: 10px; right: 12px;
@@ -607,8 +614,10 @@
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
             </div>
-            <span class="dest-title">Tenant Setup</span>
-            <span class="dest-desc">Configure users &amp; tenants</span>
+            <div class="dest-text">
+              <span class="dest-title">Tenant Setup</span>
+              <span class="dest-desc">Configure users &amp; tenants</span>
+            </div>
             <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
@@ -624,14 +633,32 @@
                 <rect x="17" y="3" width="4" height="18" rx="1"/>
               </svg>
             </div>
-            <span class="dest-title">Leads Dashboard</span>
-            <span class="dest-desc">Manage &amp; track your Opportunities</span>
+            <div class="dest-text">
+              <span class="dest-title">Leads Dashboard</span>
+              <span class="dest-desc">Manage &amp; track your Opportunities</span>
+            </div>
             <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
           </a>
 
-          
+          <!-- Helpdesk -->
+          <a class="dest-btn helpdesk" onclick="goTo('/evoaidesk/helpdesk.html')">
+            <div class="dest-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <line x1="9" y1="10" x2="9" y2="10"/><line x1="12" y1="10" x2="12" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/>
+              </svg>
+            </div>
+            <div class="dest-text">
+              <span class="dest-title">Helpdesk</span>
+              <span class="dest-desc">Manage tickets &amp; support requests</span>
+            </div>
+            <svg class="dest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+
         </div>
       </div>
 
