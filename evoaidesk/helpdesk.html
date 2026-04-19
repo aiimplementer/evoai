@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>evoAIDesk — Support Desk</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
+
+<!-- ── FIREBASE SDK ── -->
+<script type="module">
+  import { initializeApp }       from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut }
+                                 from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import {
+    getFirestore, collection, doc,
+    getDocs, getDoc, addDoc, updateDoc, deleteDoc,
+    query, where, orderBy, limit, startAfter,
+    getCountFromServer, serverTimestamp, Timestamp
+  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAkwOQZ15O8-_GB9LYNKaAUPe9NYgGUMw4",
+    authDomain: "evoaidesk.firebaseapp.com",
+    projectId: "evoaidesk",
+    storageBucket: "evoaidesk.firebasestorage.app",
+    messagingSenderId: "904271339352",
+    appId: "1:904271339352:web:06c777dd45b9051d8d8f2d"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  let authChecked = false;
+  window._db   = db;
+  window._auth = auth;
+
+  /* ── ID generator ── */
+  window.generateTicketId = () => {
+    const now = new Date();
+    const pad = (n,l=2) => String(n).padStart(l,'0');
+    const ms  = String(now.getMilliseconds()).padStart(3,'0');
+    const rnd = Math.floor(Math.random()*900+100);
+    return `TKT-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${ms}${rnd}`;
+  };
+
+  /* ── Firestore doc → ticket object ── */
+  window.docToTicket = (snap) => {
+    const d = snap.data();
+    const toISO = v => {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      if (v?.toDate) return v.toDate().toISOString();
+      if (typeof v?.seconds === 'number') return new Date(v.seconds*1000).toISOString();
+      return '';
+    };
+    return {
+      _docId:       snap.id,
+      ticketId:     d.ticketId      || snap.id,
+      tenant_id:    d.tenant_id     || '',
+      subject:      d.subject       || '',
+      description:  d.description   || '',
+      status:       d.status        || 'Open',
+      priority:     d.priority      || 'Medium',
+      channel:      d.channel       || 'Manual',
+      category:     d.category      || '',
+      assignedTo:   d.assignedTo    || 'Unassigned',
+      assignedToEmail: d.assignedToEmail || '',
+      reporterName: d.reporterName  || '',
+      reporterEmail:d.reporterEmail || '',
+      lead_ref_id:  d.lead_ref_id   || '',
+      lead_name:    d.lead_name     || '',
+      sla_due:      toISO(d.sla_due),
+      createdAt:    toISO(d.createdAt),
+      updatedAt:    toISO(d.updatedAt),
+      resolvedAt:   toISO(d.resolvedAt),
+      deleted:      d.deleted === true,
+      tags:         Array.isArray(d.tags) ? d.tags : [],
+      comments_count: d.comments_count || 0,
+    };
+  };
+
+  /* ── ticket → Firestore doc ── */
+  window.ticketToDoc = (t, isNew=false) => {
+    const data = {
+      ticketId:       t.ticketId     || '',
+      tenant_id:      t.tenant_id    || window._currentTenantId || '',
+      subject:        t.subject      || '',
+      description:    t.description  || '',
+      status:         t.status       || 'Open',
+      priority:       t.priority     || 'Medium',
+      channel:        t.channel      || 'Manual',
+      category:       t.category     || '',
+      assignedTo:     t.assignedTo   || 'Unassigned',
+      assignedToEmail:t.assignedToEmail || '',
+      reporterName:   t.reporterName || '',
+      reporterEmail:  t.reporterEmail|| '',
+      lead_ref_id:    t.lead_ref_id  || '',
+      lead_name:      t.lead_name    || '',
+      tags:           t.tags         || [],
+      deleted:        t.deleted === true,
+      updatedAt:      serverTimestamp(),
+    };
+    if (t.sla_due) {
+      try { data.sla_due = Timestamp.fromDate(new Date(t.sla_due)); } catch(e){}
+    }
+    if (isNew) data.createdAt = serverTimestamp();
+    if (t.status === 'Resolved' || t.status === 'Closed') {
+      data.resolvedAt = serverTimestamp();
+    }
+    return data;
+  };
+
+  /* ── CRUD ── */
+  window.dbAddTicket = async (t) => {
+    t.ticketId = '';
+    const data = window.ticketToDoc(t, true);
+    const ref  = await addDoc(collection(db, 'tickets'), data);
+    await updateDoc(doc(db, 'tickets', ref.id), { ticketId: ref.id });
+    return ref.id;
+  };
+
+  window.dbUpdateTicket = async (docId, t) => {
+    await updateDoc(doc(db, 'tickets', docId), window.ticketToDoc(t, false));
+  };
+
+  window.dbGetTicket = async (docId) => {
+    const s = await getDoc(doc(db, 'tickets', docId));
+    return s.exists() ? window.docToTicket(s) : null;
+  };
+
+  window.dbSoftDeleteTicket = async (docId) => {
+    await updateDoc(doc(db, 'tickets', docId), { deleted: true, updatedAt: serverTimestamp() });
+  };
+
+  window.dbLoadTickets = async (filters={}, pageSize=20, afterSnap=null) => {
+    const tenantId = window._currentTenantId || '';
+    const constraints = [
+      where('tenant_id','==', tenantId),
+      where('deleted','!=', true),
+      orderBy('createdAt','desc')
+    ];
+    if (filters.status)   constraints.push(where('status',  '==', filters.status));
+    if (filters.priority) constraints.push(where('priority','==', filters.priority));
+    if (filters.assignedTo) constraints.push(where('assignedTo','==', filters.assignedTo));
+    if (afterSnap) constraints.push(startAfter(afterSnap));
+    constraints.push(limit(pageSize));
+    const snap = await getDocs(query(collection(db, 'tickets'), ...constraints));
+    return {
+      tickets:  snap.docs.map(d => window.docToTicket(d)),
+      lastSnap: snap.docs[snap.docs.length-1] || null,
+      empty:    snap.empty
+    };
+  };
+
+  window.dbCountByStatus = async () => {
+    const tid = window._currentTenantId || '';
+    const ref = collection(db, 'tickets');
+    const statuses = ['Open','In Progress','Awaiting Customer','Resolved','Closed'];
+    const [totalSnap,...statusSnaps] = await Promise.all([
+      getCountFromServer(query(ref, where('tenant_id','==',tid), where('deleted','!=',true))),
+      ...statuses.map(s => getCountFromServer(query(ref, where('tenant_id','==',tid), where('deleted','==',false), where('status','==',s))))
+    ]);
+    const r = { ALL: totalSnap.data().count };
+    statuses.forEach((s,i) => { r[s] = statusSnaps[i].data().count; });
+    return r;
+  };
+
+  window.dbSearchTickets = async (term, filters={}) => {
+    const tid = window._currentTenantId || '';
+    const constraints = [
+      where('tenant_id','==',tid), where('deleted','==',false),
+      orderBy('createdAt','desc'), limit(500)
+    ];
+    if (filters.status)   constraints.push(where('status',  '==', filters.status));
+    if (filters.priority) constraints.push(where('priority','==', filters.priority));
+    const snap = await getDocs(query(collection(db, 'tickets'), ...constraints));
+    const tickets = snap.docs.map(d => window.docToTicket(d));
+    if (!term) return tickets;
+    const t = term.toLowerCase();
+    return tickets.filter(tk =>
+      (tk.subject+tk.reporterName+tk.reporterEmail+tk.ticketId+tk.description+tk.lead_name).toLowerCase().includes(t)
+    );
+  };
+
+  /* ── Comments sub-collection ── */
+  window.dbAddComment = async (ticketDocId, comment) => {
+    const ref = collection(db, 'tickets', ticketDocId, 'comments');
+    await addDoc(ref, {
+      text:      comment.text,
+      authorName:comment.authorName,
+      authorEmail:comment.authorEmail,
+      internal:  comment.internal || false,
+      createdAt: serverTimestamp(),
+      tenant_id: window._currentTenantId || ''
+    });
+    const cSnap = await getCountFromServer(ref);
+    await updateDoc(doc(db, 'tickets', ticketDocId), { comments_count: cSnap.data().count, updatedAt: serverTimestamp() });
+  };
+
+  window.dbLoadComments = async (ticketDocId) => {
+    const snap = await getDocs(query(
+      collection(db, 'tickets', ticketDocId, 'comments'),
+      orderBy('createdAt','asc')
+    ));
+    return snap.docs.map(d => ({ _id: d.id, ...d.data(),
+      createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : ''
+    }));
+  };
+
+  /* ── Fetch leads for linking ── */
+  window.dbSearchLeadsForLink = async (term) => {
+    if (!term || term.length < 2) return [];
+    const tid = window._currentTenantId || '';
+    const snap = await getDocs(query(
+      collection(db, 'leads'),
+      where('tenant_id','==',tid), where('deleted','!=',true),
+      orderBy('createdAt','desc'), limit(300)
+    ));
+    const t = term.toLowerCase();
+    return snap.docs.map(d => ({
+      _docId: d.id,
+      name:  d.data().fullName || d.data().name || '',
+      email: d.data().email    || '',
+      company: d.data().companyName || d.data().company || ''
+    })).filter(l => (l.name+l.email+l.company).toLowerCase().includes(t)).slice(0,8);
+  };
+
+  /* ── AUTH ── */
+  onAuthStateChanged(auth, async user => {
+    if (authChecked) return;
+    authChecked = true;
+    if (!user) { window.location.replace('login.html'); return; }
+
+    const name    = user.displayName || user.email.split('@')[0];
+    const email   = user.email;
+    const initials= name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+
+    /* fetch tenant + role */
+    let tenantId = null, role = '';
+    try {
+      const uSnap = await getDoc(doc(db, 'users', email));
+      if (uSnap.exists()) {
+        tenantId = uSnap.data().tenant_id || null;
+        role     = uSnap.data().role      || '';
+      }
+    } catch(e) { console.error('User fetch error', e); }
+
+    if (!tenantId) {
+      document.getElementById('authLoading').innerHTML = `
+        <img src="https://evoaiglobal.ai/images/favicon.ico" style="height:38px;opacity:.85;"/>
+        <div style="color:#ff4d6d;font-size:.9rem;text-align:center;max-width:320px;">
+          <strong>Access Denied</strong><br>
+          <span style="color:#6b7fa3;font-size:.78rem;">No tenant linked. Contact your administrator.</span>
+        </div>`;
+      return;
+    }
+
+    /* Role-based access: only support, admin, manager */
+    const allowed = ['admin','manager','support','agent'];
+    if (role && !allowed.includes(role.toLowerCase())) {
+      document.getElementById('authLoading').innerHTML = `
+        <img src="https://evoaiglobal.ai/images/favicon.ico" style="height:38px;opacity:.85;"/>
+        <div style="color:#ff4d6d;font-size:.9rem;text-align:center;max-width:320px;">
+          <strong>Access Restricted</strong><br>
+          <span style="color:#6b7fa3;font-size:.78rem;">Your role (${role}) does not have helpdesk access.</span>
+        </div>`;
+      return;
+    }
+
+    window._currentTenantId  = tenantId;
+    window._currentUserName  = name;
+    window._currentUserEmail = email;
+    window._currentUserRole  = role;
+
+    const tenantDisplay = tenantId.split('-').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
+
+    document.getElementById('authLoading').style.display  = 'none';
+    document.getElementById('authShell').style.display    = 'contents';
+    document.getElementById('userInitials').textContent   = initials;
+    document.getElementById('userName').textContent       = name;
+    document.getElementById('userTenantName').textContent = tenantDisplay;
+    document.getElementById('sideUserInitials').textContent = initials;
+    document.getElementById('sideUserName').textContent   = name;
+    document.getElementById('sideUserEmail').textContent  = email;
+    if (role) {
+      const rb = document.getElementById('sideUserRole');
+      if (rb) { rb.textContent = role; rb.style.display = 'inline-block'; }
+    }
+
+    window.initApp();
+  });
+
+  window.doSignOut = async () => {
+    try { await signOut(auth); window.location.replace('login.html'); } catch(e){}
+  };
+</script>
+
+<style>
+  :root {
+    --bg:       #080c10;
+    --surface:  #0e1420;
+    --surface2: #141c2a;
+    --border:   #1e2d42;
+    --accent:   #00e5a0;
+    --accent2:  #00b8ff;
+    --danger:   #ff4d6d;
+    --warn:     #ffb730;
+    --text:     #e8f0fe;
+    --muted:    #6b7fa3;
+    --font:     'Sora', sans-serif;
+    --mono:     'DM Mono', monospace;
+    --nav-h:    60px;
+    /* helpdesk accent – a softer blue-teal to distinguish from CRM green */
+    --hd:       #00b8ff;
+  }
+
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); min-height:100vh; overflow-x:hidden; }
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* AUTH LOADING */
+  #authLoading {
+    position:fixed; inset:0; z-index:9999; background:var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;
+  }
+  #authLoading img { height:38px; opacity:.85; }
+  .auth-spinner { width:22px; height:22px; border:2px solid var(--border); border-top-color:var(--hd); border-radius:50%; animation:spin .7s linear infinite; }
+  #authLoading p { font-size:.75rem; color:var(--muted); font-family:var(--mono); letter-spacing:.08em; }
+
+  /* NAV */
+  nav {
+    position:sticky; top:0; z-index:100;
+    background:rgba(8,12,16,.92); backdrop-filter:blur(18px);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 28px; height:var(--nav-h);
+  }
+  .nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+  .nav-badge {
+    font-size:.72rem; font-family:var(--mono); letter-spacing:.06em;
+    background:rgba(0,184,255,.1); border:1px solid rgba(0,184,255,.25);
+    color:var(--hd); padding:3px 10px; border-radius:5px;
+  }
+  .nav-right { display:flex; align-items:center; gap:10px; }
+  .pill-btn { font-family:var(--font); font-size:.78rem; font-weight:600; letter-spacing:.04em; cursor:pointer; border:none; border-radius:6px; padding:7px 16px; transition:all .18s; }
+  .pill-btn.outline { background:transparent; border:1px solid var(--border); color:var(--muted); }
+  .pill-btn.outline:hover { border-color:var(--hd); color:var(--hd); }
+  .pill-btn.primary { background:var(--hd); color:#080c10; }
+  .pill-btn.primary:hover { background:#33c6ff; }
+  .pill-btn.danger { background:transparent; border:1px solid rgba(255,77,109,.3); color:var(--danger); }
+  .pill-btn.danger:hover { background:rgba(255,77,109,.08); }
+  .user-chip { display:flex; align-items:center; gap:8px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:5px 12px 5px 6px; }
+  .user-avatar { width:26px; height:26px; border-radius:6px; background:linear-gradient(135deg,var(--hd),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:.65rem; font-weight:700; color:#080c10; flex-shrink:0; font-family:var(--mono); }
+  .user-info { line-height:1.2; }
+  .user-info-name   { font-size:.75rem; font-weight:600; color:var(--text); }
+  .user-info-tenant { font-size:.63rem; color:var(--hd); font-family:var(--mono); letter-spacing:.04em; opacity:.85; }
+  .signout-btn { display:flex; align-items:center; gap:6px; background:transparent; border:1px solid var(--border); color:var(--muted); font-family:var(--font); font-size:.76rem; font-weight:500; border-radius:6px; padding:6px 12px; cursor:pointer; transition:all .16s; }
+  .signout-btn:hover { border-color:var(--danger); color:var(--danger); }
+
+  /* LAYOUT */
+  .shell { display:grid; grid-template-columns:230px 1fr; height:calc(100vh - var(--nav-h)); overflow:hidden; }
+
+  /* SIDEBAR */
+  aside { border-right:1px solid var(--border); background:var(--surface); display:flex; flex-direction:column; height:100%; overflow:hidden; }
+  .aside-scroll { flex:1; overflow-y:auto; padding:10px 0 8px; }
+  .aside-scroll::-webkit-scrollbar { width:4px; }
+  .aside-section { padding:0 16px 4px; }
+  .aside-label { font-size:.62rem; font-weight:600; letter-spacing:.12em; color:var(--muted); text-transform:uppercase; padding:8px 0 6px; display:flex; align-items:center; gap:6px; }
+  .aside-item { display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:7px; font-size:.81rem; font-weight:500; cursor:pointer; color:var(--muted); transition:all .14s; margin-bottom:2px; border:1px solid transparent; }
+  .aside-item:hover { background:var(--surface2); color:var(--text); }
+  .aside-item.active { background:rgba(0,184,255,.08); border-color:rgba(0,184,255,.22); color:var(--hd); }
+  .aside-item.active-danger { background:rgba(255,77,109,.08); border-color:rgba(255,77,109,.2); color:var(--danger); }
+  .aside-item svg { flex-shrink:0; }
+  .aside-count { margin-left:auto; font-family:var(--mono); font-size:.65rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:1px 7px; border-radius:20px; }
+  .aside-count-warn { margin-left:auto; font-family:var(--mono); font-size:.65rem; background:rgba(255,183,48,.1); border:1px solid rgba(255,183,48,.25); color:var(--warn); padding:1px 7px; border-radius:20px; }
+  .aside-count-danger { margin-left:auto; font-family:var(--mono); font-size:.65rem; background:rgba(255,77,109,.1); border:1px solid rgba(255,77,109,.25); color:var(--danger); padding:1px 7px; border-radius:20px; }
+  .aside-user-footer { flex-shrink:0; padding:14px 16px; border-top:1px solid var(--border); background:var(--surface); display:flex; align-items:center; gap:10px; }
+  .aside-user-footer .user-avatar { width:30px; height:30px; border-radius:7px; font-size:.7rem; }
+  .aside-user-text { overflow:hidden; }
+  .aside-user-name  { font-size:.76rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .aside-user-email { font-size:.65rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .aside-user-role  { display:none; margin-top:3px; font-size:.58rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--hd); background:rgba(0,184,255,.1); border:1px solid rgba(0,184,255,.2); padding:1px 6px; border-radius:4px; font-family:var(--mono); }
+
+  /* MAIN */
+  main { flex:1; overflow-y:auto; display:flex; flex-direction:column; background:var(--bg); }
+  .main-header { padding:18px 28px 0; flex-shrink:0; }
+  .main-header-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .main-title { font-size:1.05rem; font-weight:700; letter-spacing:-.01em; }
+  .main-sub   { font-size:.75rem; color:var(--muted); margin-top:2px; }
+
+  /* STAT CARDS */
+  .stat-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; padding:0 28px; margin-bottom:18px; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; cursor:pointer; transition:all .18s; }
+  .stat-card:hover { border-color:var(--hd); background:rgba(0,184,255,.04); }
+  .stat-card.active { border-color:var(--hd); background:rgba(0,184,255,.07); }
+  .stat-card.danger { }
+  .stat-card.danger:hover,.stat-card.danger.active { border-color:var(--warn); background:rgba(255,183,48,.06); }
+  .stat-num  { font-size:1.5rem; font-weight:700; font-family:var(--mono); color:var(--text); }
+  .stat-label{ font-size:.68rem; color:var(--muted); margin-top:2px; letter-spacing:.04em; text-transform:uppercase; }
+  .stat-dot  { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; vertical-align:middle; }
+
+  /* SEARCH / FILTERS */
+  .toolbar { display:flex; align-items:center; gap:10px; padding:0 28px 12px; }
+  .search-wrap { flex:1; position:relative; }
+  .search-wrap svg { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
+  .search-input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 12px 8px 34px; color:var(--text); font-family:var(--font); font-size:.82rem; outline:none; transition:border-color .16s; }
+  .search-input:focus { border-color:var(--hd); }
+  .search-input::placeholder { color:var(--muted); }
+  .filter-select { background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:8px 12px; color:var(--muted); font-family:var(--font); font-size:.78rem; outline:none; cursor:pointer; transition:border-color .16s; }
+  .filter-select:focus { border-color:var(--hd); color:var(--text); }
+
+  /* TICKET TABLE */
+  .table-wrap { flex:1; overflow-y:auto; padding:0 28px 20px; }
+  .ticket-table { width:100%; border-collapse:collapse; }
+  .ticket-table thead th { position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border); padding:9px 12px; font-size:.68rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); text-align:left; white-space:nowrap; }
+  .ticket-table tbody tr { border-bottom:1px solid rgba(30,45,66,.5); cursor:pointer; transition:background .12s; }
+  .ticket-table tbody tr:hover { background:rgba(0,184,255,.04); }
+  .ticket-table td { padding:11px 12px; font-size:.81rem; vertical-align:middle; }
+  .ticket-table td.mono { font-family:var(--mono); font-size:.72rem; color:var(--muted); }
+
+  /* BADGES */
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:.68rem; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  .badge-open     { background:rgba(0,184,255,.12); color:var(--hd);    border:1px solid rgba(0,184,255,.25); }
+  .badge-progress { background:rgba(255,183,48,.12); color:var(--warn);  border:1px solid rgba(255,183,48,.25); }
+  .badge-awaiting { background:rgba(107,127,163,.12); color:var(--muted); border:1px solid rgba(107,127,163,.2); }
+  .badge-resolved { background:rgba(0,229,160,.12); color:var(--accent); border:1px solid rgba(0,229,160,.25); }
+  .badge-closed   { background:rgba(20,28,42,.8);  color:var(--muted);  border:1px solid var(--border); }
+  .badge-critical { background:rgba(255,77,109,.12); color:var(--danger); border:1px solid rgba(255,77,109,.25); }
+  .badge-high     { background:rgba(255,183,48,.12); color:var(--warn);   border:1px solid rgba(255,183,48,.2); }
+  .badge-medium   { background:rgba(0,184,255,.1);   color:var(--hd);    border:1px solid rgba(0,184,255,.2); }
+  .badge-low      { background:rgba(107,127,163,.1); color:var(--muted); border:1px solid rgba(107,127,163,.15); }
+
+  /* CHANNEL BADGE */
+  .ch-badge { display:inline-flex; align-items:center; gap:4px; font-size:.67rem; font-weight:500; font-family:var(--mono); color:var(--muted); }
+
+  /* SLA indicator */
+  .sla-ok   { color:var(--accent); font-size:.72rem; font-family:var(--mono); }
+  .sla-warn { color:var(--warn);   font-size:.72rem; font-family:var(--mono); }
+  .sla-over { color:var(--danger); font-size:.72rem; font-family:var(--mono); animation:pulse 1.4s ease-in-out infinite; }
+
+  /* EMPTY STATE */
+  .empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; gap:14px; padding:60px 20px; animation:fadeIn .3s ease; }
+  .empty-icon  { width:48px; height:48px; border-radius:12px; background:var(--surface2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--muted); }
+  .empty-title { font-size:.92rem; font-weight:600; color:var(--text); }
+  .empty-sub   { font-size:.78rem; color:var(--muted); text-align:center; max-width:300px; }
+
+  /* MODAL */
+  .modal-bg { position:fixed; inset:0; z-index:300; background:rgba(4,8,14,.88); backdrop-filter:blur(8px); display:none; align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:94vw; max-width:700px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 40px 100px rgba(0,0,0,.7); animation:slideUp .22s ease; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 24px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .modal-title { font-size:.95rem; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .modal-icon  { width:32px; height:32px; border-radius:8px; background:rgba(0,184,255,.1); border:1px solid rgba(0,184,255,.2); display:flex; align-items:center; justify-content:center; color:var(--hd); flex-shrink:0; }
+  .modal-close { width:30px; height:30px; border-radius:7px; background:transparent; border:1px solid var(--border); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .14s; }
+  .modal-close:hover { border-color:var(--danger); color:var(--danger); }
+  .modal-body { flex:1; overflow-y:auto; padding:22px 24px; }
+  .modal-foot { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 24px; border-top:1px solid var(--border); flex-shrink:0; }
+
+  /* DETAIL PANEL (slide-in) */
+  #detailPanel { position:fixed; top:0; right:-580px; bottom:0; z-index:200; width:560px; background:var(--surface); border-left:1px solid var(--border); box-shadow:-20px 0 60px rgba(0,0,0,.5); display:flex; flex-direction:column; transition:right .3s cubic-bezier(.4,0,.2,1); overflow:hidden; }
+  #detailPanel.open { right:0; }
+  .detail-overlay { display:none; position:fixed; inset:0; z-index:199; background:rgba(4,8,14,.4); backdrop-filter:blur(2px); }
+  .detail-overlay.open { display:block; }
+  .detail-head { display:flex; align-items:flex-start; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--border); flex-shrink:0; gap:10px; }
+  .detail-head-info { flex:1; min-width:0; }
+  .detail-subject { font-size:1rem; font-weight:700; color:var(--text); line-height:1.35; margin-bottom:6px; }
+  .detail-meta    { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .detail-close   { width:30px; height:30px; border-radius:7px; background:transparent; border:1px solid var(--border); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .14s; }
+  .detail-close:hover { border-color:var(--danger); color:var(--danger); }
+  .detail-body { flex:1; overflow-y:auto; padding:0; display:flex; flex-direction:column; }
+  .detail-section { padding:16px 22px; border-bottom:1px solid var(--border); }
+  .detail-section-title { font-size:.63rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .detail-field { }
+  .detail-field-label { font-size:.65rem; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin-bottom:3px; }
+  .detail-field-val   { font-size:.82rem; color:var(--text); font-weight:500; }
+  .detail-field-val.mono { font-family:var(--mono); font-size:.75rem; color:var(--muted); }
+  .detail-desc { font-size:.83rem; color:var(--text); line-height:1.65; white-space:pre-wrap; }
+
+  /* INLINE EDIT */
+  .detail-select { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 10px; color:var(--text); font-family:var(--font); font-size:.8rem; outline:none; cursor:pointer; transition:border-color .14s; width:100%; }
+  .detail-select:focus { border-color:var(--hd); }
+
+  /* COMMENTS */
+  .comment-list { padding:14px 22px; flex:1; display:flex; flex-direction:column; gap:10px; }
+  .comment-item { display:flex; gap:10px; animation:fadeIn .2s ease; }
+  .comment-avatar { width:28px; height:28px; border-radius:6px; background:linear-gradient(135deg,var(--hd),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:.62rem; font-weight:700; color:#080c10; flex-shrink:0; font-family:var(--mono); }
+  .comment-bubble { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 13px; }
+  .comment-bubble.internal { border-color:rgba(255,183,48,.25); background:rgba(255,183,48,.05); }
+  .comment-meta   { font-size:.68rem; color:var(--muted); margin-bottom:5px; display:flex; align-items:center; gap:8px; }
+  .comment-text   { font-size:.82rem; color:var(--text); line-height:1.6; white-space:pre-wrap; }
+  .comment-input-wrap { padding:14px 22px; border-top:1px solid var(--border); flex-shrink:0; background:var(--surface); }
+  .comment-textarea { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-family:var(--font); font-size:.82rem; outline:none; resize:none; transition:border-color .14s; line-height:1.5; }
+  .comment-textarea:focus { border-color:var(--hd); }
+  .comment-footer { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+  .internal-toggle { display:flex; align-items:center; gap:7px; font-size:.74rem; color:var(--muted); cursor:pointer; }
+  .internal-toggle input { accent-color:var(--warn); }
+
+  /* FORM ELEMENTS */
+  .form-row  { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+  .form-row.full { grid-template-columns:1fr; }
+  .form-field { display:flex; flex-direction:column; gap:5px; }
+  .form-label { font-size:.68rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .form-input, .form-select, .form-textarea { background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; color:var(--text); font-family:var(--font); font-size:.83rem; outline:none; transition:border-color .15s; width:100%; }
+  .form-input:focus,.form-select:focus,.form-textarea:focus { border-color:var(--hd); }
+  .form-input::placeholder,.form-textarea::placeholder { color:var(--muted); }
+  .form-textarea { resize:vertical; min-height:90px; }
+  .form-select option { background:var(--surface2); }
+
+  /* LEAD LINK SEARCH */
+  .lead-search-wrap { position:relative; }
+  .lead-dropdown { position:absolute; top:calc(100%+4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; z-index:50; max-height:180px; overflow-y:auto; display:none; box-shadow:0 16px 40px rgba(0,0,0,.5); }
+  .lead-dropdown.open { display:block; animation:slideUp .15s ease; }
+  .lead-opt { padding:9px 13px; cursor:pointer; font-size:.8rem; color:var(--text); border-bottom:1px solid rgba(30,45,66,.4); transition:background .1s; }
+  .lead-opt:hover { background:var(--surface2); }
+  .lead-opt:last-child { border-bottom:none; }
+  .lead-opt-name  { font-weight:600; }
+  .lead-opt-email { font-size:.71rem; color:var(--muted); font-family:var(--mono); }
+
+  /* TOAST */
+  #toastContainer { position:fixed; bottom:24px; right:24px; z-index:9999; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+  .toast { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:11px 16px; font-size:.82rem; animation:slideUp .22s ease; pointer-events:none; min-width:240px; max-width:360px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .toast.success { border-color:rgba(0,229,160,.3); }
+  .toast.error   { border-color:rgba(255,77,109,.3); }
+  .toast.info    { border-color:rgba(0,184,255,.3); }
+
+  /* LOADING SKELETON */
+  .skel { background:var(--surface2); border-radius:4px; animation:pulse 1.5s ease-in-out infinite; }
+
+  /* PAGINATION */
+  .pagination { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:12px 28px; border-top:1px solid var(--border); flex-shrink:0; }
+  .page-btn { background:var(--surface2); border:1px solid var(--border); color:var(--muted); border-radius:6px; padding:5px 13px; font-family:var(--font); font-size:.76rem; cursor:pointer; transition:all .14s; }
+  .page-btn:hover:not(:disabled) { border-color:var(--hd); color:var(--hd); }
+  .page-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .page-info { font-size:.73rem; color:var(--muted); font-family:var(--mono); }
+
+  /* TAG */
+  .tag { display:inline-flex; align-items:center; gap:4px; font-size:.65rem; font-weight:500; padding:2px 8px; border-radius:20px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- AUTH LOADING -->
+<div id="authLoading">
+  <img src="https://evoaiglobal.ai/images/favicon.ico" alt="evoAI"/>
+  <div class="auth-spinner"></div>
+  <p>Authenticating · Support Desk</p>
+</div>
+
+<!-- MAIN APP -->
+<div id="authShell" style="display:none">
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">
+    <img src="https://evoaiglobal.ai/images/favicon.ico" style="height:28px;opacity:.9;" alt="evo"/>
+    <span style="font-size:.88rem;font-weight:700;letter-spacing:-.01em;color:var(--text)">evoAIDesk</span>
+    <span class="nav-badge">Support Desk</span>
+  </a>
+  <div class="nav-right">
+    <button class="pill-btn outline" onclick="openCreateModal()" style="display:flex;align-items:center;gap:6px;font-size:.76rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Ticket
+    </button>
+    <button class="pill-btn outline" onclick="refreshAll()" style="font-size:.76rem;">↻ Refresh</button>
+    <a href="dashboard.html" class="pill-btn outline" style="font-size:.76rem;display:flex;align-items:center;gap:6px;text-decoration:none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      CRM
+    </a>
+    <div class="user-chip" id="userChipWrap">
+      <div class="user-avatar" id="userInitials">—</div>
+      <div class="user-info">
+        <div class="user-info-name"   id="userName">—</div>
+        <div class="user-info-tenant" id="userTenantName">—</div>
+      </div>
+    </div>
+    <button class="signout-btn" onclick="doSignOut()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign Out
+    </button>
+  </div>
+</nav>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="aside-scroll">
+      <div class="aside-section">
+        <div class="aside-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Inbox
+        </div>
+        <div class="aside-item active" id="filter-ALL" onclick="setFilter('ALL',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          All Tickets <span class="aside-count" id="cnt-ALL">—</span>
+        </div>
+        <div class="aside-item" id="filter-Open" onclick="setFilter('Open',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          Open <span class="aside-count" id="cnt-Open">—</span>
+        </div>
+        <div class="aside-item" id="filter-In Progress" onclick="setFilter('In Progress',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-5.4"/></svg>
+          In Progress <span class="aside-count" id="cnt-In Progress">—</span>
+        </div>
+        <div class="aside-item" id="filter-Awaiting Customer" onclick="setFilter('Awaiting Customer',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Awaiting Customer <span class="aside-count" id="cnt-Awaiting Customer">—</span>
+        </div>
+        <div class="aside-item" id="filter-Resolved" onclick="setFilter('Resolved',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Resolved <span class="aside-count" id="cnt-Resolved">—</span>
+        </div>
+        <div class="aside-item" id="filter-Closed" onclick="setFilter('Closed',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Closed <span class="aside-count" id="cnt-Closed">—</span>
+        </div>
+      </div>
+
+      <div class="aside-section" style="margin-top:8px;">
+        <div class="aside-label">Priority</div>
+        <div class="aside-item" id="filter-p-Critical" onclick="setPriorityFilter('Critical',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Critical <span class="aside-count-danger" id="cnt-p-Critical">—</span>
+        </div>
+        <div class="aside-item" id="filter-p-High" onclick="setPriorityFilter('High',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb730" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          High <span class="aside-count-warn" id="cnt-p-High">—</span>
+        </div>
+        <div class="aside-item" id="filter-p-Medium" onclick="setPriorityFilter('Medium',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Medium <span class="aside-count" id="cnt-p-Medium">—</span>
+        </div>
+        <div class="aside-item" id="filter-p-Low" onclick="setPriorityFilter('Low',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          Low <span class="aside-count" id="cnt-p-Low">—</span>
+        </div>
+      </div>
+
+      <div class="aside-section" style="margin-top:8px;">
+        <div class="aside-label">Source channel</div>
+        <div class="aside-item" id="filter-c-Email" onclick="setChannelFilter('Email',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Email
+        </div>
+        <div class="aside-item" id="filter-c-Chat" onclick="setChannelFilter('Chat',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Chat
+        </div>
+        <div class="aside-item" id="filter-c-Webhook" onclick="setChannelFilter('Webhook',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Webhook / API
+        </div>
+        <div class="aside-item" id="filter-c-Manual" onclick="setChannelFilter('Manual',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Manual
+        </div>
+      </div>
+
+      <div class="aside-section" style="margin-top:8px;">
+        <div class="aside-label">Quick actions</div>
+        <div class="aside-item" onclick="setAssignedToMe()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          My Tickets <span class="aside-count" id="cnt-mine">—</span>
+        </div>
+        <div class="aside-item" onclick="setOverdueFilter()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          SLA Breached <span class="aside-count-danger" id="cnt-overdue">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar footer -->
+    <div class="aside-user-footer">
+      <div class="user-avatar" id="sideUserInitials">—</div>
+      <div class="aside-user-text">
+        <div class="aside-user-name"  id="sideUserName">—</div>
+        <div class="aside-user-email" id="sideUserEmail">—</div>
+        <div class="aside-user-role"  id="sideUserRole"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main id="mainContent">
+    <!-- Header -->
+    <div class="main-header">
+      <div class="main-header-row">
+        <div>
+          <div class="main-title" id="mainTitle">All Tickets</div>
+          <div class="main-sub"  id="mainSub">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Stat cards -->
+      <div class="stat-row">
+        <div class="stat-card" onclick="setFilter('Open',document.getElementById('filter-Open'))">
+          <div class="stat-num" id="stat-open">—</div>
+          <div class="stat-label"><span class="stat-dot" style="background:var(--hd)"></span>Open</div>
+        </div>
+        <div class="stat-card" onclick="setFilter('In Progress',document.getElementById('filter-In Progress'))">
+          <div class="stat-num" id="stat-progress">—</div>
+          <div class="stat-label"><span class="stat-dot" style="background:var(--warn)"></span>In Progress</div>
+        </div>
+        <div class="stat-card" onclick="setFilter('Awaiting Customer',document.getElementById('filter-Awaiting Customer'))">
+          <div class="stat-num" id="stat-awaiting">—</div>
+          <div class="stat-label"><span class="stat-dot" style="background:var(--muted)"></span>Awaiting</div>
+        </div>
+        <div class="stat-card" onclick="setFilter('Resolved',document.getElementById('filter-Resolved'))">
+          <div class="stat-num" id="stat-resolved">—</div>
+          <div class="stat-label"><span class="stat-dot" style="background:var(--accent)"></span>Resolved</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-num" id="stat-sla" style="color:var(--warn)">—</div>
+          <div class="stat-label"><span class="stat-dot" style="background:var(--warn)"></span>SLA Due Today</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="search-input" id="searchInput" placeholder="Search tickets, reporters, IDs…" oninput="onSearch(this.value)"/>
+      </div>
+      <select class="filter-select" id="prioritySelect" onchange="onPriorityFilter(this.value)">
+        <option value="">All Priorities</option>
+        <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+      </select>
+      <select class="filter-select" id="channelSelect" onchange="onChannelFilter(this.value)">
+        <option value="">All Channels</option>
+        <option>Email</option><option>Chat</option><option>Webhook</option><option>Manual</option>
+      </select>
+      <select class="filter-select" id="assigneeSelect" onchange="onAssigneeFilter(this.value)">
+        <option value="">All Agents</option>
+        <option>Unassigned</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" id="tableWrap">
+      <table class="ticket-table" id="ticketTable">
+        <thead>
+          <tr>
+            <th style="width:130px">Ticket ID</th>
+            <th>Subject</th>
+            <th style="width:110px">Reporter</th>
+            <th style="width:90px">Status</th>
+            <th style="width:88px">Priority</th>
+            <th style="width:80px">Channel</th>
+            <th style="width:110px">Assigned To</th>
+            <th style="width:95px">SLA Due</th>
+            <th style="width:90px">Created</th>
+          </tr>
+        </thead>
+        <tbody id="ticketTbody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state" style="display:none">
+        <div class="empty-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="empty-title">No tickets found</div>
+        <div class="empty-sub" id="emptySubText">No tickets match the current filter.</div>
+        <button class="pill-btn primary" onclick="openCreateModal()" style="margin-top:4px;font-size:.78rem;">+ Create Ticket</button>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="paginationRow">
+      <span class="page-info" id="pageInfo">—</span>
+      <button class="page-btn" id="prevBtn" onclick="loadPrev()" disabled>← Prev</button>
+      <button class="page-btn" id="nextBtn" onclick="loadNext()" disabled>Next →</button>
+    </div>
+  </main>
+</div><!-- end shell -->
+
+<!-- ────────────────────────────────────────────────
+     CREATE / EDIT TICKET MODAL
+──────────────────────────────────────────────── -->
+<div class="modal-bg" id="createModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">
+        <div class="modal-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <span id="createModalTitle">New Support Ticket</span>
+      </div>
+      <button class="modal-close" onclick="closeCreateModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row full">
+        <div class="form-field">
+          <label class="form-label">Subject *</label>
+          <input class="form-input" id="f-subject" placeholder="Brief description of the issue…"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label">Reporter Name</label>
+          <input class="form-input" id="f-reporterName" placeholder="Customer name"/>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Reporter Email</label>
+          <input class="form-input" id="f-reporterEmail" type="email" placeholder="customer@example.com"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label">Priority</label>
+          <select class="form-select" id="f-priority">
+            <option>Medium</option><option>Low</option><option>High</option><option>Critical</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Channel / Source</label>
+          <select class="form-select" id="f-channel">
+            <option>Manual</option><option>Email</option><option>Chat</option><option>Webhook</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label">Category</label>
+          <select class="form-select" id="f-category">
+            <option value="">— Select —</option>
+            <option>Billing</option><option>Technical</option><option>Feature Request</option>
+            <option>Bug</option><option>Account</option><option>General Enquiry</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Assign To</label>
+          <input class="form-input" id="f-assignedTo" placeholder="Agent name or Unassigned"/>
+        </div>
+      </div>
+      <!-- Link to Lead -->
+      <div class="form-row full">
+        <div class="form-field">
+          <label class="form-label">Link to CRM Lead (optional)</label>
+          <div class="lead-search-wrap">
+            <input class="form-input" id="f-leadSearch" placeholder="Search lead by name, email, company…" oninput="onLeadSearch(this.value)" autocomplete="off"/>
+            <div class="lead-dropdown" id="leadDropdown"></div>
+          </div>
+          <div id="linkedLeadChip" style="margin-top:6px;display:none">
+            <span class="tag" style="cursor:pointer;" onclick="clearLinkedLead()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span id="linkedLeadName">—</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="form-field">
+          <label class="form-label">SLA Due Date</label>
+          <input class="form-input" id="f-sla" type="datetime-local"/>
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="form-field">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="f-description" placeholder="Full details of the issue…" rows="4"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="pill-btn outline" onclick="closeCreateModal()">Cancel</button>
+      <button class="pill-btn primary" id="saveTicketBtn" onclick="saveTicket()">Create Ticket</button>
+    </div>
+  </div>
+</div>
+
+<!-- ────────────────────────────────────────────────
+     DETAIL PANEL
+──────────────────────────────────────────────── -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail()"></div>
+<div id="detailPanel">
+  <div class="detail-head">
+    <div class="detail-head-info">
+      <div class="detail-subject" id="dp-subject">—</div>
+      <div class="detail-meta" id="dp-meta"></div>
+    </div>
+    <button class="detail-close" onclick="closeDetail()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="detail-body" id="detailBody">
+    <!-- Injected dynamically -->
+  </div>
+
+  <!-- Comment input -->
+  <div class="comment-input-wrap" id="commentInputWrap">
+    <textarea class="comment-textarea" id="commentText" placeholder="Write a reply or internal note…" rows="3"></textarea>
+    <div class="comment-footer">
+      <label class="internal-toggle">
+        <input type="checkbox" id="commentInternal"/>
+        <span>Internal note only</span>
+      </label>
+      <button class="pill-btn primary" onclick="submitComment()" style="font-size:.76rem;padding:6px 14px;">Post</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer"></div>
+
+</div><!-- end authShell -->
+
+<script>
+/* ═══════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════ */
+let _currentFilter    = 'ALL';
+let _currentPriority  = '';
+let _currentChannel   = '';
+let _currentAssignee  = '';
+let _searchTerm       = '';
+let _pageSnaps        = [];   // stack of lastSnap cursors for pagination
+let _lastSnap         = null;
+let _searchDebounce   = null;
+let _editingTicketId  = null; // docId of ticket being edited
+let _linkedLead       = null; // { _docId, name, email }
+let _openTicket       = null; // currently open in detail panel
+
+const PAGE_SIZE = 20;
+
+/* ═══════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════ */
+window.initApp = async () => {
+  await Promise.all([refreshCounts(), loadPage()]);
+};
+
+async function refreshAll() {
+  _pageSnaps = []; _lastSnap = null;
+  await Promise.all([refreshCounts(), loadPage()]);
+}
+
+async function refreshCounts() {
+  try {
+    const counts = await window.dbCountByStatus();
+    ['ALL','Open','In Progress','Awaiting Customer','Resolved','Closed'].forEach(s => {
+      const el = document.getElementById('cnt-' + s);
+      if (el) el.textContent = counts[s] ?? '0';
+    });
+    document.getElementById('stat-open').textContent     = counts['Open']             ?? 0;
+    document.getElementById('stat-progress').textContent = counts['In Progress']      ?? 0;
+    document.getElementById('stat-awaiting').textContent = counts['Awaiting Customer']?? 0;
+    document.getElementById('stat-resolved').textContent = counts['Resolved']         ?? 0;
+    updateMainSub(counts);
+  } catch(e) { console.error('refreshCounts', e); }
+}
+
+function updateMainSub(counts) {
+  const total = counts['ALL'] || 0;
+  const open  = (counts['Open']||0) + (counts['In Progress']||0) + (counts['Awaiting Customer']||0);
+  document.getElementById('mainSub').textContent = `${total} total · ${open} active`;
+}
+
+/* ═══════════════════════════════════════════════
+   LOAD + RENDER
+═══════════════════════════════════════════════ */
+async function loadPage(afterSnap=null) {
+  showTableLoading();
+  try {
+    const filters = buildFilters();
+    let result;
+    if (_searchTerm) {
+      const tickets = await window.dbSearchTickets(_searchTerm, filters);
+      result = { tickets, lastSnap: null, empty: tickets.length === 0 };
+    } else {
+      result = await window.dbLoadTickets(filters, PAGE_SIZE, afterSnap);
+    }
+    _lastSnap = result.lastSnap;
+    renderTable(result.tickets, result.empty);
+    updatePagination(result.tickets.length, result.empty);
+    updateSlaCount(result.tickets);
+  } catch(e) {
+    console.error('loadPage', e);
+    toast('Failed to load tickets', 'error');
+  }
+}
+
+function buildFilters() {
+  const f = {};
+  if (_currentFilter !== 'ALL') f.status = _currentFilter;
+  if (_currentPriority)         f.priority = _currentPriority;
+  if (_currentAssignee)         f.assignedTo = _currentAssignee;
+  return f;
+}
+
+function updateSlaCount(tickets) {
+  const now = Date.now();
+  const today = new Date(); today.setHours(23,59,59,999);
+  let due = 0;
+  tickets.forEach(t => {
+    if (t.sla_due && new Date(t.sla_due) <= today && t.status !== 'Closed' && t.status !== 'Resolved') due++;
+  });
+  document.getElementById('stat-sla').textContent = due;
+  document.getElementById('cnt-overdue').textContent = due;
+}
+
+function renderTable(tickets, empty) {
+  const tbody = document.getElementById('ticketTbody');
+  const emptyState = document.getElementById('emptyState');
+  document.getElementById('ticketTable').style.display = empty ? 'none' : '';
+  emptyState.style.display = empty ? 'flex' : 'none';
+  if (empty) return;
+  tbody.innerHTML = tickets.map(t => `
+    <tr onclick="openDetail('${t._docId}')">
+      <td class="mono">${esc(t.ticketId.slice(-12))}</td>
+      <td style="max-width:240px">
+        <div style="font-weight:600;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.subject)}</div>
+        ${t.lead_name ? `<div style="font-size:.7rem;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>${esc(t.lead_name)}</div>` : ''}
+        ${t.comments_count > 0 ? `<div style="font-size:.68rem;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:3px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${t.comments_count}</div>` : ''}
+      </td>
+      <td style="max-width:110px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;">${esc(t.reporterName||'—')}</div><div style="font-size:.68rem;color:var(--muted);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.reporterEmail||'')}</div></td>
+      <td>${statusBadge(t.status)}</td>
+      <td>${priorityBadge(t.priority)}</td>
+      <td>${channelIcon(t.channel)}</td>
+      <td style="font-size:.79rem;color:${t.assignedTo==='Unassigned'?'var(--muted)':'var(--text)'};">${esc(t.assignedTo)}</td>
+      <td>${slaDisplay(t.sla_due)}</td>
+      <td class="mono">${fmtDate(t.createdAt)}</td>
+    </tr>`).join('');
+}
+
+function showTableLoading() {
+  const tbody = document.getElementById('ticketTbody');
+  document.getElementById('ticketTable').style.display = '';
+  document.getElementById('emptyState').style.display  = 'none';
+  tbody.innerHTML = Array(6).fill(0).map(() => `
+    <tr>
+      ${Array(9).fill(0).map(() => `<td><div class="skel" style="height:14px;width:${60+Math.random()*60}px;border-radius:3px;"></div></td>`).join('')}
+    </tr>`).join('');
+}
+
+/* ═══════════════════════════════════════════════
+   FILTERS
+═══════════════════════════════════════════════ */
+function setFilter(status, el) {
+  _currentFilter = status;
+  _currentPriority = ''; _currentChannel = ''; _currentAssignee = '';
+  document.getElementById('prioritySelect').value = '';
+  document.getElementById('channelSelect').value  = '';
+  document.getElementById('assigneeSelect').value = '';
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active','active-danger'));
+  if (el) el.classList.add('active');
+  document.getElementById('mainTitle').textContent = status === 'ALL' ? 'All Tickets' : status;
+  _pageSnaps = []; _lastSnap = null;
+  loadPage();
+}
+
+function setPriorityFilter(p, el) {
+  _currentPriority = (_currentPriority === p) ? '' : p;
+  document.querySelectorAll('[id^="filter-p-"]').forEach(i => i.classList.remove('active'));
+  if (_currentPriority && el) el.classList.add('active');
+  document.getElementById('prioritySelect').value = _currentPriority;
+  _pageSnaps = []; _lastSnap = null; loadPage();
+}
+
+function setChannelFilter(ch, el) {
+  _currentChannel = (_currentChannel === ch) ? '' : ch;
+  document.querySelectorAll('[id^="filter-c-"]').forEach(i => i.classList.remove('active'));
+  if (_currentChannel && el) el.classList.add('active');
+  document.getElementById('channelSelect').value = _currentChannel;
+  _pageSnaps = []; _lastSnap = null; loadPage();
+}
+
+function onPriorityFilter(v) {
+  _currentPriority = v;
+  document.querySelectorAll('[id^="filter-p-"]').forEach(i => i.classList.remove('active'));
+  if (v) { const el=document.getElementById('filter-p-'+v); if(el) el.classList.add('active'); }
+  _pageSnaps=[]; _lastSnap=null; loadPage();
+}
+
+function onChannelFilter(v) {
+  _currentChannel = v;
+  document.querySelectorAll('[id^="filter-c-"]').forEach(i => i.classList.remove('active'));
+  if (v) { const el=document.getElementById('filter-c-'+v); if(el) el.classList.add('active'); }
+  _pageSnaps=[]; _lastSnap=null; loadPage();
+}
+
+function onAssigneeFilter(v) { _currentAssignee = v; _pageSnaps=[]; _lastSnap=null; loadPage(); }
+
+function setAssignedToMe() {
+  _currentAssignee = window._currentUserName || '';
+  document.getElementById('assigneeSelect').value = _currentAssignee;
+  document.querySelectorAll('.aside-item').forEach(i => i.classList.remove('active'));
+  _pageSnaps=[]; _lastSnap=null; loadPage();
+}
+
+function setOverdueFilter() {
+  // Load all active tickets and filter by overdue SLA client-side
+  _currentFilter=''; _currentPriority=''; _currentChannel=''; _currentAssignee='';
+  document.getElementById('mainTitle').textContent = 'SLA Breached';
+  _pageSnaps=[]; _lastSnap=null; loadPage();
+}
+
+function onSearch(val) {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(() => {
+    _searchTerm = val.trim();
+    _pageSnaps=[]; _lastSnap=null; loadPage();
+  }, 320);
+}
+
+/* ═══════════════════════════════════════════════
+   PAGINATION
+═══════════════════════════════════════════════ */
+function updatePagination(count, empty) {
+  const page = _pageSnaps.length + 1;
+  document.getElementById('pageInfo').textContent = empty ? 'No results' : `Page ${page}`;
+  document.getElementById('prevBtn').disabled = _pageSnaps.length === 0;
+  document.getElementById('nextBtn').disabled = count < PAGE_SIZE || empty;
+}
+
+async function loadNext() {
+  if (!_lastSnap) return;
+  _pageSnaps.push(_lastSnap);
+  await loadPage(_lastSnap);
+}
+
+async function loadPrev() {
+  if (_pageSnaps.length === 0) return;
+  const snap = _pageSnaps.pop();
+  await loadPage(_pageSnaps.length > 0 ? _pageSnaps[_pageSnaps.length-1] : null);
+}
+
+/* ═══════════════════════════════════════════════
+   CREATE / EDIT MODAL
+═══════════════════════════════════════════════ */
+function openCreateModal(ticket=null) {
+  _editingTicketId = ticket ? ticket._docId : null;
+  _linkedLead = ticket?.lead_ref_id ? { _docId: ticket.lead_ref_id, name: ticket.lead_name } : null;
+
+  document.getElementById('createModalTitle').textContent = ticket ? 'Edit Ticket' : 'New Support Ticket';
+  document.getElementById('saveTicketBtn').textContent    = ticket ? 'Save Changes' : 'Create Ticket';
+
+  document.getElementById('f-subject').value       = ticket?.subject      || '';
+  document.getElementById('f-reporterName').value  = ticket?.reporterName || '';
+  document.getElementById('f-reporterEmail').value = ticket?.reporterEmail|| '';
+  document.getElementById('f-priority').value      = ticket?.priority     || 'Medium';
+  document.getElementById('f-channel').value       = ticket?.channel      || 'Manual';
+  document.getElementById('f-category').value      = ticket?.category     || '';
+  document.getElementById('f-assignedTo').value    = ticket?.assignedTo   || window._currentUserName || '';
+  document.getElementById('f-description').value   = ticket?.description  || '';
+  document.getElementById('f-sla').value           = ticket?.sla_due ? ticket.sla_due.slice(0,16) : '';
+  document.getElementById('f-leadSearch').value    = '';
+
+  if (_linkedLead) {
+    document.getElementById('linkedLeadName').textContent = _linkedLead.name;
+    document.getElementById('linkedLeadChip').style.display = '';
+    document.getElementById('f-leadSearch').value = _linkedLead.name;
+  } else {
+    document.getElementById('linkedLeadChip').style.display = 'none';
+  }
+
+  document.getElementById('createModal').classList.add('open');
+}
+
+function closeCreateModal() {
+  document.getElementById('createModal').classList.remove('open');
+  document.getElementById('leadDropdown').classList.remove('open');
+  _linkedLead = null; _editingTicketId = null;
+}
+
+async function saveTicket() {
+  const subject = document.getElementById('f-subject').value.trim();
+  if (!subject) { toast('Subject is required','error'); return; }
+
+  const btn = document.getElementById('saveTicketBtn');
+  btn.disabled = true; btn.textContent = _editingTicketId ? 'Saving…' : 'Creating…';
+
+  const ticket = {
+    subject,
+    reporterName:  document.getElementById('f-reporterName').value.trim(),
+    reporterEmail: document.getElementById('f-reporterEmail').value.trim(),
+    priority:      document.getElementById('f-priority').value,
+    channel:       document.getElementById('f-channel').value,
+    category:      document.getElementById('f-category').value,
+    assignedTo:    document.getElementById('f-assignedTo').value.trim() || 'Unassigned',
+    assignedToEmail: '',
+    description:   document.getElementById('f-description').value.trim(),
+    sla_due:       document.getElementById('f-sla').value || null,
+    lead_ref_id:   _linkedLead?._docId   || '',
+    lead_name:     _linkedLead?.name     || '',
+    tenant_id:     window._currentTenantId || '',
+    status:        _editingTicketId ? undefined : 'Open',
+    tags:          [],
+  };
+
+  try {
+    if (_editingTicketId) {
+      const existing = await window.dbGetTicket(_editingTicketId);
+      ticket.status = existing.status;
+      ticket.ticketId = existing.ticketId;
+      await window.dbUpdateTicket(_editingTicketId, ticket);
+      toast('Ticket updated', 'success');
+    } else {
+      const id = await window.dbAddTicket(ticket);
+      toast('Ticket created · ' + id.slice(-8), 'success');
+    }
+    closeCreateModal();
+    await refreshAll();
+  } catch(e) {
+    console.error('saveTicket', e);
+    toast('Error: ' + (e.message||'Failed to save'), 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = _editingTicketId ? 'Save Changes' : 'Create Ticket';
+  }
+}
+
+/* Lead search */
+let _leadSearchDebounce = null;
+async function onLeadSearch(val) {
+  clearTimeout(_leadSearchDebounce);
+  if (!val || val.length < 2) { document.getElementById('leadDropdown').classList.remove('open'); return; }
+  _leadSearchDebounce = setTimeout(async () => {
+    const leads = await window.dbSearchLeadsForLink(val);
+    const dd = document.getElementById('leadDropdown');
+    if (!leads.length) { dd.classList.remove('open'); return; }
+    dd.innerHTML = leads.map(l => `
+      <div class="lead-opt" onclick="selectLead('${l._docId}','${esc(l.name)}','${esc(l.email)}')">
+        <div class="lead-opt-name">${esc(l.name)} ${l.company?`<span style="color:var(--muted);font-weight:400;">· ${esc(l.company)}</span>`:''}  </div>
+        <div class="lead-opt-email">${esc(l.email)}</div>
+      </div>`).join('');
+    dd.classList.add('open');
+  }, 280);
+}
+
+function selectLead(docId, name, email) {
+  _linkedLead = { _docId: docId, name, email };
+  document.getElementById('f-leadSearch').value = name;
+  document.getElementById('linkedLeadName').textContent = name;
+  document.getElementById('linkedLeadChip').style.display = '';
+  document.getElementById('leadDropdown').classList.remove('open');
+  if (!document.getElementById('f-reporterEmail').value) document.getElementById('f-reporterEmail').value = email;
+}
+
+function clearLinkedLead() {
+  _linkedLead = null;
+  document.getElementById('f-leadSearch').value = '';
+  document.getElementById('linkedLeadChip').style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════
+   DETAIL PANEL
+═══════════════════════════════════════════════ */
+async function openDetail(docId) {
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('detailOverlay').classList.add('open');
+  document.getElementById('detailBody').innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:60px 20px;color:var(--muted);gap:12px;"><div class="auth-spinner"></div><span style="font-size:.82rem;font-family:var(--mono)">Loading ticket…</span></div>`;
+
+  try {
+    const ticket = await window.dbGetTicket(docId);
+    _openTicket = ticket;
+    renderDetailPanel(ticket);
+    const comments = await window.dbLoadComments(docId);
+    renderComments(comments);
+  } catch(e) {
+    console.error('openDetail', e);
+    toast('Failed to load ticket', 'error');
+  }
+}
+
+function renderDetailPanel(t) {
+  document.getElementById('dp-subject').textContent = t.subject;
+  document.getElementById('dp-meta').innerHTML = `
+    ${statusBadge(t.status)} ${priorityBadge(t.priority)}
+    <span class="tag" style="font-family:var(--mono);font-size:.67rem;">${esc(t.ticketId.slice(-12))}</span>
+    ${t.channel ? `<span class="tag">${channelIcon(t.channel)} ${esc(t.channel)}</span>` : ''}
+  `;
+
+  document.getElementById('detailBody').innerHTML = `
+    <!-- Quick status/assignment controls -->
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Ticket Controls
+      </div>
+      <div class="detail-grid">
+        <div class="form-field">
+          <label class="form-label">Status</label>
+          <select class="detail-select" id="dp-status" onchange="updateTicketField('status', this.value)">
+            ${['Open','In Progress','Awaiting Customer','Resolved','Closed'].map(s => `<option ${t.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Priority</label>
+          <select class="detail-select" id="dp-priority" onchange="updateTicketField('priority', this.value)">
+            ${['Low','Medium','High','Critical'].map(p => `<option ${t.priority===p?'selected':''}>${p}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Assigned To</label>
+          <select class="detail-select" id="dp-assignedTo" onchange="updateTicketField('assignedTo', this.value)">
+            <option ${t.assignedTo==='Unassigned'?'selected':''}>Unassigned</option>
+            <option ${t.assignedTo===window._currentUserName?'selected':''}>${window._currentUserName}</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Category</label>
+          <select class="detail-select" id="dp-category" onchange="updateTicketField('category', this.value)">
+            ${['','Billing','Technical','Feature Request','Bug','Account','General Enquiry'].map(c => `<option value="${c}" ${t.category===c?'selected':''}>${c||'— Select —'}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="pill-btn outline" onclick="openCreateModal(_openTicket)" style="font-size:.73rem;padding:5px 12px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit
+        </button>
+        ${t.lead_ref_id ? `<a href="dashboard.html" class="pill-btn outline" style="font-size:.73rem;padding:5px 12px;text-decoration:none;display:flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>CRM Lead</a>` : ''}
+        <button class="pill-btn danger" onclick="deleteTicket('${t._docId}')" style="font-size:.73rem;padding:5px 12px;">Delete</button>
+      </div>
+    </div>
+
+    <!-- Reporter + Lead info -->
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Reporter
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <div class="detail-field-label">Name</div>
+          <div class="detail-field-val">${esc(t.reporterName||'—')}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">Email</div>
+          <div class="detail-field-val mono">${esc(t.reporterEmail||'—')}</div>
+        </div>
+        ${t.lead_name ? `
+        <div class="detail-field" style="grid-column:span 2;">
+          <div class="detail-field-label">Linked CRM Lead</div>
+          <div class="detail-field-val" style="display:flex;align-items:center;gap:6px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--hd)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span style="color:var(--hd);">${esc(t.lead_name)}</span>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+
+    <!-- SLA + Dates -->
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Dates &amp; SLA
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <div class="detail-field-label">Created</div>
+          <div class="detail-field-val mono">${fmtDateFull(t.createdAt)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">SLA Due</div>
+          <div class="detail-field-val">${slaDisplay(t.sla_due)}</div>
+        </div>
+        ${t.resolvedAt ? `<div class="detail-field"><div class="detail-field-label">Resolved</div><div class="detail-field-val mono">${fmtDateFull(t.resolvedAt)}</div></div>` : ''}
+      </div>
+    </div>
+
+    <!-- Description -->
+    ${t.description ? `
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Description
+      </div>
+      <div class="detail-desc">${esc(t.description)}</div>
+    </div>` : ''}
+
+    <!-- Comments -->
+    <div class="detail-section" style="border-bottom:none;">
+      <div class="detail-section-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Comments
+      </div>
+    </div>
+    <div class="comment-list" id="commentList">
+      <div style="color:var(--muted);font-size:.78rem;font-family:var(--mono);padding:10px 0;">Loading comments…</div>
+    </div>
+  `;
+}
+
+function renderComments(comments) {
+  const list = document.getElementById('commentList');
+  if (!list) return;
+  if (!comments.length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:.78rem;font-family:var(--mono);">No comments yet.</div>`;
+    return;
+  }
+  list.innerHTML = comments.map(c => {
+    const init = (c.authorName||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    return `
+    <div class="comment-item">
+      <div class="comment-avatar">${esc(init)}</div>
+      <div class="comment-bubble ${c.internal ? 'internal' : ''}">
+        <div class="comment-meta">
+          <strong style="color:var(--text)">${esc(c.authorName||'Agent')}</strong>
+          ${c.internal ? `<span style="color:var(--warn);font-size:.65rem;">Internal note</span>` : ''}
+          <span>${fmtDateFull(c.createdAt)}</span>
+        </div>
+        <div class="comment-text">${esc(c.text)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('detailOverlay').classList.remove('open');
+  _openTicket = null;
+}
+
+/* Inline field update */
+async function updateTicketField(field, value) {
+  if (!_openTicket) return;
+  try {
+    const updated = { ..._openTicket, [field]: value };
+    await window.dbUpdateTicket(_openTicket._docId, updated);
+    _openTicket[field] = value;
+    document.getElementById('dp-meta').querySelector('.badge-' + _openTicket.status.toLowerCase().replace(' ','-'))?.classList.remove('...');
+    toast('Updated', 'success');
+    refreshCounts();
+    loadPage();
+  } catch(e) {
+    console.error('updateTicketField', e);
+    toast('Failed to update', 'error');
+  }
+}
+
+/* Submit comment */
+async function submitComment() {
+  if (!_openTicket) return;
+  const text = document.getElementById('commentText').value.trim();
+  if (!text) return;
+  const internal = document.getElementById('commentInternal').checked;
+  try {
+    await window.dbAddComment(_openTicket._docId, {
+      text, internal,
+      authorName:  window._currentUserName  || 'Agent',
+      authorEmail: window._currentUserEmail || ''
+    });
+    document.getElementById('commentText').value = '';
+    document.getElementById('commentInternal').checked = false;
+    const comments = await window.dbLoadComments(_openTicket._docId);
+    renderComments(comments);
+    toast('Comment posted', 'success');
+    loadPage();
+  } catch(e) {
+    toast('Failed to post comment', 'error');
+  }
+}
+
+/* Delete ticket */
+async function deleteTicket(docId) {
+  if (!confirm('Delete this ticket? This cannot be undone.')) return;
+  try {
+    await window.dbSoftDeleteTicket(docId);
+    toast('Ticket deleted', 'info');
+    closeDetail();
+    await refreshAll();
+  } catch(e) {
+    toast('Failed to delete', 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   DISPLAY HELPERS
+═══════════════════════════════════════════════ */
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function statusBadge(s) {
+  const map = {
+    'Open':              'badge-open',
+    'In Progress':       'badge-progress',
+    'Awaiting Customer': 'badge-awaiting',
+    'Resolved':          'badge-resolved',
+    'Closed':            'badge-closed',
+  };
+  return `<span class="badge ${map[s]||'badge-closed'}">${esc(s)}</span>`;
+}
+
+function priorityBadge(p) {
+  const map = { Critical:'badge-critical', High:'badge-high', Medium:'badge-medium', Low:'badge-low' };
+  return `<span class="badge ${map[p]||'badge-low'}">${esc(p)}</span>`;
+}
+
+function channelIcon(ch) {
+  const icons = {
+    Email:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+    Chat:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    Webhook: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/></svg>`,
+    Manual:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`,
+  };
+  return `<span class="ch-badge">${icons[ch]||''} ${esc(ch||'Manual')}</span>`;
+}
+
+function slaDisplay(sla) {
+  if (!sla) return `<span style="color:var(--muted);font-size:.72rem;font-family:var(--mono);">—</span>`;
+  const d    = new Date(sla);
+  const now  = Date.now();
+  const diff = d - now;
+  const hrs  = Math.round(diff / 36e5);
+  const label = d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+  if (diff < 0)       return `<span class="sla-over">⚠ ${label}</span>`;
+  if (hrs < 24)       return `<span class="sla-warn">${hrs}h left</span>`;
+  return `<span class="sla-ok">${label}</span>`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' });
+}
+
+function fmtDateFull(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+/* ═══════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════ */
+function toast(msg, type='info') {
+  const container = document.getElementById('toastContainer');
+  const icons = {
+    success:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error:  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    info:   `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--hd)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `${icons[type]||icons.info}<span>${esc(msg)}</span>`;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transform='translateY(6px)'; el.style.transition='all .3s ease'; setTimeout(()=>el.remove(),320); }, 3200);
+}
+
+/* Close lead dropdown when clicking outside */
+document.addEventListener('click', e => {
+  if (!e.target.closest('.lead-search-wrap')) document.getElementById('leadDropdown')?.classList.remove('open');
+});
+/* Close modal on backdrop click */
+document.getElementById('createModal').addEventListener('click', e => { if (e.target === document.getElementById('createModal')) closeCreateModal(); });
+/* Keyboard close */
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDetail(); closeCreateModal(); } });
+</script>
+</body>
+</html>
