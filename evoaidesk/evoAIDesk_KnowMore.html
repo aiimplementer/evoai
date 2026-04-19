@@ -1,13 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>evoAIDesk - Lead Management System</title>
+
+  <!-- ── Primary SEO ── -->
+  <meta name="description" content="evoAIDesk is a cloud-based CRM and lead management platform built for small and growing businesses. Track leads, automate outreach, score prospects, and close more deals — all from one dashboard." />
+  <meta name="keywords" content="evoAIDesk, lead management system, CRM for small business, AI CRM, lead tracking software, sales pipeline, lead scoring, SMB CRM, n8n automation, evoAI Global" />
+  <meta name="author" content="evoAI Global" />
+  <meta name="robots" content="index, follow" />
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+  <link rel="canonical" href="https://desk.evoaiglobal.ai/know-more" />
+
+  <!-- ── Open Graph (Facebook / LinkedIn) ── -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="evoAIDesk by evoAI Global" />
+  <meta property="og:title" content="evoAIDesk - Lead Management System for Growing Businesses" />
+  <meta property="og:description" content="Smarter lead management powered by AI. Track every lead, automate outreach, monitor your pipeline, and close more deals — purpose-built for small and medium businesses." />
+  <meta property="og:image" content="https://desk.evoaiglobal.ai/images/evoaidesk.png" />
+  <meta property="og:url" content="https://desk.evoaiglobal.ai/know-more" />
+
+  <!-- ── Twitter / X Card ── -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="evoAIDesk - Lead Management System" />
+  <meta name="twitter:description" content="AI-powered CRM for small businesses. One-click automations, lead scoring, Kanban pipeline, and daily reports — all in one clean dashboard." />
+  <meta name="twitter:image" content="https://desk.evoaiglobal.ai/images/evoaidesk.png" />
+  <meta name="twitter:site" content="@evoaiglobal" />
+
+  <!-- ── Schema.org Structured Data ── -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "evoAIDesk",
+    "alternateName": "evoAIDesk Lead Management System",
+    "description": "A cloud-based CRM and lead management platform purpose-built for small and growing businesses. Track every lead, automate outreach, monitor your pipeline, and close more deals.",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "https://desk.evoaiglobal.ai",
+    "screenshot": "https://desk.evoaiglobal.ai/images/evoaidesk.png",
+    "featureList": [
+      "Lead tracking and pipeline management",
+      "Automatic lead scoring (0–100)",
+      "One-click email and WhatsApp automation",
+      "Kanban board, table, and list views",
+      "CSV import and export",
+      "Daily, weekly, and summary reports",
+      "Role-based access control",
+      "Multi-user team support"
+    ],
+    "offers": {
+      "@type": "Offer",
+      "availability": "https://schema.org/InStock"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "evoAI Global",
+      "url": "https://evoaiglobal.ai",
+      "email": "info@evoaiglobal.ai",
+      "logo": "https://desk.evoaiglobal.ai/images/evoaidesk.png"
+    }
+  }
+  </script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --bg:#080c10;--surface:#0e1420;--surface2:#141c2a;--border:#1e2d42;
+  --bg:#0b1f3a;--surface:#0e1420;--surface2:#141c2a;--border:#1e2d42;
   --accent:#00e5a0;--accent2:#00b8ff;--danger:#ff4d6d;--warn:#ffb730;
   --text:#e8f0fe;--muted:#6b7fa3;--purple:#c084fc;
 }
-.doc{max-width:900px;margin:0 auto;padding:32px 24px 48px;background:#080c10;font-family:'Sora',sans-serif;color:#e8f0fe;}
+body{
+  background: var(--bg);
+}
+.doc{
+  width:90%;
+  max-width:1400px; /* optional safety cap */
+  margin:0px auto;
+  padding:32px 24px 48px;
+  background:#080c10;
+  font-family:'Sora',sans-serif;
+  color:#e8f0fe;
+}
 
 .hero{border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:36px 40px;margin-bottom:20px;position:relative;overflow:hidden;}
 .hero::before{content:'';position:absolute;top:-60px;right:-40px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(0,229,160,.07) 0%,transparent 70%);}
@@ -176,9 +252,47 @@
 .soft-delete-step{display:flex;gap:10px;align-items:flex-start;font-size:.68rem;color:var(--muted);line-height:1.55;font-family:'Sora',sans-serif;}
 .step-num{width:20px;height:20px;border-radius:50%;background:rgba(192,132,252,.15);border:1px solid rgba(192,132,252,.3);color:var(--purple);font-size:.6rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-family:'DM Mono',monospace;}
 .soft-delete-step strong{color:var(--text);}
+
+.back-link{
+  display:block;              /* 👈 important */
+  width:max-content;          /* keep button size tight */
+  margin:0 0 16px auto;       /* 👈 pushes it to the right */
+
+  align-items:center;
+  gap:6px;
+  font-size:.72rem;
+  font-weight:600;
+  color:var(--accent2);
+  text-decoration:none;
+  padding:6px 10px;
+  border-radius:6px;
+  background:rgba(0,184,255,0.08);
+  border:1px solid rgba(0,184,255,0.2);
+  transition:all .2s ease;
+  
+  position:relative;
+  z-index:2;
+}
+
+.back-link:hover{
+  background:rgba(0,184,255,0.18);
+  color:#fff;
+  transform:translateX(-2px);
+}
+
+.hero::before,
+.hero::after{
+  pointer-events:none;
+}
+
+
 </style>
+</head>
+<body>
 
 <div class="doc">
+
+
 
 <!-- HERO -->
 <div class="hero">
@@ -186,8 +300,10 @@
     <img class="logo-img" src="https://desk.evoaiglobal.ai/images/evoaidesk.png" alt="evoAIDesk"/>
     <span class="logo-badge">AI Powered</span>
     <div class="hero-divider"></div>
-    <span class="product-tag">Lead Management Platform</span>
+	
+    <span class="product-tag">Lead Management Platform</span>	
   </div>
+  <div><a href="index.html" class="back-link">← Back to Home</a></div>
   <div class="hero-title">Smarter Lead Management<br>for <span class="g">Growing Businesses</span></div>
   <div class="hero-sub">evoAIDesk is a cloud-based CRM and lead management platform purpose-built for small and growing businesses. Track every lead, automate outreach, monitor your pipeline, and close more deals — all from one clean dashboard.</div>
   <div class="hero-pills">
@@ -535,3 +651,6 @@
     <div style="font-size:.6rem;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace;">© 2026 evoAI Global. All rights reserved.</div>
   </div>
 </div>
+
+</body>
+</html>
