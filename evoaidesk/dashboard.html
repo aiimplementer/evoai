@@ -3482,7 +3482,7 @@ async function viewLead(leadId, docId, preloadedLead = null) {
       ['Service',    lead.service],
       ['Source',     lead.source],
       ['Page / URL', lead.page],
-      ['Created At', lead.date ? fmtDate(lead.date) : '—'],
+      ['Created At', lead.date ? fmtDate(lead.date, true) : '—'],
     ]) +
     section('System IDs', [
       ['Lead ID',            lead.leadId],
