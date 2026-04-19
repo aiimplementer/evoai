@@ -2732,9 +2732,13 @@ function updatePaginationControls() {
   const counterT = `Page ${pageNumber} of ${maxPage}`;
   const showPag  = totalCount > PAGE_SIZE || pageNumber > 1;
 
+  // Only show the pagination bar that belongs to the active view
+  const isTable = currentView === 'table';
+  const isList  = currentView === 'list';
+
   const pag = document.getElementById('pagination');
-  pag.style.display = showPag ? 'flex' : 'none';
-  if (showPag) {
+  pag.style.display = (showPag && isTable) ? 'flex' : 'none';
+  if (showPag && isTable) {
     document.getElementById('pageInfo').textContent    = infoText;
     document.getElementById('pageCounter').textContent = counterT;
     document.getElementById('btnFirst').disabled = pageNumber === 1;
@@ -2745,8 +2749,8 @@ function updatePaginationControls() {
   }
 
   const listPag = document.getElementById('listPagination');
-  listPag.style.display = showPag ? 'flex' : 'none';
-  if (showPag) {
+  listPag.style.display = (showPag && isList) ? 'flex' : 'none';
+  if (showPag && isList) {
     document.getElementById('listPageInfo').textContent    = infoText;
     document.getElementById('listPageCounter').textContent = counterT;
     document.getElementById('listBtnFirst').disabled = pageNumber === 1;
@@ -2918,8 +2922,20 @@ function setView(view, btn) {
   currentView = view;
   document.querySelectorAll('#viewToggle button').forEach(b => { b.style.background='transparent'; b.style.color='var(--muted)'; });
   btn.style.background = 'var(--surface)'; btn.style.color = 'var(--accent)';
-  if (view === 'board') loadBoardView();
-  else renderCurrentView();
+  if (view === 'board') {
+    loadBoardView();
+    document.getElementById('pagination').style.display     = 'none';
+    document.getElementById('listPagination').style.display = 'none';
+  } else {
+    // In special display modes, just re-render existing data
+    if (isSearchMode || isOverdueMode || isMyLeadsMode || isTrashMode) {
+      renderCurrentView();
+    } else {
+      // Always reload so totalCount is fresh and pagination renders correctly
+      resetPagination();
+      loadPage('first');
+    }
+  }
 }
 
 function renderCurrentView() {
@@ -2929,6 +2945,10 @@ function renderCurrentView() {
   document.getElementById('listView').style.display  = currentView === 'list'  ? 'block' : 'none';
   if (currentView === 'table') renderTable(currentLeads);
   else if (currentView === 'list') renderList(currentLeads);
+  // Keep pagination UI in sync after every render (skip board / special modes)
+  if (!isSearchMode && !isOverdueMode && !isMyLeadsMode && !isTrashMode && currentView !== 'board') {
+    updatePaginationControls();
+  }
 }
 
 /* ════════════════════════════════════════════════════
@@ -3644,8 +3664,8 @@ async function triggerN8n(actionId, lead, btnEl) {
    REPORTS — n8n webhooks returning HTML
 ════════════════════════════════════════════════════ */
 const N8N_REPORT_WEBHOOKS = {
-  full_pipeline:    'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/evoaidesk_activities',
-  stage_pipeline:   'https://unsparse-sherman-nonfallaciously.ngrok-free.dev/webhook/evoaidesk_activities',
+  full_pipeline:    API.n8n_activity_pipeline,
+  stage_pipeline:   API.n8n_activity_pipeline,
 };
 
 async function fetchReport(reportType, btnEl) {
