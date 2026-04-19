@@ -2312,35 +2312,125 @@ let currentView   = 'table';
    e.g. "12 Apr 2025, 09:41 AM IST"
    If dateOnly is true → returns just the date part (no time), e.g. "12 Apr 2025"
 ──────────────────────────────────────────────────────────────────────── */
-function fmtDate(value, dateOnly = false) {
-  if (!value) return '—';
-  let d;
-  if (typeof value === 'string') {
-    // YYYY-MM-DD strings: treat as local midnight to avoid UTC shift
-    d = /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
-      ? new Date(value.trim() + 'T00:00:00')
-      : new Date(value);
-  } else if (value?.toDate) {
-    d = value.toDate();
-  } else {
-    d = new Date(value);
+/* ── IANA timezone validator ──────────────────────────────────────────────
+   Tests whether a timezone string is valid before passing it to Intl.
+   Returns the tz string if valid, falls back to 'Asia/Kolkata' (IST) or
+   any other safe default you prefer.
+──────────────────────────────────────────────────────────────────────── */
+function getSafeTz() {
+  const candidates = [
+    window._tenantTimezone,                                    // tenant Firestore field
+    Intl.DateTimeFormat().resolvedOptions().timeZone,          // browser timezone
+    'UTC',                                                     // absolute fallback
+  ];
+  for (const tz of candidates) {
+    if (!tz || typeof tz !== 'string' || !tz.trim()) continue;
+    try {
+      // Intl will throw a RangeError if the timezone string is invalid
+      new Intl.DateTimeFormat('en-GB', { timeZone: tz.trim() });
+      return tz.trim();
+    } catch (e) {
+      console.warn('getSafeTz: invalid timezone skipped →', tz);
+    }
   }
-  if (isNaN(d.getTime())) return String(value).slice(0, 10) || '—';
-  const tz = window._tenantTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return 'UTC'; // should never reach here
+}
+
+/* ── Tenant-aware date formatter ──────────────────────────────────────────
+   Accepts:
+     • ISO string         "2025-04-11T14:30:00Z"
+     • Date-only string   "2025-04-11"            (treated as local midnight)
+     • Firestore Timestamp  { toDate() }
+     • JS Date object
+     • Unix ms number
+     • null / undefined / empty string → returns '—'
+
+   dateOnly = true  →  "11 Apr 2025"
+   dateOnly = false →  "11 Apr 2025, 02:30 PM IST"
+
+   Always renders in the tenant's configured IANA timezone.
+   Never crashes regardless of what value or timezone is passed in.
+──────────────────────────────────────────────────────────────────────── */
+function fmtDate(value, dateOnly = false) {
+  if (value === null || value === undefined || value === '') return '—';
+
+  /* ── 1. Coerce to a JS Date ── */
+  let d;
+  try {
+    if (value instanceof Date) {
+      d = value;
+    } else if (typeof value === 'number') {
+      d = new Date(value);
+    } else if (typeof value === 'object' && typeof value.toDate === 'function') {
+      // Firestore Timestamp
+      d = value.toDate();
+    } else if (typeof value === 'string') {
+      const s = value.trim();
+      if (!s) return '—';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        // Date-only: parse as LOCAL midnight to avoid UTC off-by-one-day
+        d = new Date(s + 'T00:00:00');
+      } else {
+        d = new Date(s);
+      }
+    } else {
+      d = new Date(String(value));
+    }
+  } catch (e) {
+    console.warn('fmtDate: could not parse value →', value, e);
+    return '—';
+  }
+
+  /* ── 2. Validate the Date object ── */
+  if (!d || isNaN(d.getTime())) {
+    console.warn('fmtDate: invalid date value →', value);
+    return '—';
+  }
+
+  /* ── 3. Get a guaranteed-valid timezone ── */
+  const tz = getSafeTz();
+
+  /* ── 4. Format ── */
   try {
     if (dateOnly) {
       return new Intl.DateTimeFormat('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric', timeZone: tz,
+        day:      '2-digit',
+        month:    'short',
+        year:     'numeric',
+        timeZone: tz,
       }).format(d);
     }
     return new Intl.DateTimeFormat('en-GB', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true,
-      timeZone: tz, timeZoneName: 'short',
+      day:          '2-digit',
+      month:        'short',
+      year:         'numeric',
+      hour:         '2-digit',
+      minute:       '2-digit',
+      hour12:       true,
+      timeZone:     tz,
+      timeZoneName: 'short',
     }).format(d);
-  } catch(e) {
-    // Fallback if timezone string is invalid
-    return d.toLocaleString();
+  } catch (e) {
+    /* Last-resort: format with UTC so the user sees something correct,
+       just without timezone localisation. Never shows a JS error. */
+    console.warn('fmtDate: Intl.DateTimeFormat failed, falling back to UTC →', e);
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        day:          '2-digit',
+        month:        'short',
+        year:         'numeric',
+        ...(dateOnly ? {} : {
+          hour:         '2-digit',
+          minute:       '2-digit',
+          hour12:       true,
+          timeZoneName: 'short',
+        }),
+        timeZone: 'UTC',
+      }).format(d);
+    } catch (e2) {
+      // Absolute last resort — native toString, at least it won't crash
+      return dateOnly ? d.toDateString() : d.toString();
+    }
   }
 }
 
