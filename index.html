@@ -1096,44 +1096,15 @@ function handleSubmit(e){
     message: document.getElementById('message').value
   };
 
-  fetch("https://n8n-desk.evoaiglobal-system.workers.dev/", {
-              method: "POST",
-			  mode: "no-cors",
-              headers: {
-                "Content-Type": "application/json",
-				'Accept': 'application/json'
-              },
-              body: JSON.stringify({
-                  name: data.name,
-                  email: data.email,
-				  company: data.company,
-                  service: data.service,
-                  message: data.message,
-                  status: "New",
-                  source: "Website",
-                  page: window.location.href,
-                  useragent: navigator.userAgent,
-				  action: "add",
-				  secret: "websiteform",
-				  website: data.website
-              })
-          }).catch(err => console.log("desk logging failed:", err));
-
-          document.getElementById('successMsg').style.display = 'block';
-          document.getElementById('errorMsg').style.display = 'none';
-          document.getElementById('contactForm').reset();
-
-      } else {
-
-          document.getElementById('successMsg').style.display = 'none';
-          document.getElementById('errorMsg').style.display = 'block';
-
-      }
-
-      btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
-      btn.disabled = false;
-
+  fetch('https://n8n-desk.evoaiglobal-system.workers.dev/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(data)
   })
+  .then(res => res.json())
   .catch(err => {
 
       console.log("Form error:", err);
@@ -1145,7 +1116,6 @@ function handleSubmit(e){
       btn.disabled = false;
 
   });
-
 }
 </script>
 </body>
