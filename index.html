@@ -1085,44 +1085,43 @@ function handleSubmit(e) {
   var lname = document.getElementById('lname').value.trim();
 
   fetch('https://n8n-desk.evoaiglobal-system.workers.dev/', {
-    method:  'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept':        'application/json'
-    },
-    body: JSON.stringify({
-      tenant_id: 'evoai',
-      name:      fname + ' ' + lname,
-      email:     document.getElementById('email').value.trim(),
-      company:   document.getElementById('company').value.trim() || 'N/A',
-      service:   document.getElementById('service').value        || 'General Enquiry',
-      message:   document.getElementById('message').value.trim(),
-      status:    'New',
-      source:    'Website',
-      page:      window.location.href,
-      useragent: navigator.userAgent,
-      action:    'add',
-      secret:    'websiteform'
-    })
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept':        'application/json',
+    'x-tenant-id':   'evoai',       // ← required by Worker
+    'x-api-key':     'key-evoai',    // ← required by Worker
+  },
+  body: JSON.stringify([{           // ← array wrapper
+    tenant_id: 'evoai',
+    name:      fname + ' ' + lname,
+    email:     document.getElementById('email').value.trim(),
+    company:   document.getElementById('company').value.trim() || 'N/A',
+    service:   document.getElementById('service').value        || 'General Enquiry',
+    message:   document.getElementById('message').value.trim(),
+    status:    'New',
+    source:    'Website',
+  }])
   })
   .then(function(res) {
-    return res.json();
-  })
-  .then(function(data) {
-    // ✅ Show success
-    succEl.style.display = 'block';
-    document.getElementById('contactForm').reset();
-  })
-  .catch(function(err) {
-    // ❌ Show error
-    console.error('Form error:', err);
-    errEl.style.display = 'block';
-  })
-  .finally(function() {
-    // Always re-enable button
-    btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
-    btn.disabled  = false;
-  });
+  if (!res.ok) {
+    throw new Error('Server error: ' + res.status);
+  }
+  return res.json();
+ })
+.then(function(data) {
+  // Only reaches here if response was 2xx
+  succEl.style.display = 'block';
+  document.getElementById('contactForm').reset();
+})
+.catch(function(err) {
+  console.error('Form error:', err);
+  errEl.style.display = 'block';
+})
+.finally(function() {
+  btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
+  btn.disabled  = false;
+});
 }
 </script>
 </body>
