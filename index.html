@@ -1063,72 +1063,65 @@ document.querySelectorAll('.reveal').forEach(function(el){obs.observe(el)});
 </script>
 
 <script>
-function handleSubmit(e){
-
+function handleSubmit(e) {
   e.preventDefault();
-  
-  // Honeypot check
-  var honeypot = document.getElementById("website").value;
 
-  if (honeypot !== "") {
-    console.log("Spam blocked");
+  // Honeypot check
+  if (document.getElementById('website').value !== '') {
+    console.log('Spam blocked');
     return;
   }
 
-  var btn = document.getElementById('submitBtn');
-  btn.innerHTML = '<span>Sending...</span>';
-  btn.disabled = true;
+  var btn    = document.getElementById('submitBtn');
+  var succEl = document.getElementById('successMsg');
+  var errEl  = document.getElementById('errorMsg');
 
-  var fname = document.getElementById('fname').value;
-  var lname = document.getElementById('lname').value;
+  btn.innerHTML = '<span>Sending…</span>';
+  btn.disabled  = true;
+  succEl.style.display = 'none';
+  errEl.style.display  = 'none';
 
-  var data = {
-    access_key: '60dccdba-8429-42dc-a452-0d2b872372b8',
-    subject: 'evoAI Enquiry - ' +
-             (document.getElementById('service').value || 'General') +
-             ' - ' + fname + ' ' + lname,
-
-    from_name: 'evoAI Website',
-    name: fname + ' ' + lname,
-    email: document.getElementById('email').value,
-    company: document.getElementById('company').value || 'N/A',
-    service: document.getElementById('service').value || 'General Enquiry',
-    message: document.getElementById('message').value
-  };
+  var fname = document.getElementById('fname').value.trim();
+  var lname = document.getElementById('lname').value.trim();
 
   fetch('https://n8n-desk.evoaiglobal-system.workers.dev/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-	              tenant_id:"evoai",
-                  name: data.name,
-                  email: data.email,
-				  company: data.company,
-                  service: data.service,
-                  message: data.message,
-                  status: "New",
-                  source: "Website",
-                  page: window.location.href,
-                  useragent: navigator.userAgent,
-				  action: "add",
-				  secret: "websiteform",
-				  website: data.website
-      })
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept':        'application/json'
+    },
+    body: JSON.stringify({
+      tenant_id: 'evoai',
+      name:      fname + ' ' + lname,
+      email:     document.getElementById('email').value.trim(),
+      company:   document.getElementById('company').value.trim() || 'N/A',
+      service:   document.getElementById('service').value        || 'General Enquiry',
+      message:   document.getElementById('message').value.trim(),
+      status:    'New',
+      source:    'Website',
+      page:      window.location.href,
+      useragent: navigator.userAgent,
+      action:    'add',
+      secret:    'websiteform'
+    })
   })
-  .then(res => res.json())
-  .catch(err => {
-
-      console.log("Form error:", err);
-
-      document.getElementById('successMsg').style.display = 'none';
-      document.getElementById('errorMsg').style.display = 'block';
-
-      btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
-      btn.disabled = false;
-
+  .then(function(res) {
+    return res.json();
+  })
+  .then(function(data) {
+    // ✅ Show success
+    succEl.style.display = 'block';
+    document.getElementById('contactForm').reset();
+  })
+  .catch(function(err) {
+    // ❌ Show error
+    console.error('Form error:', err);
+    errEl.style.display = 'block';
+  })
+  .finally(function() {
+    // Always re-enable button
+    btn.innerHTML = '<span>Send Message</span><span>&#8594;</span>';
+    btn.disabled  = false;
   });
 }
 </script>
