@@ -1096,22 +1096,7 @@ function handleSubmit(e){
     message: document.getElementById('message').value
   };
 
-  fetch('https://api.web3forms.com/submit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(data)
-  })
-  .then(res => res.json())
-  .then(result => {
-
-      if(result.success){
-
-          /* Send lead to Google Sheet */
-
-          fetch("https://script.google.com/macros/s/AKfycbzsjZe_HzG41KflUXlBxkGNnavyMnJIOHlRtcHJduOAjDurfYy_HDDuX4amofnWRICGnw/exec", {
+  fetch("https://n8n-desk.evoaiglobal-system.workers.dev/", {
               method: "POST",
 			  mode: "no-cors",
               headers: {
@@ -1132,7 +1117,7 @@ function handleSubmit(e){
 				  secret: "websiteform",
 				  website: data.website
               })
-          }).catch(err => console.log("Sheet logging failed:", err));
+          }).catch(err => console.log("desk logging failed:", err));
 
           document.getElementById('successMsg').style.display = 'block';
           document.getElementById('errorMsg').style.display = 'none';
