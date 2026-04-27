@@ -1074,6 +1074,11 @@
   #boardView { display: none; overflow-x: auto; padding-bottom: 16px; }
   .board-scroll { display: flex; gap: 12px; min-width: max-content; }
   .board-col { width: 240px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 320px); }
+  @media (max-width: 960px) {
+    .board-col { max-height: none; height: auto; }
+    .board-col-body { max-height: 60vh; overflow-y: auto; }
+    #boardView { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
   .board-col-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .board-col-label { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .board-col-count { font-family: var(--mono); font-size: .65rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 1px 7px; border-radius: 20px; }
@@ -3891,7 +3896,7 @@ async function triggerN8n(actionId, lead, btnEl) {
 
   
   try {
-     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning': 'true'},
+     await fetch(url, {method:'POST',mode: 'no-cors',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning': 'true'},
       body:JSON.stringify({
         leadId: lead.leadId, name: lead.name, email: lead.email,
         phone: lead.phone, company: lead.company, status: lead.status,
