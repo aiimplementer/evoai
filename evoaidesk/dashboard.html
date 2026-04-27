@@ -1634,6 +1634,11 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           Summary Report
         </button>
+		<button class="dash-rep-btn" id="dashRepBtnSummary" onclick="openDashReport('companysummary', this)">
+          <span class="rep-dot"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Company Level Report
+        </button>
       </div>
     </div>
 
@@ -1675,6 +1680,13 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:2px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               <div>
                 <div style="font-weight:600;">Summary Report</div>
+                <div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Full pipeline overview &amp; insights</div>
+              </div>
+            </button>
+			<button class="export-drop-item" onclick="openDashReport('companysummary', null); closeReportDropdown();">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:2px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div>
+                <div style="font-weight:600;">Company Summary Report</div>
                 <div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Full pipeline overview &amp; insights</div>
               </div>
             </button>
@@ -2267,6 +2279,8 @@
         <button class="dash-rep-tab active" id="dashRepTabDaily"   onclick="openDashReport('daily',   document.getElementById('dashRepBtnDaily'))">Daily</button>
         <button class="dash-rep-tab"        id="dashRepTabWeekly"  onclick="openDashReport('weekly',  document.getElementById('dashRepBtnWeekly'))">Weekly</button>
         <button class="dash-rep-tab"        id="dashRepTabSummary" onclick="openDashReport('summary', document.getElementById('dashRepBtnSummary'))">Summary</button>
+		<button class="dash-rep-tab"        id="dashRepTabSummary" onclick="openDashReport('companysummary', document.getElementById('dashRepBtnSummary'))">Company Summary</button>
+		
       </div>
       <button class="pill-btn outline" onclick="closeDashReport()">Close</button>
     </div>
@@ -3906,13 +3920,15 @@ function bulkExport() {
 const DASH_REPORT_HOOKS = {
   daily:   API.n8n_daily_report_workflow,
   weekly:  API.n8n_weekly_report_workflow,
-  summary: API.n8n_summary_report_workflow
+  summary: API.n8n_summary_report_workflow,
+  companysummary: API.n8n_company_summary_report_workflow,
 };
 
 const DASH_REPORT_META = {
   daily:   { icon: '📅', title: 'Daily Report',   sub: 'Today\'s lead activity & conversions' },
   weekly:  { icon: '📊', title: 'Weekly Report',  sub: 'This week\'s pipeline performance' },
   summary: { icon: '🧩', title: 'Summary Report', sub: 'Full pipeline overview & insights' },
+  companysummary: { icon: '🧩', title: 'Company Summary Report', sub: 'Full Company overview & insights' },
 };
 
 let _dashRepCurrentType = null;
@@ -3921,14 +3937,14 @@ async function openDashReport(type, btnEl) {
   _dashRepCurrentType = type;
 
   // Update bar button states
-  ['daily','weekly','summary'].forEach(t => {
+  ['daily','weekly','summary','companysummary'].forEach(t => {
     const b = document.getElementById('dashRepBtn' + t.charAt(0).toUpperCase() + t.slice(1));
     if (b) b.classList.remove('active','loading');
   });
   if (btnEl) { btnEl.classList.add('loading'); }
 
   // Update tab states in modal footer
-  ['Daily','Weekly','Summary'].forEach(t => {
+  ['Daily','Weekly','Summary','Company Summary'].forEach(t => {
     const tab = document.getElementById('dashRepTab' + t);
     if (tab) tab.classList.toggle('active', t.toLowerCase() === type);
   });
