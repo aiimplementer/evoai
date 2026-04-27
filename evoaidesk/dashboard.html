@@ -3947,7 +3947,7 @@ async function fetchReport(reportType, btnEl) {
   try {
     const lead = window._viewingLead || {};
     const resp = await fetch(url, {
-      method: 'POST',mode: 'cors',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         reportType,		
