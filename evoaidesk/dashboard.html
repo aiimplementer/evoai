@@ -7,6 +7,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="icon" type="image/x-icon" href="https://evoaiglobal.ai/images/favicon.ico">
 
+<!-- Site Preview / Open Graph -->
+<meta property="og:title" content="evoAIDesk — Smart CRM for Small Businesses">
+<meta property="og:description" content="Track leads, automate follow-ups, and close more deals. evoAIDesk is the all-in-one CRM built for small business growth. 30-day free trial, no credit card required.">
+<meta property="og:image" content="https://desk.evoaiglobal.ai/images/og-image.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://desk.evoaiglobal.ai/">
+
 <!-- ── FIREBASE SDK ── -->
 <script type="module">
   import { initializeApp }        from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
@@ -1821,11 +1828,21 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           Summary Report
         </button>
-		<button class="dash-rep-btn" id="dashRepBtnSummary" onclick="openDashReport('companysummary', this)">
+		<button class="dash-rep-btn" id="dashRepBtnCompanysummary" onclick="openDashReport('companysummary', this)">
           <span class="rep-dot"></span>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           Company Level Report
         </button>
+		<button class="dash-rep-btn" id="dashRepBtnAssignment" onclick="openDashReport('assignment', this)">
+		  <span class="rep-dot" style="background:var(--warn);"></span>
+		  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+			<circle cx="9" cy="7" r="4"/>
+			<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+			<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+			</svg>
+			Assignment Report
+		</button>
       </div>
     </div>
 
@@ -1877,6 +1894,18 @@
                 <div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Full company overview &amp; insights</div>
               </div>
             </button>
+			<button class="export-drop-item" onclick="openDashReport('assignment', null); closeReportDropdown();">
+			  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:2px;flex-shrink:0;">
+				<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+				<circle cx="9" cy="7" r="4"/>
+				<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+				<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+			  </svg>
+			  <div>
+				<div style="font-weight:600;">Assignment Report</div>
+				<div style="font-size:.68rem;color:var(--muted);margin-top:1px;">Workload & pipeline value per rep</div>
+			  </div>
+			</button>
           </div>
         </div>
         <div class="export-dropdown-wrap" id="exportDropWrap">
@@ -2510,12 +2539,17 @@
     </div>
     <div class="dash-report-dialog-foot">
       <div class="rep-tabs" id="dashRepTabs">
-        <button class="dash-rep-tab active" id="dashRepTabDaily"   onclick="openDashReport('daily',   document.getElementById('dashRepBtnDaily'))">Daily</button>
-        <button class="dash-rep-tab"        id="dashRepTabWeekly"  onclick="openDashReport('weekly',  document.getElementById('dashRepBtnWeekly'))">Weekly</button>
-        <button class="dash-rep-tab"        id="dashRepTabSummary" onclick="openDashReport('summary', document.getElementById('dashRepBtnSummary'))">Summary</button>
-		<button class="dash-rep-tab"        id="dashRepTabSummary" onclick="openDashReport('companysummary', document.getElementById('dashRepBtnSummary'))">Company Summary</button>
-		
-      </div>
+		  <button class="dash-rep-tab active" id="dashRepTabDaily"
+			onclick="openDashReport('daily', document.getElementById('dashRepBtnDaily'))">Daily</button>
+		  <button class="dash-rep-tab" id="dashRepTabWeekly"
+			onclick="openDashReport('weekly', document.getElementById('dashRepBtnWeekly'))">Weekly</button>
+		  <button class="dash-rep-tab" id="dashRepTabSummary"
+			onclick="openDashReport('summary', document.getElementById('dashRepBtnSummary'))">Summary</button>
+		  <button class="dash-rep-tab" id="dashRepTabCompanysummary"
+			onclick="openDashReport('companysummary', document.getElementById('dashRepBtnCompanysummary'))">Company Summary</button>
+		  <button class="dash-rep-tab" id="dashRepTabAssignment"
+			onclick="openDashReport('assignment', document.getElementById('dashRepBtnAssignment'))">Assignment</button>
+	  </div>
       <button class="pill-btn outline" onclick="closeDashReport()">Close</button>
     </div>
   </div>
@@ -3899,7 +3933,7 @@ async function triggerN8n(actionId, lead, btnEl) {
 
   
   try {
-     await fetch(url, {method:'POST',mode: 'no-cors',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning': 'true'},
+     await fetch(url, {method:'POST',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning': 'true'},
       body:JSON.stringify({
         leadId: lead.leadId, name: lead.name, email: lead.email,
         phone: lead.phone, company: lead.company, status: lead.status,
@@ -4295,6 +4329,7 @@ const DASH_REPORT_HOOKS = {
   weekly:  API.n8n_weekly_report_workflow,
   summary: API.n8n_summary_report_workflow,
   companysummary: API.n8n_company_summary_report_workflow,
+  assignment: API.n8n_assignment_report_workflow,  
 };
 
 const DASH_REPORT_META = {
@@ -4302,24 +4337,26 @@ const DASH_REPORT_META = {
   weekly:  { icon: '📊', title: 'Weekly Report',  sub: 'This week\'s pipeline performance' },
   summary: { icon: '🧩', title: 'Summary Report', sub: 'Full pipeline overview & insights' },
   companysummary: { icon: '🧩', title: 'Company-Level Pipeline Report', sub: 'Full Company overview & insights' },
+  assignment: { icon: '👥', title: 'Assignment Report', sub: 'Workload & pipeline value per rep' },
 };
 
 let _dashRepCurrentType = null;
 
 async function openDashReport(type, btnEl) {
   _dashRepCurrentType = type;
+  console.log('openDashReport called:', type); // ← ADD THIS
 
   // Update bar button states
-  ['daily','weekly','summary','companysummary'].forEach(t => {
+  ['daily','weekly','summary','companysummary','assignment'].forEach(t => {
     const b = document.getElementById('dashRepBtn' + t.charAt(0).toUpperCase() + t.slice(1));
     if (b) b.classList.remove('active','loading');
   });
   if (btnEl) { btnEl.classList.add('loading'); }
 
   // Update tab states in modal footer
-  ['Daily','Weekly','Summary','Company Summary'].forEach(t => {
-    const tab = document.getElementById('dashRepTab' + t);
-    if (tab) tab.classList.toggle('active', t.toLowerCase() === type);
+  ['daily','weekly','summary','companysummary','assignment'].forEach(t => {
+    const tab = document.getElementById('dashRepTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (tab) tab.classList.toggle('active', t === type);
   });
 
   // Set modal header meta
@@ -4339,6 +4376,8 @@ async function openDashReport(type, btnEl) {
 
   try {
     const url = DASH_REPORT_HOOKS[type];
+	console.log('URL being called:', url); // ← ADD THIS
+	
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4352,7 +4391,6 @@ async function openDashReport(type, btnEl) {
 
     if (contentType.includes('application/json')) {
       const json = await resp.json();
-      // Support { html: "..." } or { content: "..." } or plain string
       htmlContent = json.html || json.content || json.data || JSON.stringify(json, null, 2);
     } else {
       htmlContent = await resp.text();
@@ -4364,20 +4402,9 @@ async function openDashReport(type, btnEl) {
     </div>`;
 
     const frame = document.getElementById('dashRepFrame');
-    frame.onload = () => {
-      try {
-        const doc = frame.contentDocument || frame.contentWindow.document;
-        doc.open(); doc.write(htmlContent); doc.close();
-        // Auto-adjust height
-        setTimeout(() => {
-          const h = doc.body ? doc.body.scrollHeight : 400;
-          frame.style.minHeight = Math.max(400, h + 20) + 'px';
-        }, 200);
-      } catch(e) { /* cross-origin fallback already written */ }
-    };
-    // Trigger load
     const doc = frame.contentDocument || frame.contentWindow.document;
     doc.open(); doc.write(htmlContent); doc.close();
+
     setTimeout(() => {
       try {
         const h = doc.body ? doc.body.scrollHeight : 400;
@@ -4385,11 +4412,10 @@ async function openDashReport(type, btnEl) {
       } catch(e) {}
     }, 300);
 
-    // Mark button as active
     if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('active'); }
 
   } catch(err) {
-    console.error('Dashboard report error:', err);
+    console.error('Dashboard report error:'+err.message, err);
     body.innerHTML = `
       <div class="dash-report-error">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
