@@ -13,7 +13,7 @@
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
   import {
     getFirestore, collection, doc,
-    setDoc, getDoc, getDocs, deleteDoc,
+    setDoc, getDoc, getDocs, deleteDoc, addDoc,
     query, orderBy, where, serverTimestamp, Timestamp
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
@@ -31,6 +31,8 @@
   const auth = getAuth(app);
   const db   = getFirestore(app);
 
+  window._addDoc = addDoc;
+  window._Timestamp = Timestamp;
   window._auth = auth;
   window._db   = db;
   window._serverTimestamp = serverTimestamp;
@@ -49,8 +51,23 @@
     window.location.replace("login.html");
   };
 
-  onAuthStateChanged(auth, user => {
+  onAuthStateChanged(auth, async user => {
     if (!user) { window.location.replace("login.html"); return; }
+
+    // ISO 27001 A.9: Verify super-admin role from Firestore (same source of truth as login.html)
+    try {
+      const snap = await getDoc(doc(db, 'users', user.email));
+      if (!snap.exists() || snap.data().role !== 'super-admin') {
+        await signOut(auth);
+        window.location.replace("login.html");
+        return;
+      }
+    } catch(e) {
+      await signOut(auth);
+      window.location.replace("login.html");
+      return;
+    }
+
     document.getElementById('authLoading').style.display = 'none';
     document.getElementById('appShell').style.display    = 'contents';
     const name     = user.displayName || user.email.split('@')[0];
@@ -59,8 +76,24 @@
     document.getElementById('userName').textContent     = name;
     document.getElementById('userEmail').textContent    = user.email;
     window._currentUser = { name, email: user.email, initials };
+
+    // ISO 27001 A.9.4: 30-min inactivity timeout
+    let _idleTimer;
+    const resetIdle = () => {
+      clearTimeout(_idleTimer);
+      _idleTimer = setTimeout(async () => {
+        await signOut(auth);
+        window.location.replace("login.html");
+      }, 30 * 60 * 1000);
+    };
+    ['click','keydown','mousemove','scroll'].forEach(e =>
+      document.addEventListener(e, resetIdle, { passive: true })
+    );
+    resetIdle();
+
     loadTenants();
     loadUsers();
+    loadSchedules();
   });
 </script>
 
@@ -253,8 +286,27 @@
   .badge-pro        { background: rgba(0,184,255,.12); color: var(--accent2); border: 1px solid rgba(0,184,255,.25); }
   .badge-enterprise { background: rgba(192,132,252,.14); color: #c084fc; border: 1px solid rgba(192,132,252,.28); }
   .badge-admin   { background: rgba(255,183,48,.1); color: var(--warn); border: 1px solid rgba(255,183,48,.25); }
+  .badge-super-admin { background: rgba(139,92,246,.12); color: #8b5cf6; border: 1px solid rgba(139,92,246,.28);}
   .badge-manager { background: rgba(0,184,255,.1); color: var(--accent2); border: 1px solid rgba(0,184,255,.22); }
   .badge-agent   { background: rgba(107,127,163,.1); color: var(--muted); border: 1px solid var(--border); }
+
+  /* LOG LEVEL & STATUS BADGES */
+  .badge-info    { background: rgba(0,184,255,.1);  color: var(--accent2); border: 1px solid rgba(0,184,255,.22); }
+  .badge-warn    { background: rgba(255,183,48,.1); color: var(--warn);    border: 1px solid rgba(255,183,48,.25); }
+  .badge-error   { background: rgba(255,77,109,.12);color: var(--danger);  border: 1px solid rgba(255,77,109,.25); }
+  .badge-debug   { background: rgba(107,127,163,.1);color: var(--muted);   border: 1px solid var(--border); }
+  .badge-success { background: rgba(0,229,160,.12); color: var(--accent);  border: 1px solid rgba(0,229,160,.25); }
+  .badge-failure { background: rgba(255,77,109,.12);color: var(--danger);  border: 1px solid rgba(255,77,109,.25); }
+  .badge-partial { background: rgba(255,183,48,.1); color: var(--warn);    border: 1px solid rgba(255,183,48,.25); }
+
+  /* META EXPAND */
+  .meta-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(0,229,160,.05); border: 1px solid rgba(0,229,160,.15);
+    border-radius: 5px; padding: 2px 8px; font-family: var(--mono); font-size: .67rem;
+    color: var(--muted); cursor: pointer; transition: all .14s; white-space: nowrap;
+  }
+  .meta-pill:hover { border-color: var(--accent); color: var(--accent); }
 
   /* ROW ACTIONS */
   .row-actions { display: flex; gap: 5px; }
@@ -405,6 +457,26 @@
   .confirm-body { padding: 22px; font-size: .85rem; color: var(--muted); line-height: 1.6; }
   .confirm-body strong { color: var(--text); }
 
+  /* DATE INPUT WRAPPER */
+  .date-input-wrap { position: relative; display: flex; align-items: center; }
+  .date-input-wrap input[type="date"] {
+    width: 100%; padding: 9px 40px 9px 11px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font); font-size: .82rem;
+    border-radius: 7px; outline: none; transition: border-color .18s;
+    appearance: none; -webkit-appearance: none;
+  }
+  .date-input-wrap input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; width: 0; pointer-events: none; }
+  .date-input-wrap input[type="date"]:focus { border-color: var(--accent); }
+  .date-cal-btn {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 26px; height: 26px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .14s; padding: 0;
+  }
+  .date-cal-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.08); }
+
   @media (max-width: 960px) {
     .shell { grid-template-columns: 1fr; }
     aside  { display: none; }
@@ -413,13 +485,60 @@
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .full, .form-section-title { grid-column: 1; }
   }
+
+  /* PAGINATION */
+  .pagination-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-top: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
+  }
+  .pagination-info { font-size: .72rem; color: var(--muted); font-family: var(--mono); }
+  .pagination-btns { display: flex; gap: 5px; }
+  .page-btn {
+    min-width: 30px; height: 28px; padding: 0 8px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    font-family: var(--mono); font-size: .72rem;
+    cursor: pointer; transition: all .14s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.06); }
+  .page-btn.active { background: rgba(0,229,160,.12); border-color: rgba(0,229,160,.3); color: var(--accent); font-weight: 700; }
+  .page-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* META MODAL */
+  .meta-modal { max-width: 480px; }
+  .meta-kv-list { display: flex; flex-direction: column; gap: 10px; }
+  .meta-kv-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+  }
+  .meta-kv-key {
+    flex-shrink: 0; min-width: 110px; font-family: var(--mono);
+    font-size: .69rem; font-weight: 700; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .06em; padding-top: 1px;
+  }
+  .meta-kv-val {
+    font-size: .78rem; color: var(--text); word-break: break-all; line-height: 1.5;
+  }
+  .meta-kv-val.is-bool  { color: #f0a05a; font-family: var(--mono); font-size: .74rem; }
+  .meta-kv-val.is-num   { color: #79c0ff; font-family: var(--mono); font-size: .74rem; }
+  .meta-kv-val.is-null  { color: var(--muted); font-family: var(--mono); font-size: .74rem; font-style: italic; }
+  .meta-kv-val.is-obj   { font-family: var(--mono); font-size: .71rem; color: var(--muted); white-space: pre-wrap; }
+  .meta-badge {
+    display: inline-flex; align-items: center;
+    background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.2);
+    border-radius: 4px; padding: 1px 7px; font-family: var(--mono);
+    font-size: .68rem; color: var(--accent); font-weight: 600;
+  }
 </style>
 </head>
 <body>
 
 <!-- AUTH LOADING -->
 <div id="authLoading">
-  <img src="/evoaidesk/images/evoaiDesk.png" alt="evoAI"/>
+  <img src="/images/evoaidesk.png" alt="evoAI"/>
   <div class="auth-spinner"></div>
   <p>Verifying session…</p>
 </div>
@@ -430,7 +549,7 @@
 <!-- NAV -->
 <nav>
   <a class="nav-logo" href="#">
-    <img src="/evoaidesk/images/evoaiDesk.png" alt="evoAI" style="height:32px;width:auto;display:block;"/>
+    <img src="/images/evoaidesk.png" alt="evoAI" style="height:32px;width:auto;display:block;"/>
   </a>
   
   <div class="nav-right">
@@ -468,6 +587,16 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Users
           <span class="aside-count" id="cntUsers">—</span>
+        </a>
+        <a class="aside-item" href="#" onclick="switchTab('schedules');return false;" id="sideSchedulesLink">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Schedules
+          <span class="aside-count" id="cntSchedules">—</span>
+        </a>
+        <a class="aside-item" href="#" onclick="switchTab('logs');return false;" id="sideLogsLink">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Logs
+          <span class="aside-count" id="cntLogs">—</span>
         </a>
         <a class="aside-item" href="#" onclick="filterActiveUsers();return false;" id="sideActiveUsersLink">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -516,6 +645,16 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Users
         <span class="tab-count" id="tabCntUsers">—</span>
+      </button>
+      <button class="tab-btn" id="tabBtnSchedules" onclick="switchTab('schedules')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Schedules
+        <span class="tab-count" id="tabCntSchedules">—</span>
+      </button>
+      <button class="tab-btn" id="tabBtnLogs" onclick="switchTab('logs')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Logs
+        <span class="tab-count" id="tabCntLogs">—</span>
       </button>
     </div>
 
@@ -672,12 +811,215 @@
       </div>
     </div><!-- /panelUsers -->
 
+    <!-- ════════════════════════════════════ SCHEDULES TAB ═══════════════ -->
+    <div class="tab-panel" id="panelSchedules">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Scheduled Jobs</div>
+          <div class="page-sub">Manage recurring jobs across all tenants — reports, exports, notifications.</div>
+        </div>
+        <button class="pill-btn primary" onclick="openCreateScheduleModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Schedule
+        </button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total Jobs</div>
+          <div class="stat-value" id="schStatTotal">—</div>
+          <div class="stat-sub">All scheduled jobs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active</div>
+          <div class="stat-value" id="schStatActive">—</div>
+          <div class="stat-sub">Currently enabled</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Reports</div>
+          <div class="stat-value" id="schStatReports">—</div>
+          <div class="stat-sub">Report type jobs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Exports</div>
+          <div class="stat-value" id="schStatExports">—</div>
+          <div class="stat-sub">Export type jobs</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-head-bar">
+          <div>
+            <h3>All Schedules</h3>
+            <p>Stored at <span style="font-family:var(--mono);color:var(--accent);font-size:.68rem;">/scheduled_jobs/{docId}</span></p>
+          </div>
+          <div class="table-head-bar-right" style="gap:8px;">
+            <select id="schTenantFilter" onchange="renderSchedulesTable()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Tenants</option>
+            </select>
+            <select id="schTypeFilter" onchange="renderSchedulesTable()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Types</option>
+              <option value="report">Report</option>
+              <option value="export">Export</option>
+              <option value="notification">Notification</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Job Name</th>
+              <th>Tenant</th>
+              <th>Type</th>
+              <th>Frequency</th>
+              <th>Next Run</th>
+              <th>Recipient</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="schedulesTableBody">
+            <tr><td colspan="8"><div class="empty-state">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <p>No scheduled jobs yet</p><p class="empty-sub">Click "Add Schedule" to create the first job.</p>
+            </div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /panelSchedules -->
+
+    <!-- ════════════════════════════════════ LOGS TAB ════════════════════ -->
+    <div class="tab-panel" id="panelLogs">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Activity Logs</div>
+          <div class="page-sub">All actions across tenants, users, and schedules — pulled from Neon.</div>
+        </div>
+        <button class="pill-btn outline" onclick="loadLogs(true)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <!-- Log stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total</div>
+          <div class="stat-value" id="logStatTotal">—</div>
+          <div class="stat-sub">All log entries</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Errors</div>
+          <div class="stat-value" style="color:var(--danger);" id="logStatErrors">—</div>
+          <div class="stat-sub">Level: error</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Failures</div>
+          <div class="stat-value" style="color:var(--warn);" id="logStatFailures">—</div>
+          <div class="stat-sub">Status: failure</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Success</div>
+          <div class="stat-value" style="color:var(--accent);" id="logStatSuccess">—</div>
+          <div class="stat-sub">Status: success</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-head-bar">
+          <div>
+            <h3>Log Entries</h3>
+            <p>Latest 200 entries from <span style="font-family:var(--mono);color:var(--accent);font-size:.68rem;">logs</span> table</p>
+          </div>
+          <div class="table-head-bar-right" style="gap:8px;flex-wrap:wrap;">
+            <!-- Level filter -->
+            <select id="logLevelFilter" onchange="resetLogsPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Levels</option>
+              <option value="info">Info</option>
+              <option value="warn">Warn</option>
+              <option value="error">Error</option>
+              <option value="debug">Debug</option>
+            </select>
+            <!-- Status filter -->
+            <select id="logStatusFilter" onchange="resetLogsPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Statuses</option>
+              <option value="success">Success</option>
+              <option value="failure">Failure</option>
+              <option value="partial">Partial</option>
+            </select>
+            <!-- Module filter -->
+            <select id="logModuleFilter" onchange="resetLogsPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Modules</option>
+              <option value="tenant">Tenant</option>
+              <option value="user">User</option>
+              <option value="schedule">Schedule</option>
+            </select>
+            <!-- Tenant filter -->
+            <select id="logTenantFilter" onchange="resetLogsPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.76rem;border-radius:7px;padding:5px 28px 5px 10px;outline:none;cursor:pointer;appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7fa3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="">All Tenants</option>
+            </select>
+            <!-- Search -->
+            <div class="search-wrap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="search-input" id="logSearch" placeholder="Search message…" oninput="resetLogsPage()"/>
+            </div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Level</th>
+              <th>Tenant</th>
+              <th>Status</th>
+              <th>Module</th>
+              <th>Source</th>
+              <th>User</th>
+              <th>Message</th>
+              <th>Meta</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr><td colspan="9"><div class="empty-state">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <p>No logs loaded</p><p class="empty-sub">Click the Logs tab or Refresh to fetch entries.</p>
+            </div></td></tr>
+          </tbody>
+        </table>
+        <div class="pagination-bar" id="logsPagBar" style="display:none;">
+          <span class="pagination-info" id="logsPagInfo"></span>
+          <div class="pagination-btns" id="logsPagBtns"></div>
+        </div>
+      </div>
+    </div><!-- /panelLogs -->
+
   </main>
 </div>
 </div><!-- /#appShell -->
 
 <!-- TOAST -->
 <div id="toast"><span class="toast-dot"></span><span id="toastMsg"></span></div>
+
+<!-- META MODAL -->
+<div class="overlay" id="metaModal">
+  <div class="modal meta-modal">
+    <div class="modal-head">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div class="modal-title">Log Meta</div>
+      </div>
+      <button class="modal-close" onclick="closeMetaModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="meta-kv-list" id="metaKvList"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeMetaModal()">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════ TENANT MODAL ══════════════════════════ -->
 <div class="overlay" id="tenantModal">
@@ -843,10 +1185,11 @@
         </div>
         <div class="field">
           <label>Role <span class="req">*</span></label>
-          <select id="uRole">
+          <select id="uRole">		    
             <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="agent">Agent</option>
+			<option value="agent">Agent</option>
+            <option value="manager">Manager</option>            
+			<option value="super-admin">Super-Admin</option>
           </select>
         </div>
         <div class="field">
@@ -862,6 +1205,14 @@
             <option value="">— Select a tenant —</option>
           </select>
           <div class="field-hint">Maps to <span style="color:var(--accent);">tenant_id</span> field in Firestore</div>
+        </div>
+
+        <div class="form-section-title">Integrations</div>
+        <div class="field full">
+          <label>Telegram User ID</label>
+          <input type="text" id="uTelegramUserId" placeholder="e.g. 8494253461" autocomplete="off"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+          <div class="field-hint">Maps to <span style="color:var(--accent);">telegram_user_id</span> in Firestore — numeric ID from Telegram</div>
         </div>
       </div>
     </div>
@@ -892,6 +1243,102 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════ SCHEDULE MODAL ════════════════════════ -->
+<div class="overlay" id="scheduleModal">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-head">
+      <div class="modal-title" id="modalScheduleTitle">Add Schedule</div>
+      <button class="modal-close" onclick="closeScheduleModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-section-title">Job Details</div>
+        <div class="field full">
+          <label>Tenant <span class="req">*</span></label>
+          <select id="schTenantId">
+            <option value="">— Select tenant —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Job Type <span class="req">*</span></label>
+          <select id="schJobType">
+            <option value="report">Report</option>
+            <option value="export">Export</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Job Name <span class="req">*</span></label>
+          <input type="text" id="schJobName" placeholder="e.g. pipeline_summary" autocomplete="off"/>
+          <div class="field-hint">Lowercase, underscores OK</div>
+        </div>
+
+        <div class="form-section-title">Schedule</div>
+        <div class="field">
+          <label>Frequency <span class="req">*</span></label>
+          <select id="schFrequency" onchange="onFrequencyChange()">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div class="field" id="schRunDayWrap">
+          <label id="schRunDayLabel">Run Day <span class="req">*</span></label>
+          <select id="schRunDay">
+            <option value="0">Sunday</option>
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+            <option value="6">Saturday</option>
+          </select>
+          <div class="field-hint" id="schRunDayHint">0 = Sunday … 6 = Saturday</div>
+        </div>
+        <div class="field full">
+          <label>Next Run Date <span class="req">*</span></label>
+          <div class="date-input-wrap">
+            <input type="date" id="schNextRunDate"/>
+            <button type="button" class="date-cal-btn" onclick="document.getElementById('schNextRunDate').showPicker()" title="Open calendar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </button>
+          </div>
+          <div class="field-hint" id="schNextRunDateHint">Auto-suggested from frequency &amp; run day — editable</div>
+        </div>
+
+
+        <div class="form-section-title">Recipient</div>
+        <div class="field full">
+          <label>Recipient Name <span class="req">*</span></label>
+          <input type="text" id="schRecipientName" placeholder="e.g. John Doe" autocomplete="off" required oninput="this.style.borderColor=this.value.trim()?'var(--accent)':'var(--danger)';"/>
+        </div>
+        <div class="field full">
+          <label>Recipient Email <span class="req">*</span></label>
+          <input type="text" id="schRecipientEmail" placeholder="e.g. ceo@company.com" autocomplete="off" required
+            oninput="const v=this.value.trim(); this.style.borderColor=v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'var(--danger)':v?'var(--accent)':'';"/>
+        </div>
+
+        <div class="form-section-title">Status</div>
+        <div class="field">
+          <label>Active</label>
+          <select id="schIsActive">
+            <option value="true">Yes — enabled</option>
+            <option value="false">No — disabled</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeScheduleModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveScheduleBtn" onclick="saveSchedule()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Save Schedule
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
   /* ── STATE ── */
   let _tenants  = [];
@@ -900,6 +1347,56 @@
   let _userStatusFilter = 'all';
   let _filter   = 'all';
   let _activeTab = 'tenants';
+
+  /* ══════════════ N8N WEBHOOK CONFIG ══════════════
+     All Neon queries are proxied through n8n webhooks to avoid CORS.
+     Paste your webhook URLs below after creating them in n8n.
+  ═════════════════════════════════════════════════ */
+  const N8N_LOG_WRITE = 'https://n8n.evoaiglobal.ai/webhook/evoaidesk/log/write'; // POST
+  const N8N_LOG_READ  = 'https://n8n.evoaiglobal.ai/webhook/evoaidesk/log/read';  // GET
+
+  async function writeLog({ level = 'info', status = null, module, source, message, meta = {}, tenant_id = null }) {
+    try {
+      // ISO 27001 A.12: user_id captures who performed every action
+      const user_id = window._currentUser?.email || 'unknown';
+      await fetch(N8N_LOG_WRITE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level, status, module, source, user_id, tenant_id, message, meta: JSON.stringify(meta) })
+      });
+    } catch(e) {
+      console.warn('[writeLog] failed:', e.message);
+    }
+  }
+
+  /* ══════════════ HELPERS (defined first — used everywhere) ══════════════ */
+  function fmt(ts) {
+    return ts?.toDate ? ts.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  }
+  function cap(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function fmtDate(val) {
+    if (!val) return '—';
+    if (val?.toDate) return val.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+    if (typeof val==='string') { const d=new Date(val); return isNaN(d)?val:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+    return '—';
+  }
+  function tsToDateInput(val) {
+    if (!val) return '';
+    const d = val?.toDate ? val.toDate() : new Date(val);
+    return isNaN(d) ? '' : d.toISOString().slice(0,10);
+  }
+  let _toastTimer;
+  function toast(msg, type='success') {
+    const el = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    el.className = 'show ' + type;
+    el.querySelector('.toast-dot').style.background = type==='success'?'var(--accent)':'var(--danger)';
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { el.className=''; }, 3000);
+  }
 
   /* ══════════════ SMTP PASSWORD TOGGLE ══════════════ */
   function toggleSmtpPw(btn) {
@@ -914,15 +1411,24 @@
   /* ══════════════ TAB SWITCHING ══════════════ */
   function switchTab(tab, resetUserFilter) {
     _activeTab = tab;
-    if (resetUserFilter || tab !== 'users') {
+    if (resetUserFilter) {
+      _userStatusFilter = 'all';
+    } else if (tab !== 'users') {
       _userStatusFilter = 'all';
     }
     updateSidebarUserHighlights();
     document.getElementById('panelTenants').classList.toggle('active', tab === 'tenants');
     document.getElementById('panelUsers').classList.toggle('active', tab === 'users');
+    document.getElementById('panelSchedules').classList.toggle('active', tab === 'schedules');
+    document.getElementById('panelLogs').classList.toggle('active', tab === 'logs');
     document.getElementById('tabBtnTenants').classList.toggle('active', tab === 'tenants');
     document.getElementById('tabBtnUsers').classList.toggle('active', tab === 'users');
+    document.getElementById('tabBtnSchedules').classList.toggle('active', tab === 'schedules');
+    document.getElementById('tabBtnLogs').classList.toggle('active', tab === 'logs');
     document.getElementById('sideTenantsLink').classList.toggle('active', tab === 'tenants');
+    document.getElementById('sideSchedulesLink').classList.toggle('active', tab === 'schedules');
+    document.getElementById('sideLogsLink').classList.toggle('active', tab === 'logs');
+    if (tab === 'logs') loadLogs(false);
   }
 
   function updateSidebarUserHighlights() {
@@ -1006,7 +1512,9 @@
     document.getElementById('fContactPhone').value = t.tenant_contact_phone || '';
     document.getElementById('fLocation').value     = t.location             || '';
     document.getElementById('fFromEmail').value       = t.from_email         || '';
-    document.getElementById('fSmtpAppPassword').value = t.smtp_app_password  || '';
+    // ISO 27001 A.10: Never send credentials back to browser
+    document.getElementById('fSmtpAppPassword').value = '';
+    document.getElementById('fSmtpAppPassword').placeholder = '•••••••• (leave blank to keep current)';
     document.getElementById('fSmtpAppPassword').type  = 'password';
     document.getElementById('tenantModal').classList.add('open');
   }
@@ -1040,19 +1548,39 @@
         const existing = await window._getDoc(ref);
         if (existing.exists()) { toast(`Slug "${slug}" already exists`, 'error'); btn.disabled=false; resetSaveTenantBtn(); return; }
       }
+      // ISO 27001 A.10: Only persist smtp_app_password if a new value was entered
       const data = {
         id: slug, name, slug, plan, status,
         timezone, currency, tenant_contact_email, tenant_contact_phone, location,
-        from_email, smtp_app_password,
+        from_email,
+        ...(smtp_app_password ? { smtp_app_password } : {}),
         ..._editTenantSlug
           ? { updatedAt: window._serverTimestamp() }
           : { createdAt: window._serverTimestamp(), updatedAt: window._serverTimestamp() }
       };
       await window._setDoc(ref, data, { merge: !!_editTenantSlug });
-      toast(_editTenantSlug ? 'Tenant updated' : 'Tenant created', 'success');
+      const action = _editTenantSlug ? 'updated' : 'created';
+      toast(`Tenant ${action}`, 'success');
+      writeLog({
+        level: 'info', status: 'success',
+        module: 'tenant', source: 'saveTenant',
+        tenant_id: slug,
+        message: `Tenant ${action}: ${name}`,
+        meta: { slug, plan, status, action }
+      });
       closeTenantModal();
       await loadTenants();
-    } catch(e) { console.error(e); toast('Error: ' + e.message, 'error'); }
+    } catch(e) {
+      console.error(e);
+      toast('Error: ' + e.message, 'error');
+      writeLog({
+        level: 'error', status: 'failure',
+        module: 'tenant', source: 'saveTenant',
+        tenant_id: document.getElementById('fSlug').value || null,
+        message: `Failed to save tenant: ${e.message}`,
+        meta: { slug: document.getElementById('fSlug').value }
+      });
+    }
     btn.disabled = false; resetSaveTenantBtn();
   }
 
@@ -1102,6 +1630,7 @@
     document.getElementById('uTenantId').value  = '';
     document.getElementById('uGoogleId').disabled = false;
     nameEl.disabled = false;
+    document.getElementById('uTelegramUserId').value = '';
     populateTenantDropdowns();
     document.getElementById('userModal').classList.add('open');
     setTimeout(() => document.getElementById('uGoogleId').focus(), 100);
@@ -1120,6 +1649,7 @@
     document.getElementById('uStatus').value    = u.status    || 'active';
     populateTenantDropdowns();
     document.getElementById('uTenantId').value  = u.tenant_id || '';
+    document.getElementById('uTelegramUserId').value = u.telegram_user_id || '';
     document.getElementById('uGoogleId').disabled = true;
     document.getElementById('userModal').classList.add('open');
   }
@@ -1132,6 +1662,7 @@
     const role      = document.getElementById('uRole').value;
     const status    = document.getElementById('uStatus').value;
     const tenant_id = document.getElementById('uTenantId').value;
+    const telegram_user_id = document.getElementById('uTelegramUserId').value.trim();
     if (!google_id)  { toast('Google ID / Email is required', 'error'); return; }
     if (!tenant_id)  { toast('Please select a tenant', 'error'); return; }
     const btn = document.getElementById('saveUserBtn');
@@ -1153,15 +1684,34 @@
       }
       const data = {
         google_id, name, role, status, tenant_id,
+        telegram_user_id: telegram_user_id || '',
         ..._editUserId
           ? { updatedAt: window._serverTimestamp() }
           : { createdAt: window._serverTimestamp(), updatedAt: window._serverTimestamp() }
       };
       await window._setDoc(ref, data, { merge: !!_editUserId });
-      toast(_editUserId ? 'User updated' : 'User added', 'success');
+      const action = _editUserId ? 'updated' : 'added';
+      toast(`User ${action}`, 'success');
+      writeLog({
+        level: 'info', status: 'success',
+        module: 'user', source: 'saveUser',
+        tenant_id: tenant_id || null,
+        message: `User ${action}: ${google_id}`,
+        meta: { google_id, role, status, tenant_id, action }
+      });
       closeUserModal();
       await loadUsers();
-    } catch(e) { console.error(e); toast('Error: ' + e.message, 'error'); }
+    } catch(e) {
+      console.error(e);
+      toast('Error: ' + e.message, 'error');
+      writeLog({
+        level: 'error', status: 'failure',
+        module: 'user', source: 'saveUser',
+        tenant_id: document.getElementById('uTenantId').value || null,
+        message: `Failed to save user: ${e.message}`,
+        meta: { google_id: document.getElementById('uGoogleId').value }
+      });
+    }
     btn.disabled = false;
     document.getElementById('saveUserBtn').innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Save User';
   }
@@ -1173,11 +1723,38 @@
     const btn = document.getElementById('confirmOkBtn');
     btn.onclick = async () => {
       try {
+        const deletedUser = _users.find(u => u._id === uid);
+        // ISO 27001 A.9.2: Revoke claims before deleting so active sessions are blocked on next refresh
+        try {
+          await fetch('/set-claims', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': window._CLAIMS_API_KEY || '' },
+            body: JSON.stringify({ uid, role: 'revoked', tenant_id: null, status: 'suspended' })
+          });
+        } catch(claimsErr) {
+          console.warn('[deleteUser] claims revoke failed (non-blocking):', claimsErr.message);
+        }
         await window._deleteDoc(window._doc(window._db, 'users', uid));
         toast('User deleted', 'success');
+        writeLog({
+          level: 'warn', status: 'success',
+          module: 'user', source: 'deleteUser',
+          tenant_id: deletedUser?.tenant_id || null,
+          message: `User deleted: ${label}`,
+          meta: { uid, label }
+        });
         closeConfirm();
         await loadUsers();
-      } catch(e) { toast('Error: ' + e.message, 'error'); }
+      } catch(e) {
+        toast('Error: ' + e.message, 'error');
+        writeLog({
+          level: 'error', status: 'failure',
+          module: 'user', source: 'deleteUser',
+          tenant_id: _users.find(u => u._id === uid)?.tenant_id || null,
+          message: `Failed to delete user: ${e.message}`,
+          meta: { uid, label }
+        });
+      }
     };
     document.getElementById('confirmModal').classList.add('open');
   }
@@ -1366,49 +1943,512 @@
   /* ══════════════ USER STATUS FILTERS ══════════════ */
   function filterActiveUsers() {
     _userStatusFilter = 'active';
-    _activeTab = 'users';
-    document.getElementById('panelTenants').classList.remove('active');
-    document.getElementById('panelUsers').classList.add('active');
-    document.getElementById('tabBtnTenants').classList.remove('active');
-    document.getElementById('tabBtnUsers').classList.add('active');
-    document.getElementById('sideTenantsLink').classList.remove('active');
+    switchTab('users');
     updateSidebarUserHighlights();
     renderUsersTable();
   }
 
   function filterSuspendedUsers() {
     _userStatusFilter = 'suspended';
-    _activeTab = 'users';
-    document.getElementById('panelTenants').classList.remove('active');
-    document.getElementById('panelUsers').classList.add('active');
-    document.getElementById('tabBtnTenants').classList.remove('active');
-    document.getElementById('tabBtnUsers').classList.add('active');
-    document.getElementById('sideTenantsLink').classList.remove('active');
+    switchTab('users');
     updateSidebarUserHighlights();
     renderUsersTable();
   }
 
-  /* ══════════════ HELPERS ══════════════ */
-  function fmt(ts) {
-    return ts?.toDate ? ts.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  /* ══════════════ SCHEDULES STATE ══════════════ */
+  let _schedules = [];
+  let _editScheduleId = null;
+
+  async function loadSchedules() {
+    try {
+      const snap = await window._getDocs(
+        window._collection(window._db,'scheduled_jobs')
+      );
+      _schedules = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+      _schedules.sort((a,b) => {
+        const ta = a.created_at?.toMillis ? a.created_at.toMillis() : 0;
+        const tb = b.created_at?.toMillis ? b.created_at.toMillis() : 0;
+        return tb - ta;
+      });
+      renderSchedulesTable();
+      renderScheduleStats();
+      populateSchTenantFilters();
+    } catch(e) { console.error('loadSchedules',e); }
   }
-  function cap(s) { return s.charAt(0).toUpperCase()+s.slice(1); }
-  function esc(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function renderScheduleStats() {
+    const total   = _schedules.length;
+    const active  = _schedules.filter(s => s.is_active===true).length;
+    const reports = _schedules.filter(s => s.job_type==='report').length;
+    const exps    = _schedules.filter(s => s.job_type==='export').length;
+    document.getElementById('schStatTotal').textContent    = total;
+    document.getElementById('schStatActive').textContent   = active;
+    document.getElementById('schStatReports').textContent  = reports;
+    document.getElementById('schStatExports').textContent  = exps;
+    document.getElementById('cntSchedules').textContent    = total;
+    document.getElementById('tabCntSchedules').textContent = total;
   }
-  let _toastTimer;
-  function toast(msg, type='success') {
-    const el = document.getElementById('toast');
-    document.getElementById('toastMsg').textContent = msg;
-    el.className = 'show ' + type;
-    el.querySelector('.toast-dot').style.background = type==='success'?'var(--accent)':'var(--danger)';
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => { el.className=''; }, 3000);
+
+  function populateSchTenantFilters() {
+    const opts = _tenants.map(t=>`<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join('');
+    const f = document.getElementById('schTenantFilter');
+    if (f) f.innerHTML = '<option value="">All Tenants</option>'+opts;
+    const m = document.getElementById('schTenantId');
+    if (m) m.innerHTML = '<option value="">— Select tenant —</option>'+opts;
+  }
+
+  function renderSchedulesTable() {
+    const tbody      = document.getElementById('schedulesTableBody');
+    const tenantFilt = (document.getElementById('schTenantFilter')||{}).value||'';
+    const typeFilt   = (document.getElementById('schTypeFilter')  ||{}).value||'';
+    let rows = _schedules;
+    if (tenantFilt) rows = rows.filter(s=>s.tenant_id===tenantFilt);
+    if (typeFilt)   rows = rows.filter(s=>s.job_type===typeFilt);
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <p>No schedules found</p><p class="empty-sub">Try clearing filters or add a new schedule.</p>
+      </div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(s => {
+      const tenant    = _tenants.find(t=>t.slug===s.tenant_id);
+      const tName     = tenant ? tenant.name : (s.tenant_id||'—');
+      const typeColor = s.job_type==='report'?'manager':s.job_type==='export'?'pro':'agent';
+      const typeBadge = `<span class="badge badge-${typeColor}">${cap(s.job_type||'—')}</span>`;
+      const freqBadge = `<span style="font-family:var(--mono);font-size:.7rem;color:var(--muted);">${s.frequency||'—'}</span>`;
+      const nextRun   = fmtDate(s.next_run_date);
+      const stBadge   = s.is_active ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-suspended">Inactive</span>`;
+      const recipient = s.recipient_email
+        ? `<span style="font-size:.75rem;">${esc(s.recipient_name||'')} <span class="mono" style="font-size:.68rem;">${esc(s.recipient_email)}</span></span>`
+        : '<span class="mono">—</span>';
+      return `<tr>
+        <td><strong style="font-size:.82rem;">${esc(s.job_name||'—')}</strong></td>
+        <td><span class="tenant-chip">${esc(tName)}</span></td>
+        <td>${typeBadge}</td><td>${freqBadge}</td>
+        <td><span class="mono">${nextRun}</span></td>
+        <td>${recipient}</td><td>${stBadge}</td>
+        <td><div class="row-actions">
+          <button class="icon-btn" title="Edit" onclick="openEditScheduleModal('${esc(s._id)}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="icon-btn danger" title="Delete" onclick="confirmDeleteSchedule('${esc(s._id)}','${esc(s.job_name||s._id)}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function computeNextRunDate(freq, runDay) {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    let d = new Date(today);
+    if (freq === 'daily') {
+      d.setDate(d.getDate() + 1); // tomorrow
+    } else if (freq === 'weekly') {
+      const targetDay = (runDay != null && runDay !== '') ? Number(runDay) : 1;
+      const diff = (targetDay - d.getDay() + 7) % 7 || 7; // at least 1 day ahead
+      d.setDate(d.getDate() + diff);
+    } else { // monthly
+      const targetDay = (runDay != null && runDay !== '') ? Number(runDay) : 1;
+      // Try same month first, then next month
+      d = new Date(today.getFullYear(), today.getMonth(), targetDay);
+      if (d <= today) d = new Date(today.getFullYear(), today.getMonth() + 1, targetDay);
+    }
+    return d.toISOString().slice(0, 10);
+  }
+
+  function onFrequencyChange() {
+    const freq = document.getElementById('schFrequency').value;
+    const wrap = document.getElementById('schRunDayWrap');
+    const lbl  = document.getElementById('schRunDayLabel');
+    const hint = document.getElementById('schRunDayHint');
+    const sel  = document.getElementById('schRunDay');
+    if (freq==='daily') {
+      wrap.style.display = 'none';
+    } else if (freq==='weekly') {
+      wrap.style.display = '';
+      lbl.innerHTML = 'Run Day <span class="req">*</span>';
+      hint.textContent = '0 = Sunday … 6 = Saturday';
+      sel.innerHTML = [['0','Sunday'],['1','Monday'],['2','Tuesday'],['3','Wednesday'],['4','Thursday'],['5','Friday'],['6','Saturday']]
+        .map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+    } else {
+      wrap.style.display = '';
+      lbl.innerHTML = 'Run Day of Month <span class="req">*</span>';
+      hint.textContent = '1–31 (day of the month)';
+      sel.innerHTML = Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
+    }
+    // Auto-update next run date whenever frequency changes
+    const runDay = freq !== 'daily' ? document.getElementById('schRunDay').value : null;
+    const dateField = document.getElementById('schNextRunDate');
+    dateField.value = computeNextRunDate(freq, runDay);
+  }
+
+  // Also recompute next run date when run day changes
+  document.addEventListener('DOMContentLoaded', () => {
+    const runDaySel = document.getElementById('schRunDay');
+    if (runDaySel) {
+      runDaySel.addEventListener('change', () => {
+        const freq = document.getElementById('schFrequency').value;
+        document.getElementById('schNextRunDate').value = computeNextRunDate(freq, runDaySel.value);
+      });
+    }
+  });
+
+  function openCreateScheduleModal() {
+    _editScheduleId = null;
+    document.getElementById('modalScheduleTitle').textContent = 'Add Schedule';
+    document.getElementById('schJobName').value        = '';
+    document.getElementById('schJobType').value        = 'report';
+    document.getElementById('schFrequency').value      = 'weekly';
+    document.getElementById('schNextRunDate').value    = '';
+    document.getElementById('schRecipientName').value  = '';
+    document.getElementById('schRecipientName').style.borderColor = '';
+    document.getElementById('schRecipientEmail').value = '';
+    document.getElementById('schRecipientEmail').style.borderColor = '';
+    document.getElementById('schIsActive').value       = 'true';
+    populateSchTenantFilters();
+    onFrequencyChange(); // this now also sets schNextRunDate
+    document.getElementById('schRunDay').value = '1';
+    document.getElementById('scheduleModal').classList.add('open');
+    setTimeout(() => document.getElementById('schJobName').focus(), 100);
+  }
+
+  function openEditScheduleModal(id) {
+    const s = _schedules.find(x=>x._id===id);
+    if (!s) return;
+    _editScheduleId = id;
+    document.getElementById('modalScheduleTitle').textContent = 'Edit Schedule';
+    populateSchTenantFilters();
+    document.getElementById('schTenantId').value       = s.tenant_id       ||'';
+    document.getElementById('schJobType').value        = s.job_type        ||'report';
+    document.getElementById('schJobName').value        = s.job_name        ||'';
+    document.getElementById('schFrequency').value      = s.frequency       ||'weekly';
+    onFrequencyChange();
+    document.getElementById('schRunDay').value         = String(s.run_day??1);
+    document.getElementById('schNextRunDate').value    = tsToDateInput(s.next_run_date);
+    document.getElementById('schRecipientName').value  = s.recipient_name  ||'';
+    document.getElementById('schRecipientEmail').value = s.recipient_email ||'';
+    document.getElementById('schIsActive').value       = s.is_active===false?'false':'true';
+    document.getElementById('scheduleModal').classList.add('open');
+  }
+
+  function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('open'); }
+
+  async function saveSchedule() {
+    // Guard: ensure recipient fields are never skipped
+    const _rn = (document.getElementById('schRecipientName').value||'').trim();
+    const _re = (document.getElementById('schRecipientEmail').value||'').trim();
+    if (!_rn || !_re) {
+      if (!_rn) { document.getElementById('schRecipientName').style.borderColor='var(--danger)'; document.getElementById('schRecipientName').focus(); toast('Recipient name is required','error'); return; }
+      if (!_re) { document.getElementById('schRecipientEmail').style.borderColor='var(--danger)'; document.getElementById('schRecipientEmail').focus(); toast('Recipient email is required','error'); return; }
+    }
+    const tenant_id       = document.getElementById('schTenantId').value;
+    const job_type        = document.getElementById('schJobType').value;
+    const job_name        = document.getElementById('schJobName').value.trim().replace(/\s+/g,'_').toLowerCase();
+    const frequency       = document.getElementById('schFrequency').value;
+    const run_day         = frequency==='daily' ? null : Number(document.getElementById('schRunDay').value);
+    const nextDateStr     = document.getElementById('schNextRunDate').value;
+    const recipient_name  = document.getElementById('schRecipientName').value.trim();
+    const recipient_email = document.getElementById('schRecipientEmail').value.trim();
+    const is_active       = document.getElementById('schIsActive').value==='true';
+    if (!tenant_id)   { toast('Please select a tenant','error'); return; }
+    if (!job_name)    { toast('Job name is required','error'); return; }
+    if (!nextDateStr) { toast('Next run date is required','error'); return; }
+    if (!recipient_name) {
+      document.getElementById('schRecipientName').style.borderColor = 'var(--danger)';
+      document.getElementById('schRecipientName').focus();
+      toast('Recipient name is required','error'); return;
+    }
+    document.getElementById('schRecipientName').style.borderColor = '';
+    if (!recipient_email) {
+      document.getElementById('schRecipientEmail').style.borderColor = 'var(--danger)';
+      document.getElementById('schRecipientEmail').focus();
+      toast('Recipient email is required','error'); return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient_email)) {
+      document.getElementById('schRecipientEmail').style.borderColor = 'var(--danger)';
+      document.getElementById('schRecipientEmail').focus();
+      toast('Recipient email is not a valid email address','error'); return;
+    }
+    document.getElementById('schRecipientEmail').style.borderColor = '';
+    const next_run_date = window._Timestamp.fromDate(new Date(nextDateStr));
+    const btn = document.getElementById('saveScheduleBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const db   = window._db;
+      const data = { tenant_id, job_type, job_name, frequency, is_active,
+        recipient_name, recipient_email, next_run_date,
+        ...(run_day!==null?{run_day}:{}),
+        updated_at: window._serverTimestamp() };
+      if (_editScheduleId) {
+        await window._setDoc(window._doc(db,'scheduled_jobs',_editScheduleId), data, { merge: true });
+        toast('Schedule updated','success');
+        writeLog({
+          level: 'info', status: 'success',
+          module: 'schedule', source: 'saveSchedule',
+          tenant_id: tenant_id || null,
+          message: `Schedule updated: ${job_name}`,
+          meta: { job_name, job_type, frequency, tenant_id, action: 'updated' }
+        });
+      } else {
+        data.last_run_at = null;
+        data.created_at  = window._serverTimestamp();
+        await window._addDoc(window._collection(db,'scheduled_jobs'), data);
+        toast('Schedule created','success');
+        writeLog({
+          level: 'info', status: 'success',
+          module: 'schedule', source: 'saveSchedule',
+          tenant_id: tenant_id || null,
+          message: `Schedule created: ${job_name}`,
+          meta: { job_name, job_type, frequency, tenant_id, action: 'created' }
+        });
+      }
+      closeScheduleModal();
+      await loadSchedules();
+    } catch(e) {
+      console.error(e);
+      toast('Error: '+e.message,'error');
+      writeLog({
+        level: 'error', status: 'failure',
+        module: 'schedule', source: 'saveSchedule',
+        tenant_id: document.getElementById('schTenantId').value || null,
+        message: `Failed to save schedule: ${e.message}`,
+        meta: { job_name: document.getElementById('schJobName').value }
+      });
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Save Schedule';
+  }
+
+  function confirmDeleteSchedule(id, label) {
+    document.getElementById('confirmTitle').textContent = 'Delete Schedule';
+    document.getElementById('confirmBody').innerHTML = `Remove job <strong>${esc(label)}</strong>? This cannot be undone.`;
+    const btn = document.getElementById('confirmOkBtn');
+    btn.onclick = async () => {
+      try {
+        await window._deleteDoc(window._doc(window._db,'scheduled_jobs',id));
+        toast('Schedule deleted','success');
+        const deletedSch = _schedules.find(s => s._id === id);
+        writeLog({
+          level: 'warn', status: 'success',
+          module: 'schedule', source: 'deleteSchedule',
+          tenant_id: deletedSch?.tenant_id || null,
+          message: `Schedule deleted: ${label}`,
+          meta: { id, label }
+        });
+        closeConfirm();
+        await loadSchedules();
+      } catch(e) {
+        toast('Error: '+e.message,'error');
+        writeLog({
+          level: 'error', status: 'failure',
+          module: 'schedule', source: 'deleteSchedule',
+          tenant_id: _schedules.find(s => s._id === id)?.tenant_id || null,
+          message: `Failed to delete schedule: ${e.message}`,
+          meta: { id, label }
+        });
+      }
+    };
+    document.getElementById('confirmModal').classList.add('open');
   }
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeTenantModal(); closeUserModal(); closeConfirm(); }
+    if (e.key === 'Escape') { closeTenantModal(); closeUserModal(); closeConfirm(); closeScheduleModal(); }
   });
+
+  /* ══════════════ LOGS PANEL ══════════════ */
+  let _logs = [];
+  let _logsLoading = false;
+  let _logsLoaded  = false;
+  let _logsPage = 1;
+  const LOGS_PER_PAGE = 25;
+
+  async function loadLogs(force = false) {
+    if (_logsLoading) return;
+    if (_logsLoaded && !force) return; // use cache
+    _logsLoading = true;
+    const tbody = document.getElementById('logsTableBody');
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">
+      <div class="auth-spinner" style="margin:0 auto 10px;"></div>
+      <p style="font-size:.8rem;">Loading logs…</p>
+    </div></td></tr>`;
+    try {
+      const res  = await fetch(N8N_LOG_READ);
+      const text = await res.text();
+      let data = [];
+      if (text && text.trim()) {
+        try { data = JSON.parse(text); } catch(e) { data = []; }
+      }
+      _logs = Array.isArray(data) ? data.map(item => item.json ?? item) : [];
+      _logsLoaded = true;
+      _logsPage = 1;
+      // Populate tenant filter from log data
+      const tenantSel = document.getElementById('logTenantFilter');
+      const prevTenant = tenantSel.value;
+      const tenantIds = [...new Set(_logs.map(l => l.tenant_id).filter(Boolean))].sort();
+      tenantSel.innerHTML = '<option value="">All Tenants</option>' +
+        tenantIds.map(t => `<option value="${esc(t)}"${t === prevTenant ? ' selected' : ''}>${esc(t)}</option>`).join('');
+      renderLogsTable();
+      renderLogStats();
+      document.getElementById('cntLogs').textContent    = _logs.length;
+      document.getElementById('tabCntLogs').textContent = _logs.length;
+    } catch(e) {
+      console.error('loadLogs', e);
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">
+        <p>Failed to load logs</p><p class="empty-sub">${esc(e.message)}</p>
+      </div></td></tr>`;
+    }
+    _logsLoading = false;
+  }
+
+  function renderLogStats() {
+    const total    = _logs.length;
+    const errors   = _logs.filter(l => l.level === 'error').length;
+    const failures = _logs.filter(l => l.status === 'failure').length;
+    const success  = _logs.filter(l => l.status === 'success').length;
+    document.getElementById('logStatTotal').textContent    = total;
+    document.getElementById('logStatErrors').textContent   = errors;
+    document.getElementById('logStatFailures').textContent = failures;
+    document.getElementById('logStatSuccess').textContent  = success;
+  }
+
+  function resetLogsPage() { _logsPage = 1; renderLogsTable(); }
+  function goLogsPage(p)   { _logsPage = p; renderLogsTable(); }
+
+  /* ── Meta modal ── */
+  function showMetaModal(metaObj) {
+    if (typeof metaObj === 'string') {
+      try { metaObj = JSON.parse(metaObj); } catch(e) { metaObj = { raw: metaObj }; }
+    }
+    const list = document.getElementById('metaKvList');
+    if (!metaObj || !Object.keys(metaObj).length) {
+      list.innerHTML = `<div style="text-align:center;padding:18px 0;font-size:.8rem;color:var(--muted);">No meta data available.</div>`;
+    } else {
+      list.innerHTML = Object.entries(metaObj).map(([k, v]) => {
+        let valHtml;
+        if (v === null || v === undefined) {
+          valHtml = `<span class="meta-kv-val is-null">null</span>`;
+        } else if (typeof v === 'boolean') {
+          valHtml = `<span class="meta-kv-val is-bool">${v}</span>`;
+        } else if (typeof v === 'number') {
+          valHtml = `<span class="meta-kv-val is-num">${v}</span>`;
+        } else if (typeof v === 'object') {
+          valHtml = `<span class="meta-kv-val is-obj">${esc(JSON.stringify(v, null, 2))}</span>`;
+        } else {
+          /* strings — highlight if looks like email / status badge */
+          const s = String(v);
+          const isBadge = ['active','inactive','success','failure','pending','admin','user','error','warn','info'].includes(s.toLowerCase());
+          valHtml = isBadge
+            ? `<span class="meta-badge">${esc(s)}</span>`
+            : `<span class="meta-kv-val">${esc(s)}</span>`;
+        }
+        return `<div class="meta-kv-row">
+          <div class="meta-kv-key">${esc(k)}</div>
+          <div style="flex:1;">${valHtml}</div>
+        </div>`;
+      }).join('');
+    }
+    document.getElementById('metaModal').classList.add('open');
+  }
+  function closeMetaModal() {
+    document.getElementById('metaModal').classList.remove('open');
+  }
+  document.getElementById('metaModal').addEventListener('click', function(e) {
+    if (e.target === this) closeMetaModal();
+  });
+
+  function renderLogsTable() {
+    const tbody      = document.getElementById('logsTableBody');
+    const levelFilt  = document.getElementById('logLevelFilter').value;
+    const statusFilt = document.getElementById('logStatusFilter').value;
+    const moduleFilt = document.getElementById('logModuleFilter').value;
+    const tenantFilt = document.getElementById('logTenantFilter').value;
+    const search     = (document.getElementById('logSearch').value || '').toLowerCase();
+
+    let rows = _logs;
+    if (levelFilt)  rows = rows.filter(l => l.level     === levelFilt);
+    if (statusFilt) rows = rows.filter(l => l.status    === statusFilt);
+    if (moduleFilt) rows = rows.filter(l => l.module    === moduleFilt);
+    if (tenantFilt) rows = rows.filter(l => l.tenant_id === tenantFilt);
+    if (search)     rows = rows.filter(l =>
+      (l.message   || '').toLowerCase().includes(search) ||
+      (l.source    || '').toLowerCase().includes(search) ||
+      (l.user_id   || '').toLowerCase().includes(search) ||
+      (l.tenant_id || '').toLowerCase().includes(search)
+    );
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+        <p>No log entries match</p><p class="empty-sub">Try adjusting the filters.</p>
+      </div></td></tr>`;
+      document.getElementById('logsPagBar').style.display = 'none';
+      return;
+    }
+
+    const totalPages = Math.ceil(rows.length / LOGS_PER_PAGE);
+    if (_logsPage > totalPages) _logsPage = totalPages;
+    const start = (_logsPage - 1) * LOGS_PER_PAGE;
+    const page  = rows.slice(start, start + LOGS_PER_PAGE);
+
+    tbody.innerHTML = page.map(l => {
+      const time   = l.created_at ? new Date(l.created_at).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+      const level  = l.level  ? `<span class="badge badge-${l.level}">${l.level}</span>`   : '<span class="mono">—</span>';
+      const status = l.status ? `<span class="badge badge-${l.status}">${l.status}</span>` : '<span class="mono" style="color:var(--muted);font-size:.7rem;">—</span>';
+      const tenant = l.tenant_id
+        ? `<span class="tenant-chip">${esc(l.tenant_id)}</span>`
+        : '<span class="mono" style="color:var(--muted);font-size:.7rem;">—</span>';
+      let metaObj = null;
+      if (l.meta) {
+        try { metaObj = typeof l.meta === 'string' ? JSON.parse(l.meta) : l.meta; } catch(e) { metaObj = { raw: l.meta }; }
+      }
+      const meta = metaObj
+        ? `<span class="meta-pill" onclick='showMetaModal(${esc(JSON.stringify(metaObj))})'>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            meta
+          </span>`
+        : '<span class="mono" style="color:var(--muted);font-size:.7rem;">—</span>';
+      return `<tr>
+        <td><span class="mono" style="font-size:.7rem;">${time}</span></td>
+        <td>${level}</td>
+        <td>${tenant}</td>
+        <td>${status}</td>
+        <td><span style="font-size:.78rem;font-weight:500;">${esc(l.module||'—')}</span></td>
+        <td><span class="mono" style="font-size:.7rem;color:var(--muted);">${esc(l.source||'—')}</span></td>
+        <td><span style="font-size:.75rem;">${esc(l.user_id||'—')}</span></td>
+        <td><span style="font-size:.79rem;">${esc(l.message||'—')}</span></td>
+        <td>${meta}</td>
+      </tr>`;
+    }).join('');
+
+    /* ── Pagination bar ── */
+    const bar  = document.getElementById('logsPagBar');
+    const info = document.getElementById('logsPagInfo');
+    const btns = document.getElementById('logsPagBtns');
+    bar.style.display = 'flex';
+    info.textContent  = `${start + 1}–${Math.min(start + LOGS_PER_PAGE, rows.length)} of ${rows.length}`;
+
+    let pages = [];
+    if (totalPages <= 7) {
+      pages = Array.from({length: totalPages}, (_, i) => i + 1);
+    } else {
+      pages = [1];
+      if (_logsPage > 3) pages.push('…');
+      for (let i = Math.max(2, _logsPage - 1); i <= Math.min(totalPages - 1, _logsPage + 1); i++) pages.push(i);
+      if (_logsPage < totalPages - 2) pages.push('…');
+      pages.push(totalPages);
+    }
+
+    btns.innerHTML =
+      `<button class="page-btn" onclick="goLogsPage(${_logsPage - 1})" ${_logsPage === 1 ? 'disabled' : ''}>‹</button>` +
+      pages.map(p => p === '…'
+        ? `<span class="page-btn" style="cursor:default;opacity:.4;">…</span>`
+        : `<button class="page-btn ${p === _logsPage ? 'active' : ''}" onclick="goLogsPage(${p})">${p}</button>`
+      ).join('') +
+      `<button class="page-btn" onclick="goLogsPage(${_logsPage + 1})" ${_logsPage === totalPages ? 'disabled' : ''}>›</button>`;
+  }
 </script>
 </body>
 </html>
